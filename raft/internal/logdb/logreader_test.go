@@ -158,3 +158,9 @@ func TestSetRangePanicWhenThereIsIndexHole(t *testing.T) {
 	}
 	lr.SetRange(100, 100)
 }
+
+type noopCompactor struct{}
+
+func (noopCompactor) Compact(uint64) error { return nil }
+
+var testCompactor = &noopCompactor{}

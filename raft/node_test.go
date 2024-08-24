@@ -24,6 +24,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jamf/regatta/raft/internal/tan"
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/random"
 
@@ -205,7 +206,7 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 		}
 		cfg.Expert.LogDB.Shards = 2
 		cfg.Expert.FS = fs
-		ldb, err = logdb.NewDefaultLogDB(cfg,
+		ldb, err = tan.CreateTan(cfg,
 			nil, []string{nodeLogDir}, []string{nodeLowLatencyLogDir})
 		if err != nil {
 			plog.Panicf("failed to open logdb, %+v", err)
