@@ -36,14 +36,14 @@ jobs:
         CGO_ENABLED: ${{ matrix.cgo }}
       shell: bash
       run: |
-        make regatta                  \
+        make armada                  \
           && mkdir dist               \
-          && mv regatta dist/regatta  \
-          && tar -czvf regatta-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C dist/ .
+          && mv armada dist/armada  \
+          && tar -czvf armada-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C dist/ .
     - name: Release
       uses: softprops/action-gh-release@v2
       with:
-        files: regatta-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
+        files: armada-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
 
   release-docker-image:
     runs-on: ubuntu-latest

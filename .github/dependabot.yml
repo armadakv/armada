@@ -4,8 +4,6 @@ updates:
   directory: "/"
   schedule:
     interval: "weekly"
-  reviewers:
-  - "jamf/opensource-regatta-write"
   ignore:
   - dependency-name: "*"
     update-types: ["version-update:semver-major"]
@@ -13,14 +11,10 @@ updates:
   directory: "/"
   schedule:
     interval: "weekly"
-  reviewers:
-  - "jamf/opensource-regatta-write"
 - package-ecosystem: "gomod"
   directory: "/"
   schedule:
     interval: "weekly"
-  reviewers:
-  - "jamf/opensource-regatta-write"
   groups:
     gomod:
       patterns:
