@@ -213,7 +213,7 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data:  nil,
+						Data:  mustMarshallProto(&regattapb.CommandResult{Revision: 1}),
 					},
 				},
 			},

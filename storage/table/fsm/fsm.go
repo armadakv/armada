@@ -295,13 +295,11 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 			return nil, err
 		}
 
-		if len(res.Responses) > 0 {
-			bts, err := res.MarshalVT()
-			if err != nil {
-				return nil, err
-			}
-			updates[i].Result.Data = bts
+		bts, err := res.MarshalVT()
+		if err != nil {
+			return nil, err
 		}
+		updates[i].Result.Data = bts
 		updates[i].Result.Value = uint64(updateResult)
 		idx = updates[i].Index
 	}
