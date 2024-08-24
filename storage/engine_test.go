@@ -16,7 +16,7 @@ import (
 	"github.com/jamf/regatta/storage/kv"
 	"github.com/jamf/regatta/storage/logreader"
 	"github.com/jamf/regatta/storage/table"
-	"github.com/jamf/regatta/util/iter"
+	"github.com/jamf/regatta/util/iterx"
 	"github.com/jamf/regatta/version"
 	lvfs "github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
@@ -394,7 +394,7 @@ func TestEngine_IterateRange(t *testing.T) {
 			tt.prepare(t, e)
 			got, err := e.IterateRange(tt.args.ctx, tt.args.req)
 			tt.wantErr(t, err)
-			require.Equal(t, tt.want, iter.First(got))
+			require.Equal(t, tt.want, iterx.First(got))
 		})
 	}
 }

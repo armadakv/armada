@@ -93,7 +93,7 @@ func newRaftEventListener(shardID uint64, replicaID uint64,
 
 func (e *raftEventListener) close() {
 	if e.metrics {
-		metrics.UnregisterSet(e.metricsSet)
+		metrics.UnregisterSet(e.metricsSet, false)
 	}
 }
 

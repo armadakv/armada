@@ -3,9 +3,8 @@
 package util
 
 import (
+	"iter"
 	"sync"
-
-	"github.com/jamf/regatta/util/iter"
 )
 
 type SyncMap[K comparable, V any] struct {

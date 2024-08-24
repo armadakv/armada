@@ -5,6 +5,7 @@ package fsm
 import (
 	"bytes"
 	"fmt"
+	"iter"
 	"slices"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage/table/key"
 	"github.com/jamf/regatta/util"
-	"github.com/jamf/regatta/util/iter"
+	"github.com/jamf/regatta/util/iterx"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,20 +32,20 @@ func Test_iterateBasic(t *testing.T) {
 			name: "empty dataset",
 			args: args{
 				req:  &regattapb.RequestOp_Range{},
-				data: iter.From[*regattapb.KeyValue](),
+				data: iterx.From[*regattapb.KeyValue](),
 			},
-			want: iter.From(&regattapb.ResponseOp_Range{}),
+			want: iterx.From(&regattapb.ResponseOp_Range{}),
 		},
 		{
 			name: "small dataset query miss",
 			args: args{
 				req: &regattapb.RequestOp_Range{},
-				data: iter.From(&regattapb.KeyValue{
+				data: iterx.From(&regattapb.KeyValue{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),
 				}),
 			},
-			want: iter.From(&regattapb.ResponseOp_Range{}),
+			want: iterx.From(&regattapb.ResponseOp_Range{}),
 		},
 		{
 			name: "small dataset query hit",
@@ -53,12 +54,12 @@ func Test_iterateBasic(t *testing.T) {
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 				},
-				data: iter.From(&regattapb.KeyValue{
+				data: iterx.From(&regattapb.KeyValue{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),
 				}),
 			},
-			want: iter.From(&regattapb.ResponseOp_Range{
+			want: iterx.From(&regattapb.ResponseOp_Range{
 				Count: 1,
 				Kvs: []*regattapb.KeyValue{
 					{
@@ -82,10 +83,10 @@ func Test_iterateBasic(t *testing.T) {
 					}
 				}),
 			},
-			want: iter.From(&regattapb.ResponseOp_Range{
+			want: iterx.From(&regattapb.ResponseOp_Range{
 				Count: 1000,
 				Kvs: func() []*regattapb.KeyValue {
-					kvs := iter.Collect(generateSequence(1000, func(n int) *regattapb.KeyValue {
+					kvs := iterx.Collect(generateSequence(1000, func(n int) *regattapb.KeyValue {
 						return &regattapb.KeyValue{
 							Key:   []byte(fmt.Sprintf("key/%d", n)),
 							Value: []byte("foo"),
@@ -103,7 +104,7 @@ func Test_iterateBasic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, err := pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
 			require.NoError(t, err)
-			iter.Consume(tt.args.data, func(kv *regattapb.KeyValue) {
+			iterx.Consume(tt.args.data, func(kv *regattapb.KeyValue) {
 				kk := mustEncodeKey(key.Key{
 					KeyType: key.TypeUser,
 					Key:     kv.Key,
@@ -111,7 +112,7 @@ func Test_iterateBasic(t *testing.T) {
 				require.NoError(t, db.Set(kk, kv.Value, pebble.Sync))
 			})
 			i, err := iterate(db, tt.args.req)
-			require.Equal(t, iter.Collect(tt.want), iter.Collect(i))
+			require.Equal(t, iterx.Collect(tt.want), iterx.Collect(i))
 			require.NoError(t, err)
 		})
 	}
@@ -142,7 +143,7 @@ func Test_iterateLargeDataset(t *testing.T) {
 				}),
 			},
 			assert: func(t *testing.T, seq iter.Seq[*regattapb.ResponseOp_Range]) {
-				col := iter.Collect(seq)
+				col := iterx.Collect(seq)
 				require.Len(t, col, 2, "should generate 2 chunks")
 				require.True(t, col[0].More, "first chunk should have More flag set")
 				require.False(t, col[1].More, "last chunk should not have More flag set")
@@ -207,7 +208,7 @@ func Test_iterateLargeDataset(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, err := pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
 			require.NoError(t, err)
-			iter.Consume(tt.args.data, func(kv *regattapb.KeyValue) {
+			iterx.Consume(tt.args.data, func(kv *regattapb.KeyValue) {
 				kk := mustEncodeKey(key.Key{
 					KeyType: key.TypeUser,
 					Key:     kv.Key,

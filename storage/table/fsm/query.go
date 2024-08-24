@@ -6,12 +6,13 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"iter"
 
 	"github.com/cockroachdb/pebble"
 	sm "github.com/jamf/regatta/raft/statemachine"
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage/table/key"
-	"github.com/jamf/regatta/util/iter"
+	"github.com/jamf/regatta/util/iterx"
 )
 
 const maxRangeSize uint64 = (4 * 1024 * 1024) - 1024 // 4MiB - 1KiB sentinel.
@@ -101,7 +102,7 @@ func rangeLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatta
 	if err != nil {
 		return nil, err
 	}
-	return iter.First(it), nil
+	return iterx.First(it), nil
 }
 
 func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regattapb.ResponseOp_Range, error) {
@@ -151,7 +152,7 @@ func iteratorLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.
 	if err != nil {
 		return nil, err
 	}
-	return iter.From(single), nil
+	return iterx.From(single), nil
 }
 
 // IteratorRequest returns open pebble.Iterator it is an API consumer responsibility to close it.

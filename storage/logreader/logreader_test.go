@@ -12,7 +12,7 @@ import (
 	"github.com/jamf/regatta/raft/raftpb"
 	serror "github.com/jamf/regatta/storage/errors"
 	"github.com/jamf/regatta/util"
-	"github.com/jamf/regatta/util/iter"
+	"github.com/jamf/regatta/util/iterx"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -76,7 +76,7 @@ func TestCached_NodeDeleted(t *testing.T) {
 				ReplicaID: 1,
 			}},
 			assert: func(t *testing.T, s *util.SyncMap[uint64, *shard]) {
-				require.False(t, iter.Contains(s.Keys(), uint64(1)), "unexpected cache shard")
+				require.False(t, iterx.Contains(s.Keys(), uint64(1)), "unexpected cache shard")
 			},
 		},
 		{
@@ -87,7 +87,7 @@ func TestCached_NodeDeleted(t *testing.T) {
 				ReplicaID: 1,
 			}},
 			assert: func(t *testing.T, s *util.SyncMap[uint64, *shard]) {
-				require.False(t, iter.Contains(s.Keys(), uint64(1)), "unexpected cache shard")
+				require.False(t, iterx.Contains(s.Keys(), uint64(1)), "unexpected cache shard")
 			},
 		},
 		{
@@ -104,7 +104,7 @@ func TestCached_NodeDeleted(t *testing.T) {
 				ReplicaID: 1,
 			}},
 			assert: func(t *testing.T, s *util.SyncMap[uint64, *shard]) {
-				require.False(t, iter.Contains(s.Keys(), uint64(2)), "unexpected cache shard")
+				require.False(t, iterx.Contains(s.Keys(), uint64(2)), "unexpected cache shard")
 			},
 		},
 	}

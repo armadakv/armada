@@ -5,6 +5,7 @@ package table
 import (
 	"context"
 	"io"
+	"iter"
 
 	"github.com/jamf/regatta/raft/client"
 	sm "github.com/jamf/regatta/raft/statemachine"
@@ -12,7 +13,6 @@ import (
 	serrors "github.com/jamf/regatta/storage/errors"
 	"github.com/jamf/regatta/storage/table/fsm"
 	"github.com/jamf/regatta/storage/table/key"
-	"github.com/jamf/regatta/util/iter"
 )
 
 type raftHandler interface {

@@ -5,12 +5,13 @@ package regattaserver
 import (
 	"context"
 	"fmt"
+	"iter"
 	"testing"
 
 	"github.com/jamf/regatta/raft"
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage/errors"
-	"github.com/jamf/regatta/util/iter"
+	"github.com/jamf/regatta/util/iterx"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -111,7 +112,7 @@ func TestKVServer_RangeError(t *testing.T) {
 		Table: table1Name,
 		Key:   []byte("foo"),
 	})
-	r.EqualError(err, status.Errorf(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
+	r.EqualError(err, status.Error(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
 }
 
 func TestKVServer_RangeUnimplemented(t *testing.T) {
@@ -215,7 +216,7 @@ func TestKVServer_IterateRangeError(t *testing.T) {
 
 	t.Log("Get unknown send error")
 	storage = &mockKVService{}
-	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iter.From(&regattapb.RangeResponse{}), nil)
+	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iterx.From(&regattapb.RangeResponse{}), nil)
 	kv.Storage = storage
 
 	srv.On("Send", mock.Anything).Return(fmt.Errorf("uknown send error"))
@@ -233,7 +234,7 @@ func TestKVServer_IterateRangeError(t *testing.T) {
 		Table: table1Name,
 		Key:   []byte("foo"),
 	}, srv)
-	r.EqualError(err, status.Errorf(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
+	r.EqualError(err, status.Error(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
 }
 
 func TestKVServer_IterateRangeUnimplemented(t *testing.T) {
@@ -283,7 +284,7 @@ func TestKVServer_IterateRange(t *testing.T) {
 	}
 
 	t.Log("IterateRange single message")
-	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iter.From(&regattapb.RangeResponse{}), nil)
+	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iterx.From(&regattapb.RangeResponse{}), nil)
 	srv := &mockIterateRangeServer{}
 	srv.On("Context").Return(context.Background())
 	srv.On("Send", mock.AnythingOfType("*regattapb.RangeResponse")).Return(nil).Once()
@@ -294,7 +295,7 @@ func TestKVServer_IterateRange(t *testing.T) {
 	r.NoError(err)
 
 	t.Log("IterateRange multi messages")
-	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iter.From(&regattapb.RangeResponse{}, &regattapb.RangeResponse{}, &regattapb.RangeResponse{}))
+	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iterx.From(&regattapb.RangeResponse{}, &regattapb.RangeResponse{}, &regattapb.RangeResponse{}))
 	srv = &mockIterateRangeServer{}
 	srv.On("Context").Return(context.Background())
 	srv.On("Send", mock.AnythingOfType("*regattapb.RangeResponse")).Return(nil).Times(3)
@@ -305,7 +306,7 @@ func TestKVServer_IterateRange(t *testing.T) {
 	r.NoError(err)
 
 	t.Log("IterateRange canceled context")
-	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iter.From(&regattapb.RangeResponse{}, &regattapb.RangeResponse{}, &regattapb.RangeResponse{}))
+	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iterx.From(&regattapb.RangeResponse{}, &regattapb.RangeResponse{}, &regattapb.RangeResponse{}))
 	srv = &mockIterateRangeServer{}
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	cancelFunc()
@@ -368,7 +369,7 @@ func TestKVServer_PutError(t *testing.T) {
 		Table: table1Name,
 		Key:   []byte("foo"),
 	})
-	r.EqualError(err, status.Errorf(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
+	r.EqualError(err, status.Error(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
 }
 
 func TestKVServer_Put(t *testing.T) {
@@ -439,7 +440,7 @@ func TestKVServer_DeleteRangeError(t *testing.T) {
 		Table: table1Name,
 		Key:   []byte("foo"),
 	})
-	r.EqualError(err, status.Errorf(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
+	r.EqualError(err, status.Error(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
 }
 
 func TestKVServer_DeleteRange(t *testing.T) {
@@ -498,7 +499,7 @@ func TestKVServer_TxnError(t *testing.T) {
 	_, err = kv.Txn(context.Background(), &regattapb.TxnRequest{
 		Table: table1Name,
 	})
-	r.EqualError(err, status.Errorf(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
+	r.EqualError(err, status.Error(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
 }
 
 func TestKVServer_Txn(t *testing.T) {

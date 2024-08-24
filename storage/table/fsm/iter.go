@@ -4,11 +4,11 @@ package fsm
 
 import (
 	"bytes"
+	"iter"
 
 	"github.com/cockroachdb/pebble"
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage/table/key"
-	"github.com/jamf/regatta/util/iter"
 )
 
 // iterate until the provided pebble.Iterator is no longer valid or the limit is reached.

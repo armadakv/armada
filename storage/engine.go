@@ -5,6 +5,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"iter"
 	"strconv"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 	"github.com/jamf/regatta/storage/kv"
 	"github.com/jamf/regatta/storage/logreader"
 	"github.com/jamf/regatta/storage/table"
-	"github.com/jamf/regatta/util/iter"
+	"github.com/jamf/regatta/util/iterx"
 	"github.com/jamf/regatta/version"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -133,7 +134,7 @@ func (e *Engine) IterateRange(ctx context.Context, req *regattapb.RangeRequest) 
 	if err != nil {
 		return nil, err
 	}
-	return iter.Map(it, func(s *regattapb.ResponseOp_Range) *regattapb.RangeResponse {
+	return iterx.Map(it, func(s *regattapb.ResponseOp_Range) *regattapb.RangeResponse {
 		return &regattapb.RangeResponse{
 			Header: e.getHeader(nil, t.ClusterID),
 			Kvs:    s.Kvs,
