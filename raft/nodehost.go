@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/jamf/regatta/raft/plugin/tan"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/syncutil"
 
@@ -1605,7 +1606,7 @@ func (nh *NodeHost) createLogDB() error {
 	if nh.nhConfig.Expert.LogDBFactory != nil {
 		lf = nh.nhConfig.Expert.LogDBFactory
 	} else {
-		lf = logdb.NewDefaultFactory()
+		lf = tan.Factory
 	}
 	name := lf.Name()
 	if err := nh.env.CheckLogDBType(nh.nhConfig, name); err != nil {

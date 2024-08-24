@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
+	"github.com/jamf/regatta/raft/internal/tan"
 	"github.com/lni/goutils/leaktest"
 
 	"github.com/jamf/regatta/raft/config"
@@ -51,7 +52,7 @@ func getNewTestDB(dir string, lldir string, fs vfs.IFS) raftio.ILogDB {
 		Expert: config.GetDefaultExpertConfig(),
 	}
 	cfg.Expert.FS = fs
-	db, err := logdb.NewDefaultLogDB(cfg, nil, []string{d}, []string{lld})
+	db, err := tan.CreateTan(cfg, nil, []string{d}, []string{lld})
 	if err != nil {
 		panic(err.Error())
 	}

@@ -5,12 +5,12 @@ package regattaserver
 import (
 	"context"
 	"io"
+	"iter"
 
 	"github.com/jamf/regatta/raft"
 	"github.com/jamf/regatta/raft/raftpb"
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage/table"
-	"github.com/jamf/regatta/util/iter"
 )
 
 type KVService interface {

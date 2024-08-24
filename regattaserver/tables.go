@@ -23,14 +23,14 @@ type TablesServer struct {
 
 func (t *TablesServer) Create(ctx context.Context, req *regattapb.CreateTableRequest) (*regattapb.CreateTableResponse, error) {
 	if len(req.Name) == 0 {
-		return nil, status.Errorf(codes.InvalidArgument, "name must be set")
+		return nil, status.Error(codes.InvalidArgument, "name must be set")
 	}
 	table, err := t.Tables.CreateTable(req.Name)
 	if err != nil {
 		if errors.Is(err, serrors.ErrTableExists) {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
-		return nil, status.Errorf(codes.FailedPrecondition, err.Error())
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	return &regattapb.CreateTableResponse{Id: strconv.FormatUint(table.ClusterID, 10)}, nil
 }
@@ -41,9 +41,9 @@ func (t *TablesServer) Delete(ctx context.Context, req *regattapb.DeleteTableReq
 	}
 	if err := t.Tables.DeleteTable(req.Name); err != nil {
 		if errors.Is(err, serrors.ErrTableNotFound) {
-			return nil, status.Errorf(codes.InvalidArgument, err.Error())
+			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
-		return nil, status.Errorf(codes.FailedPrecondition, err.Error())
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	return &regattapb.DeleteTableResponse{}, nil
 }
@@ -52,9 +52,9 @@ func (t *TablesServer) List(ctx context.Context, _ *regattapb.ListTablesRequest)
 	ts, err := t.Tables.GetTables()
 	if err != nil {
 		if serrors.IsSafeToRetry(err) {
-			return nil, status.Errorf(codes.Unavailable, err.Error())
+			return nil, status.Error(codes.Unavailable, err.Error())
 		}
-		return nil, status.Errorf(codes.FailedPrecondition, err.Error())
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	resp := &regattapb.ListTablesResponse{Tables: make([]*regattapb.TableInfo, len(ts))}
 	for i, table := range ts {

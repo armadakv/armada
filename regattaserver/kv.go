@@ -6,11 +6,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage"
 	serrors "github.com/jamf/regatta/storage/errors"
-	"github.com/jamf/regatta/util/iter"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

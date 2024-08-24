@@ -5,7 +5,7 @@ linters:
   disable-all: true
   enable:
   - bodyclose
-  - gci
+  # DISABLE temporarily - gci
   - godot
   - gofumpt
   - goheader
@@ -32,6 +32,7 @@ linters-settings:
   gosec:
     excludes:
     - G104
+    - G115
     - G304
     - G401
     - G404

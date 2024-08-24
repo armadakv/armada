@@ -9,7 +9,7 @@ import (
 
 	"github.com/jamf/regatta/util"
 	"github.com/jamf/regatta/util/heap"
-	"github.com/jamf/regatta/util/iter"
+	"github.com/jamf/regatta/util/iterx"
 )
 
 type item struct {
@@ -61,7 +61,7 @@ func (q *IndexNotificationQueue) Run() {
 		case <-q.closed:
 			return
 		case <-gc.C:
-			iter.Consume(q.items.Values(), func(h *heap.Heap[*item]) {
+			iterx.Consume(q.items.Values(), func(h *heap.Heap[*item]) {
 				l := h.Len()
 				for i := 0; i < l; i++ {
 					elem := h.Slice[i]

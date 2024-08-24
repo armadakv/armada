@@ -21,10 +21,7 @@ to import this package.
 package logdb
 
 import (
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/logdb/kv"
 	"github.com/jamf/regatta/raft/logger"
-	"github.com/jamf/regatta/raft/raftio"
 	pb "github.com/jamf/regatta/raft/raftpb"
 )
 
@@ -74,75 +71,4 @@ type IContext interface {
 	GetEntryBatch() pb.EntryBatch
 	// GetLastEntryBatch returns an entry batch instance.
 	GetLastEntryBatch() pb.EntryBatch
-}
-
-// DefaultFactory is the default factory for creating LogDB instance.
-type DefaultFactory struct {
-}
-
-// NewDefaultFactory creates a new DefaultFactory instance.
-func NewDefaultFactory() *DefaultFactory {
-	return &DefaultFactory{}
-}
-
-// Create creates the LogDB instance.
-func (f *DefaultFactory) Create(cfg config.NodeHostConfig,
-	cb config.LogDBCallback,
-	dirs []string, lldirs []string) (raftio.ILogDB, error) {
-	return NewDefaultLogDB(cfg, cb, dirs, lldirs)
-}
-
-// Name returns the name of the default LogDB instance.
-func (f *DefaultFactory) Name() string {
-	return "sharded-pebble"
-}
-
-// NewDefaultLogDB creates a Log DB instance using the default KV store
-// implementation. The created Log DB tries to store entry records in
-// plain format but it switches to the batched mode if there is already
-// batched entries saved in the existing DB.
-func NewDefaultLogDB(config config.NodeHostConfig,
-	callback config.LogDBCallback,
-	dirs []string, lldirs []string) (raftio.ILogDB, error) {
-	return NewLogDB(config,
-		callback, dirs, lldirs, true, newDefaultKVStore)
-}
-
-// NewLogDB creates a Log DB instance based on provided configuration
-// parameters. The underlying KV store used by the Log DB instance is created
-// by the provided factory function.
-func NewLogDB(config config.NodeHostConfig,
-	callback config.LogDBCallback, dirs []string, lldirs []string,
-	check bool, f kv.Factory) (raftio.ILogDB, error) {
-	checkDirs(config.Expert.LogDB.Shards, dirs, lldirs)
-	llDirRequired := len(lldirs) == 1
-	if len(dirs) == 1 {
-		for i := uint64(1); i < config.Expert.LogDB.Shards; i++ {
-			dirs = append(dirs, dirs[0])
-			if llDirRequired {
-				lldirs = append(lldirs, lldirs[0])
-			}
-		}
-	}
-	return OpenShardedDB(config, callback, dirs, lldirs, check, f)
-}
-
-func checkDirs(numOfShards uint64, dirs []string, lldirs []string) {
-	if len(dirs) == 1 {
-		if len(lldirs) != 0 && len(lldirs) != 1 {
-			plog.Panicf("only 1 regular dir but %d low latency dirs", len(lldirs))
-		}
-	} else if len(dirs) > 1 {
-		if uint64(len(dirs)) != numOfShards {
-			plog.Panicf("%d regular dirs, but expect to have %d rdb instances",
-				len(dirs), numOfShards)
-		}
-		if len(lldirs) > 0 {
-			if len(dirs) != len(lldirs) {
-				plog.Panicf("%v regular dirs, but %v low latency dirs", dirs, lldirs)
-			}
-		}
-	} else {
-		panic("no regular dir")
-	}
 }

@@ -19,12 +19,12 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
+	"github.com/jamf/regatta/raft/internal/logdb"
 	"github.com/lni/goutils/logutil"
 
 	"github.com/jamf/regatta/raft/client"
 	"github.com/jamf/regatta/raft/config"
 	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/logdb"
 	"github.com/jamf/regatta/raft/internal/raft"
 	"github.com/jamf/regatta/raft/internal/rsm"
 	"github.com/jamf/regatta/raft/internal/server"
