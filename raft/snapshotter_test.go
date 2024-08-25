@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/internal/tan"
+	"github.com/jamf/regatta/raft/tan"
 	"github.com/lni/goutils/leaktest"
 
 	"github.com/jamf/regatta/raft/config"

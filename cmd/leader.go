@@ -99,11 +99,6 @@ func leader(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to parse raft.initial-members: %w", err)
 	}
 
-	logDBImpl, err := parseLogDBImplementation(viper.GetString("raft.logdb"))
-	if err != nil {
-		return fmt.Errorf("failed to parse raft.logdb: %w", err)
-	}
-
 	engine, err := storage.New(storage.Config{
 		Log:                 engineLog.Sugar(),
 		ClientAddress:       viper.GetString("api.advertise-address"),
@@ -144,7 +139,6 @@ func leader(_ *cobra.Command, _ []string) error {
 			CompactionOverhead: viper.GetUint64("raft.compaction-overhead"),
 			MaxInMemLogSize:    viper.GetUint64("raft.max-in-mem-log-size"),
 		},
-		LogDBImplementation: logDBImpl,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create engine: %w", err)

@@ -11,7 +11,6 @@ import (
 
 	"github.com/jamf/regatta/raft"
 	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/plugin/tan"
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage/cluster"
 	"github.com/jamf/regatta/storage/kv"
@@ -287,10 +286,6 @@ func createNodeHost(e *Engine) (*raft.NodeHost, error) {
 		MaxSendQueueSize:    e.cfg.MaxSendQueueSize,
 		SystemEventListener: e.events,
 		RaftEventListener:   e.events,
-	}
-
-	if e.cfg.LogDBImplementation == Tan {
-		nhc.Expert.LogDBFactory = tan.Factory
 	}
 	nhc.Expert.LogDB = buildLogDBConfig()
 

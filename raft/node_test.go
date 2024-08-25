@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jamf/regatta/raft/internal/tan"
+	"github.com/jamf/regatta/raft/tan"
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/random"
 
