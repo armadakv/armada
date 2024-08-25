@@ -15,21 +15,15 @@ type events struct {
 func (e *events) dispatchEvents() {
 	for evt := range e.eventsCh {
 		e.engine.log.Infof("raft: %T %+v", evt, evt)
-		switch ev := evt.(type) {
+		switch evt.(type) {
 		case nodeHostShuttingDown:
 			close(e.stopc)
 			return
 		case leaderUpdated, nodeUnloaded, membershipChanged, nodeReady:
 			e.engine.Cluster.Notify()
 		case nodeDeleted:
-			if ev.ReplicaID == e.engine.cfg.NodeID && e.engine.LogCache != nil {
-				e.engine.LogCache.NodeDeleted(ev.ShardID)
-			}
 			e.engine.Cluster.Notify()
 		case logCompacted:
-			if ev.ReplicaID == e.engine.cfg.NodeID && e.engine.LogCache != nil {
-				e.engine.LogCache.LogCompacted(ev.ShardID)
-			}
 		}
 	}
 }

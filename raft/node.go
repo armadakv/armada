@@ -19,9 +19,6 @@ import (
 	"sync/atomic"
 
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/internal/logdb"
-	"github.com/lni/goutils/logutil"
-
 	"github.com/jamf/regatta/raft/client"
 	"github.com/jamf/regatta/raft/config"
 	"github.com/jamf/regatta/raft/internal/fileutil"
@@ -30,9 +27,11 @@ import (
 	"github.com/jamf/regatta/raft/internal/server"
 	"github.com/jamf/regatta/raft/internal/settings"
 	"github.com/jamf/regatta/raft/internal/transport"
+	"github.com/jamf/regatta/raft/logreader"
 	"github.com/jamf/regatta/raft/raftio"
 	pb "github.com/jamf/regatta/raft/raftpb"
 	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/lni/goutils/logutil"
 )
 
 var (
@@ -105,7 +104,7 @@ type node struct {
 	pendingRaftLogQuery   pendingRaftLogQuery
 	initializedC          chan struct{}
 	p                     raft.Peer
-	logReader             *logdb.LogReader
+	logReader             *logreader.LogReader
 	snapshotter           *snapshotter
 	mq                    *server.MessageQueue
 	raftAddress           string
@@ -138,7 +137,7 @@ func newNode(peers map[uint64]string,
 	nhConfig config.NodeHostConfig,
 	createSM rsm.ManagedStateMachineFactory,
 	snapshotter *snapshotter,
-	logReader *logdb.LogReader,
+	logReader *logreader.LogReader,
 	pipeline pipeline,
 	liQueue *leaderInfoQueue,
 	getStreamSink func(uint64, uint64) *transport.Sink,

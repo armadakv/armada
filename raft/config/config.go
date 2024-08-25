@@ -178,12 +178,6 @@ type Config struct {
 	//
 	// Witness support is currently experimental.
 	IsWitness bool
-	// Quiesce specifies whether to let the Raft shard enter quiesce mode when
-	// there is no shard activity. Shards in quiesce mode do not exchange
-	// heartbeat messages to minimize bandwidth consumption.
-	//
-	// Quiesce support is currently experimental.
-	Quiesce bool
 	// WaitReady specifies whether to wait for the node to transition
 	// from recovering to ready state before returning from StartReplica.
 	WaitReady bool
@@ -353,15 +347,6 @@ type TargetValidator func(string) bool
 // RaftAddressValidator is the validator used to validate user specified
 // RaftAddress values.
 type RaftAddressValidator func(string) bool
-
-// LogDBFactory is the interface used for creating custom logdb modules.
-type LogDBFactory interface {
-	// Create creates a logdb module.
-	Create(NodeHostConfig,
-		LogDBCallback, []string, []string) (raftio.ILogDB, error)
-	// Name returns the type name of the logdb module.
-	Name() string
-}
 
 // NodeRegistryFactory is the interface used for providing a custom node registry.
 // For a short example of how to implement a custom node registry, please see
@@ -719,10 +704,6 @@ func GetDefaultExpertConfig() ExpertConfig {
 // internals of Dragonboat. Users are recommended not to set ExpertConfig
 // unless it is absoloutely necessary.
 type ExpertConfig struct {
-	// LogDBFactory is the factory function used for creating the LogDB instance
-	// used by NodeHost. When not set, the default built-in Pebble based LogDB
-	// implementation is used.
-	LogDBFactory LogDBFactory
 	// TransportFactory is an optional factory type used for creating the custom
 	// transport module to be used by dragonbaot. When not set, the built-in TCP
 	// transport module is used.

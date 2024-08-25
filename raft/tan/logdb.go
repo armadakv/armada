@@ -52,27 +52,10 @@ const (
 	defaultDBName     = "tandb"
 	bootstrapDirname  = "bootstrap"
 	defaultShards     = 16
-	tanLogDBName      = "Tan"
+	LogDBName         = "Tan"
 )
 
 var _ raftio.ILogDB = (*LogDB)(nil)
-
-// Factory is the default LogDB factory instance used for creating tan DB
-// instances.
-var Factory = factory{}
-
-type factory struct{}
-
-// Create creates a new tan LogDB instance in regular mode.
-func (factory) Create(cfg config.NodeHostConfig,
-	cb config.LogDBCallback, dirs []string, wals []string) (raftio.ILogDB, error) {
-	return CreateTan(cfg, cb, dirs, wals)
-}
-
-// Name returns the name of the tan instance.
-func (factory) Name() string {
-	return tanLogDBName
-}
 
 // LogDB is the tan ILogDB type used to interface with dragonboat.
 type LogDB struct {
@@ -163,7 +146,7 @@ func (l *LogDB) cleanupBootstrapDir() error {
 
 // Name returns the type name of the ILogDB instance.
 func (l *LogDB) Name() string {
-	return tanLogDBName
+	return LogDBName
 }
 
 // Close closes the ILogDB instance.

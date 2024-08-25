@@ -18,6 +18,7 @@ Package logger manages loggers used in dragonboat.
 package logger
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -134,7 +135,7 @@ func (l *sysLoggers) createILogger(pkgName string) ILogger {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.loggerFactory == nil {
-		return createDefaultILogger(pkgName)
+		return createDefaultILogger()
 	}
 	return l.loggerFactory(pkgName)
 }
@@ -148,18 +149,19 @@ func createSysLoggers() *sysLoggers {
 	return s
 }
 
-func createDefaultILogger(pkgName string) ILogger {
-	return CreateCapnsLog(pkgName)
+func createDefaultILogger() ILogger {
+	return nullLogger{}
 }
 
 type nullLogger struct{}
 
 var _ ILogger = (*nullLogger)(nil)
-var _nullLogger = nullLogger{}
 
 func (nullLogger) SetLevel(LogLevel)                           {}
 func (nullLogger) Debugf(format string, args ...interface{})   {}
 func (nullLogger) Infof(format string, args ...interface{})    {}
 func (nullLogger) Warningf(format string, args ...interface{}) {}
 func (nullLogger) Errorf(format string, args ...interface{})   {}
-func (nullLogger) Panicf(format string, args ...interface{})   {}
+func (nullLogger) Panicf(format string, args ...interface{}) {
+	panic(fmt.Sprintf(format, args...))
+}

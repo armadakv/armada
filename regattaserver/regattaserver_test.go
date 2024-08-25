@@ -88,9 +88,8 @@ func newInMemTestEngine(t *testing.T, tables ...string) *storage.Engine {
 			CompactionOverhead: 5,
 			MaxInMemLogSize:    1024,
 		},
-		LogDBImplementation: storage.Tan,
-		FS:                  vfs.NewMem(),
-		Log:                 zaptest.NewLogger(t).Sugar(),
+		FS:  vfs.NewMem(),
+		Log: zaptest.NewLogger(t).Sugar(),
 	})
 	require.NoError(t, err)
 	require.NoError(t, e.Start())

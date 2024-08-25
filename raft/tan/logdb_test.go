@@ -104,7 +104,7 @@ func TestLogDBCanBeCreated(t *testing.T) {
 	require.NoError(t, cfg.Prepare())
 	dirs := []string{"db-dir"}
 	ldb, err := CreateTan(cfg, nil, dirs, []string{})
-	require.Equal(t, tanLogDBName, ldb.Name())
+	require.Equal(t, LogDBName, ldb.Name())
 	require.NoError(t, err)
 	require.NoError(t, ldb.Close())
 }

@@ -30,13 +30,14 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
-package logdb
+package logreader
 
 import (
 	"fmt"
 	"sync"
 	"unsafe"
 
+	"github.com/jamf/regatta/raft/logger"
 	"github.com/lni/goutils/logutil"
 
 	"github.com/jamf/regatta/raft/internal/raft"
@@ -46,6 +47,10 @@ import (
 
 const (
 	maxEntrySliceSize uint64 = 4 * 1024 * 1024
+)
+
+var (
+	plog = logger.GetLogger("logdb")
 )
 
 var dn = logutil.DescribeNode
