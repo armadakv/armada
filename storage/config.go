@@ -8,13 +8,6 @@ import (
 	"go.uber.org/zap"
 )
 
-type LogDBImplementation int
-
-const (
-	Tan LogDBImplementation = iota
-	Pebble
-)
-
 type TableConfig table.TableConfig
 
 type MetaConfig table.MetaConfig
@@ -99,10 +92,6 @@ type Config struct {
 	Table TableConfig
 	// Meta is a configuration for metadata inmemory state machine.
 	Meta MetaConfig
-	// LogDBImplementation underlying LogDB implementation Pebble (default) or Tan.
-	LogDBImplementation LogDBImplementation
-	// LogCacheSize specifies the size of the log cache.
-	LogCacheSize int
 	// FS is the filesystem to use for log store, useful for testing,
 	// uses the real vfs.Default if nil.
 	FS vfs.FS

@@ -18,17 +18,16 @@ import (
 	"strconv"
 
 	"github.com/cockroachdb/errors"
-	"github.com/lni/goutils/logutil"
-
 	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/logdb"
 	"github.com/jamf/regatta/raft/internal/rsm"
 	"github.com/jamf/regatta/raft/internal/server"
 	"github.com/jamf/regatta/raft/internal/utils/dio"
 	"github.com/jamf/regatta/raft/internal/vfs"
+	"github.com/jamf/regatta/raft/logreader"
 	"github.com/jamf/regatta/raft/raftio"
 	pb "github.com/jamf/regatta/raft/raftpb"
 	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/lni/goutils/logutil"
 )
 
 func compressionType(ct pb.CompressionType) dio.CompressionType {
@@ -55,7 +54,7 @@ type snapshotter struct {
 	shardID   uint64
 	replicaID uint64
 	logdb     raftio.ILogDB
-	logReader *logdb.LogReader
+	logReader *logreader.LogReader
 	fs        vfs.IFS
 }
 
@@ -63,7 +62,7 @@ var _ rsm.ISnapshotter = (*snapshotter)(nil)
 
 func newSnapshotter(shardID uint64, replicaID uint64,
 	root server.SnapshotDirFunc, ldb raftio.ILogDB,
-	logReader *logdb.LogReader, fs vfs.IFS) *snapshotter {
+	logReader *logreader.LogReader, fs vfs.IFS) *snapshotter {
 	return &snapshotter{
 		shardID:   shardID,
 		replicaID: replicaID,

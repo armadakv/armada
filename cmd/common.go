@@ -20,7 +20,6 @@ import (
 	dbl "github.com/jamf/regatta/raft/logger"
 	"github.com/jamf/regatta/regattaserver"
 	"github.com/jamf/regatta/security"
-	"github.com/jamf/regatta/storage"
 	"github.com/jamf/regatta/storage/table"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
@@ -163,17 +162,6 @@ func parseInitialMembers(members map[string]string) (map[uint64]string, error) {
 		initialMembers[kUint] = v
 	}
 	return initialMembers, nil
-}
-
-func parseLogDBImplementation(impl string) (storage.LogDBImplementation, error) {
-	switch impl {
-	case "pebble":
-		return storage.Pebble, nil
-	case "tan":
-		return storage.Tan, nil
-	default:
-		return storage.Pebble, fmt.Errorf("unknown logdb impl: %s", impl)
-	}
 }
 
 var dbLoggerOnce sync.Once

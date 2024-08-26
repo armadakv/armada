@@ -24,13 +24,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jamf/regatta/raft/internal/tan"
+	"github.com/jamf/regatta/raft/logreader"
+	"github.com/jamf/regatta/raft/tan"
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/random"
 
 	"github.com/jamf/regatta/raft/client"
 	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/logdb"
 	"github.com/jamf/regatta/raft/internal/raft"
 	"github.com/jamf/regatta/raft/internal/registry"
 	"github.com/jamf/regatta/raft/internal/rsm"
@@ -224,7 +224,7 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 		rootDirFunc := func(cid uint64, nid uint64) string {
 			return snapdir
 		}
-		lr := logdb.NewLogReader(testShardID, i, ldb)
+		lr := logreader.NewLogReader(testShardID, i, ldb)
 		snapshotter := newSnapshotter(testShardID, i, rootDirFunc, ldb, lr, fs)
 		lr.SetCompactor(snapshotter)
 		// create the sm

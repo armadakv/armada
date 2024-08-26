@@ -11,7 +11,6 @@ import (
 
 	"github.com/jamf/regatta/raft"
 	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/plugin/tan"
 	"github.com/jamf/regatta/regattapb"
 	"github.com/jamf/regatta/storage/cluster"
 	"github.com/jamf/regatta/storage/kv"
@@ -65,12 +64,7 @@ func New(cfg Config) (*Engine, error) {
 			Meta:   table.MetaConfig(cfg.Meta),
 		},
 	)
-	if cfg.LogCacheSize > 0 {
-		e.LogCache = logreader.NewShardCache(cfg.LogCacheSize)
-		e.LogReader = &logreader.Cached{LogQuerier: nh, ShardCache: e.LogCache}
-	} else {
-		e.LogReader = &logreader.Simple{LogQuerier: nh}
-	}
+	e.LogReader = &logreader.Simple{LogQuerier: nh}
 	return e, nil
 }
 
@@ -83,7 +77,6 @@ type Engine struct {
 	stop       chan struct{}
 	LogReader  logreader.Interface
 	Cluster    *cluster.Cluster
-	LogCache   *logreader.ShardCache
 	tableStore *kv.RaftStore
 }
 
@@ -287,10 +280,6 @@ func createNodeHost(e *Engine) (*raft.NodeHost, error) {
 		MaxSendQueueSize:    e.cfg.MaxSendQueueSize,
 		SystemEventListener: e.events,
 		RaftEventListener:   e.events,
-	}
-
-	if e.cfg.LogDBImplementation == Tan {
-		nhc.Expert.LogDBFactory = tan.Factory
 	}
 	nhc.Expert.LogDB = buildLogDBConfig()
 

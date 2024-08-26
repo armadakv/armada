@@ -633,38 +633,6 @@ func runNodeHostTestDC(t *testing.T, f func(), removeDir bool, fs vfs.IFS) {
 	reportLeakedFD(fs, t)
 }
 
-type testLogDBFactory struct {
-	ldb raftio.ILogDB
-}
-
-func (t *testLogDBFactory) Create(cfg config.NodeHostConfig,
-	cb config.LogDBCallback, dirs []string, wals []string) (raftio.ILogDB, error) {
-	return t.ldb, nil
-}
-
-func (t *testLogDBFactory) Name() string {
-	return t.ldb.Name()
-}
-
-func TestLogDBCanBeExtended(t *testing.T) {
-	fs := vfs.GetTestFS()
-	ldb := &noopLogDB{}
-	to := &testOption{
-		updateNodeHostConfig: func(nhc *config.NodeHostConfig) *config.NodeHostConfig {
-			nhc.Expert.LogDBFactory = &testLogDBFactory{ldb: ldb}
-			return nhc
-		},
-
-		tf: func(nh *NodeHost) {
-			if nh.mu.logdb.Name() != ldb.Name() {
-				t.Errorf("logdb type name %s, expect %s", nh.mu.logdb.Name(), ldb.Name())
-			}
-		},
-		noElection: true,
-	}
-	runNodeHostTest(t, to, fs)
-}
-
 func TestTCPTransportIsUsedByDefault(t *testing.T) {
 	if vfs.GetTestFS() != vfs.DefaultFS {
 		t.Skip("memfs test mode, skipped")
@@ -4081,26 +4049,6 @@ func TestNodeHostReturnsErrorWhenTransportCanNotBeCreated(t *testing.T) {
 			return c
 		},
 		newNodeHostToFail: true,
-	}
-	runNodeHostTest(t, to, fs)
-}
-
-func TestNodeHostChecksLogDBType(t *testing.T) {
-	fs := vfs.GetTestFS()
-	ldb := &noopLogDB{}
-	to := &testOption{
-		updateNodeHostConfig: func(c *config.NodeHostConfig) *config.NodeHostConfig {
-			c.Expert.LogDBFactory = &testLogDBFactory{ldb: ldb}
-			return c
-		},
-		at: func(*NodeHost) {
-			nhc := getTestNodeHostConfig(fs)
-			_, err := NewNodeHost(*nhc)
-			if err != server.ErrLogDBType {
-				t.Fatalf("didn't report logdb type error %v", err)
-			}
-		},
-		noElection: true,
 	}
 	runNodeHostTest(t, to, fs)
 }

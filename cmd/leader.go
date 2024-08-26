@@ -55,7 +55,6 @@ Under some circumstances, a larger message could be sent. Followers should be ab
 	leaderCmd.PersistentFlags().String("replication.key-filename", "", "Path to the API server private key file.")
 	leaderCmd.PersistentFlags().String("replication.ca-filename", "", "Path to the API server CA cert file.")
 	leaderCmd.PersistentFlags().Bool("replication.client-cert-auth", false, "Replication server client certificate auth enabled. If set to true the `replication.ca-filename` should be provided as well.")
-	leaderCmd.PersistentFlags().Int("replication.log-cache-size", 0, "Size of the replication cache. Size 0 means cache is turned off.")
 }
 
 var leaderCmd = &cobra.Command{
@@ -99,11 +98,6 @@ func leader(_ *cobra.Command, _ []string) error {
 		return fmt.Errorf("failed to parse raft.initial-members: %w", err)
 	}
 
-	logDBImpl, err := parseLogDBImplementation(viper.GetString("raft.logdb"))
-	if err != nil {
-		return fmt.Errorf("failed to parse raft.logdb: %w", err)
-	}
-
 	engine, err := storage.New(storage.Config{
 		Log:                 engineLog.Sugar(),
 		ClientAddress:       viper.GetString("api.advertise-address"),
@@ -117,7 +111,6 @@ func leader(_ *cobra.Command, _ []string) error {
 		EnableMetrics:       true,
 		MaxReceiveQueueSize: viper.GetUint64("raft.max-recv-queue-size"),
 		MaxSendQueueSize:    viper.GetUint64("raft.max-send-queue-size"),
-		LogCacheSize:        viper.GetInt("replication.log-cache-size"),
 		Gossip: storage.GossipConfig{
 			BindAddress:      viper.GetString("memberlist.address"),
 			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),
@@ -144,7 +137,6 @@ func leader(_ *cobra.Command, _ []string) error {
 			CompactionOverhead: viper.GetUint64("raft.compaction-overhead"),
 			MaxInMemLogSize:    viper.GetUint64("raft.max-in-mem-log-size"),
 		},
-		LogDBImplementation: logDBImpl,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create engine: %w", err)

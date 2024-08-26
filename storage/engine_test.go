@@ -42,16 +42,6 @@ func TestEngine_Start(t *testing.T) {
 			wantErr:     require.NoError,
 		},
 		{
-			name: "start test node pebble logdb",
-			fields: fields{cfg: func() Config {
-				cfg := newTestConfig()
-				cfg.LogDBImplementation = Pebble
-				return cfg
-			}()},
-			wantStarted: true,
-			wantErr:     require.NoError,
-		},
-		{
 			name: "start test node checkpoint snapshot",
 			fields: fields{cfg: func() Config {
 				cfg := newTestConfig()
@@ -960,7 +950,7 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	nh, err := createNodeHost(e)
 	require.NoError(t, err)
 	e.NodeHost = nh
-	e.LogReader = &logreader.Cached{LogQuerier: nh}
+	e.LogReader = &logreader.Simple{LogQuerier: nh}
 	e.Cluster, err = cluster.New(cfg.Gossip.BindAddress, cfg.Gossip.AdvertiseAddress, "", "", func() cluster.Info {
 		return cluster.Info{}
 	})

@@ -21,12 +21,12 @@ import (
 	"testing"
 
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/internal/tan"
+	"github.com/jamf/regatta/raft/logreader"
+	"github.com/jamf/regatta/raft/tan"
 	"github.com/lni/goutils/leaktest"
 
 	"github.com/jamf/regatta/raft/config"
 	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/logdb"
 	"github.com/jamf/regatta/raft/internal/rsm"
 	"github.com/jamf/regatta/raft/internal/vfs"
 	"github.com/jamf/regatta/raft/raftio"
@@ -73,7 +73,7 @@ func getTestSnapshotter(ldb raftio.ILogDB, fs vfs.IFS) *snapshotter {
 	f := func(cid uint64, nid uint64) string {
 		return fp
 	}
-	lr := logdb.NewLogReader(1, 1, ldb)
+	lr := logreader.NewLogReader(1, 1, ldb)
 	return newSnapshotter(1, 1, f, ldb, lr, fs)
 }
 

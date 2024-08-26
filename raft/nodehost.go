@@ -23,14 +23,9 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/plugin/tan"
-	"github.com/lni/goutils/logutil"
-	"github.com/lni/goutils/syncutil"
-
 	"github.com/jamf/regatta/raft/client"
 	"github.com/jamf/regatta/raft/config"
 	"github.com/jamf/regatta/raft/internal/id"
-	"github.com/jamf/regatta/raft/internal/logdb"
 	"github.com/jamf/regatta/raft/internal/registry"
 	"github.com/jamf/regatta/raft/internal/rsm"
 	"github.com/jamf/regatta/raft/internal/server"
@@ -38,20 +33,13 @@ import (
 	"github.com/jamf/regatta/raft/internal/transport"
 	"github.com/jamf/regatta/raft/internal/utils"
 	"github.com/jamf/regatta/raft/internal/vfs"
+	"github.com/jamf/regatta/raft/logreader"
 	"github.com/jamf/regatta/raft/raftio"
 	pb "github.com/jamf/regatta/raft/raftpb"
 	sm "github.com/jamf/regatta/raft/statemachine"
-)
-
-const (
-	// DragonboatMajor is the major version number
-	DragonboatMajor = 4
-	// DragonboatMinor is the minor version number
-	DragonboatMinor = 0
-	// DragonboatPatch is the patch version number
-	DragonboatPatch = 0
-	// DEVVersion is a boolean flag indicating whether this is a dev version
-	DEVVersion = true
+	"github.com/jamf/regatta/raft/tan"
+	"github.com/lni/goutils/logutil"
+	"github.com/lni/goutils/syncutil"
 )
 
 var (
@@ -212,22 +200,6 @@ func (o SnapshotOption) Validate() error {
 		}
 	}
 	return nil
-}
-
-// ReadonlyLogReader provides safe readonly access to the underlying logdb.
-type ReadonlyLogReader interface {
-	// GetRange returns the range of the entries in LogDB.
-	GetRange() (uint64, uint64)
-	// NodeState returns the state of the node persistent in LogDB.
-	NodeState() (pb.State, pb.Membership)
-	// Term returns the entry term of the specified entry.
-	Term(index uint64) (uint64, error)
-	// Entries returns entries between [low, high) with total size of entries
-	// limited to maxSize bytes.
-	Entries(low uint64, high uint64, maxSize uint64) ([]pb.Entry, error)
-	// Snapshot returns the metadata for the most recent snapshot known to the
-	// LogDB.
-	Snapshot() pb.Snapshot
 }
 
 // DefaultSnapshotOption is the default SnapshotOption value to use when
@@ -586,7 +558,7 @@ func (nh *NodeHost) SyncRead(ctx context.Context, shardID uint64,
 }
 
 // GetLogReader returns a read-only LogDB reader.
-func (nh *NodeHost) GetLogReader(shardID uint64) (ReadonlyLogReader, error) {
+func (nh *NodeHost) GetLogReader(shardID uint64) (*logreader.LogReader, error) {
 	nh.mu.RLock()
 	defer nh.mu.RUnlock()
 	if nh.mu.logdb == nil {
@@ -1505,7 +1477,7 @@ func (nh *NodeHost) startShard(initialMembers map[uint64]Target,
 		getSnapshotDir := func(cid uint64, nid uint64) string {
 			return nh.env.GetSnapshotDir(did, cid, nid)
 		}
-		logReader := logdb.NewLogReader(shardID, replicaID, nh.mu.logdb)
+		logReader := logreader.NewLogReader(shardID, replicaID, nh.mu.logdb)
 		ss := newSnapshotter(shardID, replicaID,
 			getSnapshotDir, nh.mu.logdb, logReader, nh.fs)
 		logReader.SetCompactor(ss)
@@ -1602,24 +1574,16 @@ func (nh *NodeHost) createLogDB() error {
 	if err := nh.env.LockNodeHostDir(); err != nil {
 		return err
 	}
-	var lf config.LogDBFactory
-	if nh.nhConfig.Expert.LogDBFactory != nil {
-		lf = nh.nhConfig.Expert.LogDBFactory
-	} else {
-		lf = tan.Factory
-	}
-	name := lf.Name()
-	if err := nh.env.CheckLogDBType(nh.nhConfig, name); err != nil {
+	if err := nh.env.CheckLogDBType(nh.nhConfig, tan.LogDBName); err != nil {
 		return err
 	}
-	ldb, err := lf.Create(nh.nhConfig,
-		nh.handleLogDBInfo, []string{nhDir}, []string{walDir})
+	ldb, err := tan.CreateTan(nh.nhConfig, nh.handleLogDBInfo, []string{nhDir}, []string{walDir})
 	if err != nil {
 		return err
 	}
 	nh.mu.logdb = ldb
 	ver := ldb.BinaryFormat()
-	if err := nh.env.CheckNodeHostDir(nh.nhConfig, ver, name); err != nil {
+	if err := nh.env.CheckNodeHostDir(nh.nhConfig, ver, tan.LogDBName); err != nil {
 		return err
 	}
 	plog.Infof("logdb memory limit: %d MBytes",
