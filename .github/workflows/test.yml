@@ -1,4 +1,4 @@
-name: Test
+name: CI
 
 on:
   push:
@@ -15,11 +15,15 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ startsWith(github.ref, 'refs/pull/') }}
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
-  unit:
+  test:
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout code
