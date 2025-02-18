@@ -43,7 +43,7 @@ armada:
 	test $(VERSION) || (echo "version not set"; exit 1)
 	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o armada
 
-PROTO_GO_OUTS=armadapb/mvcc.pb.go regattapb/mvcc_vtproto.pb.go \
+PROTO_GO_OUTS=regattapb/mvcc.pb.go regattapb/mvcc_vtproto.pb.go \
  regattapb/regatta.pb.go regattapb/regatta_grpc.pb.go regattapb/regatta_vtproto.pb.go \
  regattapb/replication.pb.go regattapb/replication_grpc.pb.go regattapb/replication_vtproto.pb.go \
  regattapb/maintenance.pb.go regattapb/maintenance_grpc.pb.go regattapb/maintenance_vtproto.pb.go
