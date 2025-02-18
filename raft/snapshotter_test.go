@@ -20,17 +20,17 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/armadakv/armada/raft/logreader"
+	"github.com/armadakv/armada/raft/tan"
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/logreader"
-	"github.com/jamf/regatta/raft/tan"
 	"github.com/lni/goutils/leaktest"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/rsm"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/fileutil"
+	"github.com/armadakv/armada/raft/internal/rsm"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 const (

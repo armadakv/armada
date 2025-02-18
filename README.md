@@ -1,12 +1,12 @@
 # Armada
 
-[![tag](https://img.shields.io/github/tag/armadaio/armada.svg)](https://github.com/armadaio/armada/releases)
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/armadaio/armada)
-![Build Status](https://github.com/armadaio/armada/actions/workflows/test.yml/badge.svg)
-[![Coverage Status](https://coveralls.io/repos/github/armadaio/armada/badge.svg)](https://coveralls.io/github/armadaio/armada)
-[![Go report](https://goreportcard.com/badge/github.com/armadaio/armada)](https://goreportcard.com/report/github.com/armadaio/armada)
-[![Contributors](https://img.shields.io/github/contributors/armadaio/armada)](https://github.com/armadaio/armada/graphs/contributors)
-[![License](https://img.shields.io/github/license/armadaio/armada)](LICENSE)
+[![tag](https://img.shields.io/github/tag/armadakv/armada.svg)](https://github.com/armadakv/armada/releases)
+![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/armadakv/armada)
+![Build Status](https://github.com/armadakv/armada/actions/workflows/test.yml/badge.svg)
+[![Coverage Status](https://coveralls.io/repos/github/armadakv/armada/badge.svg)](https://coveralls.io/github/armadakv/armada)
+[![Go report](https://goreportcard.com/badge/github.com/armadakv/armada)](https://goreportcard.com/report/github.com/armadakv/armada)
+[![Contributors](https://img.shields.io/github/contributors/armadakv/armada)](https://github.com/armadakv/armada/graphs/contributors)
+[![License](https://img.shields.io/github/license/armadakv/armada)](LICENSE)
 
 **Armada** is a distributed ETCD inspired key-value store. Armada is designed to operate eiter as a standalone node,
 standalone cluster or in Leader - Follower mode suited for distributing data in distant locations. e.g. in different
@@ -35,11 +35,11 @@ While Armada maintains many of ETCD features there are some notable differences:
 ## Documentation
 
 For guidance on installation, deployment, and administration,
-see the [documentation page](https://armadaio.dev).
+see the [documentation page](https://armadakv.io).
 
 ## Contributing
 
 Armada is in active development and contributors are welcome! For guidance on development, see the page
 [Contributing](...).
-Feel free to ask questions and engage in [GitHub Discussions](https://github.com/armadaio/armada/discussions)!
+Feel free to ask questions and engage in [GitHub Discussions](https://github.com/armadakv/armada/discussions)!
 

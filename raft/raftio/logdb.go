@@ -17,7 +17,7 @@ package raftio
 import (
 	"github.com/cockroachdb/errors"
 
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

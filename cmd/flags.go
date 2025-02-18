@@ -62,8 +62,8 @@ When CheckQuorum is enabled, ElectionRTT also defines the interval for checking 
 		`WALDir is the directory used for storing the WAL of Raft entries. 
 It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data. 
 Leave WALDir to have zero value will have everything stored in NodeHostDir.`)
-	raftFlagSet.String("raft.node-host-dir", "/tmp/regatta/raft", "NodeHostDir raft internal storage")
-	raftFlagSet.String("raft.state-machine-dir", "/tmp/regatta/state-machine",
+	raftFlagSet.String("raft.node-host-dir", "/tmp/armada/raft", "NodeHostDir raft internal storage")
+	raftFlagSet.String("raft.state-machine-dir", "/tmp/armada/state-machine",
 		"StateMachineDir persistent storage for the state machine.")
 	raftFlagSet.String("raft.snapshot-recovery-type", "",
 		`Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems. 
@@ -73,8 +73,8 @@ Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Typ
 This is also the identifier for a Storage instance. RaftAddress should be set to the public address that can be accessed from remote Storage instances.`)
 	raftFlagSet.String("raft.listen-address", "",
 		`ListenAddress is a hostname:port or IP:port address used by the Raft RPC module to listen on for Raft message and snapshots.
-When the ListenAddress field is not set, The Raft RPC module listens on RaftAddress. If 0.0.0.0 is specified as the IP of the ListenAddress, Regatta listens to the specified port on all interfaces.
-When hostname or domain name is specified, it is locally resolved to IP addresses first and Regatta listens to all resolved IP addresses.`)
+When the ListenAddress field is not set, The Raft RPC module listens on RaftAddress. If 0.0.0.0 is specified as the IP of the ListenAddress, Armada listens to the specified port on all interfaces.
+When hostname or domain name is specified, it is locally resolved to IP addresses first and Armada listens to all resolved IP addresses.`)
 	raftFlagSet.Uint64("raft.node-id", 1, "Raft Node ID is a non-zero value used to identify a node within a Raft cluster.")
 	raftFlagSet.StringToString("raft.initial-members", map[string]string{}, `Raft cluster initial members defines a mapping of node IDs to their respective raft address.
 The node ID must be must be Integer >= 1. Example for the initial 3 node cluster setup on the localhost: "--raft.initial-members=1=127.0.0.1:5012,2=127.0.0.1:5013,3=127.0.0.1:5014".`)
@@ -96,10 +96,10 @@ dropped to restrict memory usage. When set to 0, it means the queue size is unli
 dropped to restrict memory usage. When set to 0, it means the send queue size is unlimited.`)
 	memberlistFlagSet.String("memberlist.address", "0.0.0.0:7432", `Address is the address for the gossip service to bind to and listen on. Both UDP and TCP ports are used by the gossip service.
 The local gossip service should be able to receive gossip service related messages by binding to and listening on this address. BindAddress is usually in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
-	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Regatta instances used for NAT traversal.
-Gossip services running on remote Regatta instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
-	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of AdvertiseAddress of remote Regatta instances. Local Regatta instance will try to contact all of them to bootstrap the gossip service. 
-At least one reachable Regatta instance is required to successfully bootstrap the gossip service. Each seed address is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
+	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.
+Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
+	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of AdvertiseAddress of remote Armada instances. Local Armada instance will try to contact all of them to bootstrap the gossip service. 
+At least one reachable Armada instance is required to successfully bootstrap the gossip service. Each seed address is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
 	memberlistFlagSet.String("memberlist.cluster-name", "default", `Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.
 All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value.`)
 	memberlistFlagSet.String("memberlist.node-name", "", "Node name override, MUST be unique in a cluster, if not specified random stable UUID will be used instead.")
@@ -119,9 +119,9 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 
 func initConfig(set *pflag.FlagSet) {
 	viper.SetConfigName("config")
-	viper.AddConfigPath("/etc/regatta/")
+	viper.AddConfigPath("/etc/armada/")
 	viper.AddConfigPath("/config")
-	viper.AddConfigPath("$HOME/.regatta")
+	viper.AddConfigPath("$HOME/.armada")
 	viper.AddConfigPath(".")
 	viper.AutomaticEnv()
 

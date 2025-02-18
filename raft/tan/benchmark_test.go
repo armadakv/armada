@@ -17,9 +17,9 @@ package tan
 import (
 	"testing"
 
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/logger"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/logger"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var benchmarkTestDirname = "tan_benchmark_dir"

@@ -11,7 +11,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/jamf/regatta/raft/internal/settings"
+	"github.com/armadakv/armada/raft/internal/settings"
 )
 
 const (

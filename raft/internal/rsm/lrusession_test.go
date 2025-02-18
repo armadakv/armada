@@ -20,8 +20,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/jamf/regatta/raft/internal/settings"
-	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/armadakv/armada/raft/internal/settings"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 func TestRecCanBeEvicted(t *testing.T) {

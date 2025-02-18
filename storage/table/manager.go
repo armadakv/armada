@@ -13,14 +13,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/regattapb"
+	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/kv"
+	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/pebble"
-	"github.com/jamf/regatta/raft"
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/regattapb"
-	serrors "github.com/jamf/regatta/storage/errors"
-	"github.com/jamf/regatta/storage/kv"
-	"github.com/jamf/regatta/storage/table/fsm"
 	"go.uber.org/zap"
 )
 

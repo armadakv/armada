@@ -19,7 +19,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 func TestMessageQueueCanBeCreated(t *testing.T) {

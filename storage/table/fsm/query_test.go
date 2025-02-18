@@ -7,8 +7,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/jamf/regatta/raft/statemachine"
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/stretchr/testify/require"
 )
 

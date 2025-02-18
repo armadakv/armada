@@ -5,10 +5,10 @@ package logreader
 import (
 	"context"
 
-	"github.com/jamf/regatta/raft"
-	"github.com/jamf/regatta/raft/logreader"
-	"github.com/jamf/regatta/raft/raftpb"
-	serrors "github.com/jamf/regatta/storage/errors"
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/raft/logreader"
+	"github.com/armadakv/armada/raft/raftpb"
+	serrors "github.com/armadakv/armada/storage/errors"
 )
 
 type Interface interface {

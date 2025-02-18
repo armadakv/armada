@@ -21,7 +21,7 @@ package tan
 import (
 	"sort"
 
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 // when compacting entries, a compaction update is written to the log to record

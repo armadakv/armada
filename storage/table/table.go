@@ -7,12 +7,12 @@ import (
 	"io"
 	"iter"
 
-	"github.com/jamf/regatta/raft/client"
-	sm "github.com/jamf/regatta/raft/statemachine"
-	"github.com/jamf/regatta/regattapb"
-	serrors "github.com/jamf/regatta/storage/errors"
-	"github.com/jamf/regatta/storage/table/fsm"
-	"github.com/jamf/regatta/storage/table/key"
+	"github.com/armadakv/armada/raft/client"
+	sm "github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/regattapb"
+	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/table/fsm"
+	"github.com/armadakv/armada/storage/table/key"
 )
 
 type raftHandler interface {

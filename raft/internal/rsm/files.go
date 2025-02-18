@@ -18,7 +18,7 @@ import (
 	"os"
 	"path/filepath"
 
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 // Files is a collection of external files specified by the SaveSnapshot

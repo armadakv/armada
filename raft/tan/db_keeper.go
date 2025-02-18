@@ -19,8 +19,8 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 
-	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/raftio"
+	"github.com/armadakv/armada/raft/internal/fileutil"
+	"github.com/armadakv/armada/raft/raftio"
 	"github.com/lni/vfs"
 )
 

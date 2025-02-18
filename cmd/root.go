@@ -20,9 +20,9 @@ func init() {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "regatta",
-	Short: "Regatta is a read-optimized distributed key-value store.",
-	Long: `Regatta can be run in two modes -- leader and follower. Write API is enabled in the leader mode
+	Use:   "armada",
+	Short: "Armada is a read-optimized distributed key-value store.",
+	Long: `Armada can be run in two modes -- leader and follower. Write API is enabled in the leader mode
 and the node (or cluster of leader nodes) acts as a source of truth for the follower nodes/clusters.
 Write API is disabled in the follower mode and the follower node or cluster of follower nodes replicate the writes
 done to the leader cluster to which the follower is connected to.`,

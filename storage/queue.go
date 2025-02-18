@@ -7,9 +7,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/jamf/regatta/util"
-	"github.com/jamf/regatta/util/heap"
-	"github.com/jamf/regatta/util/iterx"
+	"github.com/armadakv/armada/util"
+	"github.com/armadakv/armada/util/heap"
+	"github.com/armadakv/armada/util/iterx"
 )
 
 type item struct {

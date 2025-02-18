@@ -23,9 +23,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/stringutil"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/raftio"
-	"github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/raftio"
+	"github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

@@ -6,8 +6,8 @@ import (
 	"bytes"
 	"errors"
 
+	"github.com/armadakv/armada/regattapb"
 	"github.com/cockroachdb/pebble"
-	"github.com/jamf/regatta/regattapb"
 )
 
 type commandTxn struct {

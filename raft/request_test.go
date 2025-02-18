@@ -23,11 +23,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/jamf/regatta/raft/client"
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/rsm"
-	pb "github.com/jamf/regatta/raft/raftpb"
-	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/armadakv/armada/raft/client"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/rsm"
+	pb "github.com/armadakv/armada/raft/raftpb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/lni/goutils/random"
 )
 

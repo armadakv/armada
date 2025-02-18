@@ -15,8 +15,8 @@
 package raft
 
 import (
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/settings"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/settings"
 	"math"
 	"reflect"
 	"sort"
@@ -24,8 +24,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/jamf/regatta/raft/internal/server"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/server"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 //

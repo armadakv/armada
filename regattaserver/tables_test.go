@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

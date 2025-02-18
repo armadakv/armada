@@ -15,7 +15,7 @@
 package server
 
 import (
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 const (

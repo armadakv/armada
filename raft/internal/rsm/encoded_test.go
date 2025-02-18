@@ -19,8 +19,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/jamf/regatta/raft/internal/utils/dio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/utils/dio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 func mustGetPayload(e pb.Entry) []byte {

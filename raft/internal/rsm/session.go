@@ -21,7 +21,7 @@ import (
 
 	"github.com/lni/goutils/cache/biogo/store/llrb"
 
-	sm "github.com/jamf/regatta/raft/statemachine"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 // RaftClientID is the type used as client id in sessions.

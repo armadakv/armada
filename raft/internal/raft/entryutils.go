@@ -15,7 +15,7 @@
 package raft
 
 import (
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 func countConfigChange(entries []pb.Entry) int {

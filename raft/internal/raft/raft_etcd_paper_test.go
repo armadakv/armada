@@ -38,8 +38,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/jamf/regatta/raft/logger"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/logger"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 func TestFollowerUpdateTermFromMessage(t *testing.T) {

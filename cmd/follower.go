@@ -11,13 +11,13 @@ import (
 	"syscall"
 	"time"
 
+	rl "github.com/armadakv/armada/log"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/regattaserver"
+	"github.com/armadakv/armada/replication"
+	"github.com/armadakv/armada/security"
+	"github.com/armadakv/armada/storage"
 	"github.com/cockroachdb/pebble/vfs"
-	rl "github.com/jamf/regatta/log"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/regattaserver"
-	"github.com/jamf/regatta/replication"
-	"github.com/jamf/regatta/security"
-	"github.com/jamf/regatta/storage"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -61,7 +61,7 @@ func init() {
 
 var followerCmd = &cobra.Command{
 	Use:   "follower",
-	Short: "Start Regatta in follower mode.",
+	Short: "Start Armada in follower mode.",
 	RunE:  follower,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		initConfig(cmd.PersistentFlags())

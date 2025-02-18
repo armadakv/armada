@@ -18,8 +18,8 @@ import (
 	"math"
 	"testing"
 
-	"github.com/jamf/regatta/raft/internal/server"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/server"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 func TestInMemCheckMarkerIndex(t *testing.T) {

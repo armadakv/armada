@@ -6,12 +6,12 @@ import (
 	"bytes"
 	"testing"
 
+	rp "github.com/armadakv/armada/pebble"
+	sm "github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
-	rp "github.com/jamf/regatta/pebble"
-	sm "github.com/jamf/regatta/raft/statemachine"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/storage/table/key"
 	"github.com/stretchr/testify/require"
 )
 

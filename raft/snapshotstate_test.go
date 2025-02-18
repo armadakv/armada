@@ -20,8 +20,8 @@ import (
 
 	"github.com/lni/goutils/leaktest"
 
-	"github.com/jamf/regatta/raft/internal/rsm"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/rsm"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 func TestSnapshotTaskCanBeSet(t *testing.T) {

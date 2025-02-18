@@ -8,10 +8,10 @@ import (
 	"io"
 	"testing"
 
+	rp "github.com/armadakv/armada/pebble"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
-	rp "github.com/jamf/regatta/pebble"
-	"github.com/jamf/regatta/regattapb"
 	"github.com/stretchr/testify/require"
 )
 

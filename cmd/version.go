@@ -8,7 +8,7 @@ import (
 	"runtime/debug"
 	"slices"
 
-	"github.com/jamf/regatta/version"
+	"github.com/armadakv/armada/version"
 	"github.com/spf13/cobra"
 )
 

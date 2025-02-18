@@ -23,16 +23,16 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/leaktest"
 
-	"github.com/jamf/regatta/raft/client"
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/raft"
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/internal/tests"
-	"github.com/jamf/regatta/raft/internal/tests/kvpb"
-	"github.com/jamf/regatta/raft/internal/utils/dio"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	pb "github.com/jamf/regatta/raft/raftpb"
-	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/armadakv/armada/raft/client"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/raft"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/internal/tests"
+	"github.com/armadakv/armada/raft/internal/tests/kvpb"
+	"github.com/armadakv/armada/raft/internal/utils/dio"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	pb "github.com/armadakv/armada/raft/raftpb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 const (

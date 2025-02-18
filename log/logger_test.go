@@ -5,7 +5,7 @@ package log
 import (
 	"testing"
 
-	"github.com/jamf/regatta/raft/logger"
+	"github.com/armadakv/armada/raft/logger"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"

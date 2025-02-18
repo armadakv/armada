@@ -33,9 +33,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/server"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/server"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

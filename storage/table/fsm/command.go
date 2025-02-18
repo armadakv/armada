@@ -5,9 +5,9 @@ package fsm
 import (
 	"encoding/binary"
 
+	sm "github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/cockroachdb/pebble"
-	sm "github.com/jamf/regatta/raft/statemachine"
-	"github.com/jamf/regatta/regattapb"
 	pb "google.golang.org/protobuf/proto"
 )
 

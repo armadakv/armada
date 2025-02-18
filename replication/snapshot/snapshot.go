@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/klauspost/compress/snappy"
 	"golang.org/x/time/rate"
 )

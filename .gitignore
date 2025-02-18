@@ -2,8 +2,7 @@
 **/*.iml
 
 .vscode
-/helm/regatta/charts-*-compiled.yaml
-/regatta
+/armada
 /report
 .DS_Store
 .pre-commit-config.yaml

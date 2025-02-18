@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/util"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/util"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 	"google.golang.org/grpc"

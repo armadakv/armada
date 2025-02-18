@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/raft/raftio"
+	"github.com/armadakv/armada/storage/cluster/dns"
 	"github.com/hashicorp/memberlist"
-	"github.com/jamf/regatta/raft"
-	"github.com/jamf/regatta/raft/raftio"
-	"github.com/jamf/regatta/storage/cluster/dns"
 	"go.uber.org/zap"
 )
 

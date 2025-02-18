@@ -15,7 +15,7 @@
 package registry
 
 import (
-	"github.com/jamf/regatta/raft/logger"
+	"github.com/armadakv/armada/raft/logger"
 )
 
 var plog = logger.GetLogger("registry")

@@ -7,8 +7,8 @@ import (
 	"crypto/x509"
 	"os"
 
-	rl "github.com/jamf/regatta/log"
-	"github.com/jamf/regatta/replication/backup"
+	rl "github.com/armadakv/armada/log"
+	"github.com/armadakv/armada/replication/backup"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -17,7 +17,7 @@ import (
 )
 
 func init() {
-	backupCmd.PersistentFlags().String("address", "127.0.0.1:8445", "Regatta maintenance API address.")
+	backupCmd.PersistentFlags().String("address", "127.0.0.1:8445", "Armada maintenance API address.")
 	backupCmd.PersistentFlags().String("dir", "", "Target directory (current directory if empty).")
 	backupCmd.PersistentFlags().String("ca", "", "Path to the client CA certificate.")
 	backupCmd.PersistentFlags().String("token", "", "The access token to use for the authentication.")
@@ -26,8 +26,8 @@ func init() {
 
 var backupCmd = &cobra.Command{
 	Use:   "backup",
-	Short: "Backup Regatta to local files.",
-	Long: `Command backs up Regatta into a directory of choice. All tables present in the target server are backed up.
+	Short: "Backup Armada to local files.",
+	Long: `Command backs up Armada into a directory of choice. All tables present in the target server are backed up.
 Backup consists of file per a table in a binary compressed form and a human-readable manifest file. Use restore command to load backup into the server.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var cp *x509.CertPool

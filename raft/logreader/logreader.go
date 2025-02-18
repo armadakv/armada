@@ -37,12 +37,12 @@ import (
 	"sync"
 	"unsafe"
 
-	"github.com/jamf/regatta/raft/logger"
+	"github.com/armadakv/armada/raft/logger"
 	"github.com/lni/goutils/logutil"
 
-	"github.com/jamf/regatta/raft/internal/raft"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/raft"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 const (

@@ -25,7 +25,7 @@ import (
 
 	"github.com/cockroachdb/errors/oserror"
 
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 )

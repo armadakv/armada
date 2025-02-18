@@ -15,9 +15,9 @@
 package raft
 
 import (
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/internal/settings"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/internal/settings"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

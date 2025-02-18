@@ -5,10 +5,10 @@ package fsm
 import (
 	"testing"
 
+	rp "github.com/armadakv/armada/pebble"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/vfs"
-	rp "github.com/jamf/regatta/pebble"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/storage/table/key"
 	"github.com/stretchr/testify/require"
 )
 

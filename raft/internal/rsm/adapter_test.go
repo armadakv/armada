@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/jamf/regatta/raft/internal/tests"
+	"github.com/armadakv/armada/raft/internal/tests"
 )
 
 func TestOnDiskSMCanBeOpened(t *testing.T) {
