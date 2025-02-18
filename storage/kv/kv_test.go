@@ -9,8 +9,8 @@ import (
 	"path"
 	"testing"
 
-	"github.com/jamf/regatta/raft"
-	"github.com/jamf/regatta/raft/config"
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/raft/config"
 	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 )

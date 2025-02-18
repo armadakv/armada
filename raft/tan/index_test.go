@@ -22,7 +22,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/jamf/regatta/raft/raftio"
+	"github.com/armadakv/armada/raft/raftio"
 	"github.com/lni/vfs"
 )
 

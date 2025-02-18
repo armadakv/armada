@@ -27,12 +27,12 @@ import (
 	"github.com/lni/goutils/netutil"
 	"github.com/lni/goutils/stringutil"
 
-	"github.com/jamf/regatta/raft/internal/id"
-	"github.com/jamf/regatta/raft/internal/settings"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/logger"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/id"
+	"github.com/armadakv/armada/raft/internal/settings"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/logger"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

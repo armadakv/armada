@@ -7,8 +7,8 @@ import (
 	"crypto/x509"
 	"os"
 
-	rl "github.com/jamf/regatta/log"
-	"github.com/jamf/regatta/replication/backup"
+	rl "github.com/armadakv/armada/log"
+	"github.com/armadakv/armada/replication/backup"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"

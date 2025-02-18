@@ -5,7 +5,7 @@ package proto
 import (
 	"testing"
 
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/encoding"
 	"google.golang.org/grpc/reflection/grpc_reflection_v1"

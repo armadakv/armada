@@ -15,8 +15,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/replication/snapshot"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/replication/snapshot"
 	"google.golang.org/grpc"
 )
 

@@ -6,7 +6,7 @@ import (
 	"net"
 	"sync/atomic"
 
-	"github.com/jamf/regatta/util"
+	"github.com/armadakv/armada/util"
 	"go.uber.org/zap"
 )
 

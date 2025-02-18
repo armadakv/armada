@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	sm "github.com/jamf/regatta/raft/statemachine"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/stretchr/testify/require"
 )
 

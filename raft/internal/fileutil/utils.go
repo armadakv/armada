@@ -25,10 +25,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/raft/internal/utils"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	pb "github.com/armadakv/armada/raft/raftpb"
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/internal/utils"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	pb "github.com/jamf/regatta/raft/raftpb"
 )
 
 const (

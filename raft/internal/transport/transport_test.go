@@ -30,14 +30,14 @@ import (
 	"github.com/lni/goutils/netutil"
 	"github.com/lni/goutils/syncutil"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/registry"
-	"github.com/jamf/regatta/raft/internal/rsm"
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/internal/settings"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/raftio"
-	"github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/registry"
+	"github.com/armadakv/armada/raft/internal/rsm"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/internal/settings"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/raftio"
+	"github.com/armadakv/armada/raft/raftpb"
 )
 
 var serverAddress = fmt.Sprintf("localhost:%d", getTestPort())

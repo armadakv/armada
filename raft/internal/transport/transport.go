@@ -52,14 +52,14 @@ import (
 	circuit "github.com/lni/goutils/netutil/rubyist/circuitbreaker"
 	"github.com/lni/goutils/syncutil"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/registry"
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/internal/settings"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/logger"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/registry"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/internal/settings"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/logger"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 const (

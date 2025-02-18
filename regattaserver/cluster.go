@@ -6,8 +6,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/jamf/regatta/regattapb"
-	serrors "github.com/jamf/regatta/storage/errors"
+	"github.com/armadakv/armada/regattapb"
+	serrors "github.com/armadakv/armada/storage/errors"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"

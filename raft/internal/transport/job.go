@@ -21,9 +21,9 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/logutil"
 
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 const (

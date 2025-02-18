@@ -7,10 +7,10 @@ import (
 	"io"
 	"iter"
 
-	"github.com/jamf/regatta/raft"
-	"github.com/jamf/regatta/raft/raftpb"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/storage/table"
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/raft/raftpb"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/storage/table"
 )
 
 type KVService interface {

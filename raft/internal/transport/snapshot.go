@@ -38,11 +38,11 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/jamf/regatta/raft/internal/rsm"
-	"github.com/jamf/regatta/raft/internal/settings"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/rsm"
+	"github.com/armadakv/armada/raft/internal/settings"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

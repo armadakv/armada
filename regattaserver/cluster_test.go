@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )

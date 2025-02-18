@@ -15,7 +15,7 @@
 package raft
 
 import (
-	"github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/raftpb"
 )
 
 type readStatus struct {

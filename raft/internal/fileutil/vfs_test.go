@@ -17,7 +17,7 @@ package fileutil
 import (
 	"testing"
 
-	"github.com/jamf/regatta/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/internal/vfs"
 )
 
 func TestVFSSync(t *testing.T) {

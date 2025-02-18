@@ -30,11 +30,11 @@ import (
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/random"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/internal/settings"
-	"github.com/jamf/regatta/raft/logger"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/internal/settings"
+	"github.com/armadakv/armada/raft/logger"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

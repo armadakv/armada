@@ -23,9 +23,9 @@ import (
 
 	"github.com/cockroachdb/errors"
 
-	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/fileutil"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 var (

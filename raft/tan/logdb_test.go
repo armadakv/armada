@@ -22,8 +22,8 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/jamf/regatta/raft/config"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	pb "github.com/armadakv/armada/raft/raftpb"
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"

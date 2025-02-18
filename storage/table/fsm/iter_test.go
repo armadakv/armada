@@ -9,12 +9,12 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/storage/table/key"
+	"github.com/armadakv/armada/util"
+	"github.com/armadakv/armada/util/iterx"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/storage/table/key"
-	"github.com/jamf/regatta/util"
-	"github.com/jamf/regatta/util/iterx"
 	"github.com/stretchr/testify/require"
 )
 

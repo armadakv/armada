@@ -17,16 +17,16 @@ package raft
 import (
 	"strconv"
 
+	"github.com/armadakv/armada/raft/internal/fileutil"
+	"github.com/armadakv/armada/raft/internal/rsm"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/internal/utils/dio"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/logreader"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/rsm"
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/internal/utils/dio"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/logreader"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
-	sm "github.com/jamf/regatta/raft/statemachine"
 	"github.com/lni/goutils/logutil"
 )
 

@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jamf/regatta/raft"
-	"github.com/jamf/regatta/util"
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/util"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
 )

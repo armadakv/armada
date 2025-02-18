@@ -3,8 +3,8 @@
 package table
 
 import (
+	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/cockroachdb/pebble/vfs"
-	"github.com/jamf/regatta/storage/table/fsm"
 )
 
 type Config struct {

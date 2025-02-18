@@ -17,7 +17,7 @@ package rsm
 import (
 	"sync"
 
-	"github.com/jamf/regatta/raft/internal/settings"
+	"github.com/armadakv/armada/raft/internal/settings"
 )
 
 var (

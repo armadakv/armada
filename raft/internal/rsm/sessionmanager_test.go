@@ -20,7 +20,7 @@ import (
 
 	"github.com/lni/goutils/cache"
 
-	sm "github.com/jamf/regatta/raft/statemachine"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 func TestRegisteriAndUnregisterClient(t *testing.T) {

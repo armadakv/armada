@@ -42,9 +42,9 @@ package raft
 import (
 	"sort"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/server"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/server"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 // PeerAddress is the basic info for a peer in the Raft shard.

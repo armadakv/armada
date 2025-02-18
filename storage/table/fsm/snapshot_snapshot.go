@@ -10,11 +10,11 @@ import (
 	"runtime"
 	"sync"
 
+	rp "github.com/armadakv/armada/pebble"
+	sm "github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/storage/errors"
 	"github.com/cockroachdb/pebble"
 	"github.com/cockroachdb/pebble/sstable"
-	rp "github.com/jamf/regatta/pebble"
-	sm "github.com/jamf/regatta/raft/statemachine"
-	"github.com/jamf/regatta/storage/errors"
 )
 
 type snapshotContext struct {

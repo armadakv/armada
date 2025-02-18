@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"testing"
 
-	sm "github.com/jamf/regatta/raft/statemachine"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 func TestResponseCanBeAdded(t *testing.T) {

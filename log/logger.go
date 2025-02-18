@@ -5,7 +5,7 @@ package log
 import (
 	"strings"
 
-	"github.com/jamf/regatta/raft/logger"
+	"github.com/armadakv/armada/raft/logger"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )

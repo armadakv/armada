@@ -26,8 +26,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/jamf/regatta/raft/internal/tests/kvpb"
-	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/armadakv/armada/raft/internal/tests/kvpb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 type kvdata struct {

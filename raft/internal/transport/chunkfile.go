@@ -15,8 +15,8 @@
 package transport
 
 import (
-	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/internal/fileutil"
+	"github.com/armadakv/armada/raft/internal/vfs"
 )
 
 // chunkFile is the snapshot chunk file being transferred.

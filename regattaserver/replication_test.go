@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jamf/regatta/raft/raftpb"
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/raft/raftpb"
+	"github.com/armadakv/armada/regattapb"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	"google.golang.org/grpc"

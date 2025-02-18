@@ -5,7 +5,7 @@ package cluster
 import (
 	"testing"
 
-	"github.com/jamf/regatta/raft"
+	"github.com/armadakv/armada/raft"
 	"github.com/stretchr/testify/assert"
 )
 

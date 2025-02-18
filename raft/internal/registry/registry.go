@@ -18,13 +18,13 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/internal/settings"
 	"github.com/lni/goutils/logutil"
 
-	"github.com/jamf/regatta/raft/config"
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/raftio"
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/raftio"
 )
 
 var (

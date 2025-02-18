@@ -8,11 +8,11 @@ import (
 	"io"
 	"iter"
 
+	sm "github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/storage/table/key"
+	"github.com/armadakv/armada/util/iterx"
 	"github.com/cockroachdb/pebble"
-	sm "github.com/jamf/regatta/raft/statemachine"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/storage/table/key"
-	"github.com/jamf/regatta/util/iterx"
 )
 
 const maxRangeSize uint64 = (4 * 1024 * 1024) - 1024 // 4MiB - 1KiB sentinel.

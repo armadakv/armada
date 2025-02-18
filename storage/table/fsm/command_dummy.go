@@ -3,7 +3,7 @@
 package fsm
 
 import (
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/regattapb"
 )
 
 type commandDummy struct{}

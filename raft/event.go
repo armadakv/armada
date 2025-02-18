@@ -21,8 +21,8 @@ import (
 
 	"github.com/VictoriaMetrics/metrics"
 
-	"github.com/jamf/regatta/raft/internal/server"
-	"github.com/jamf/regatta/raft/raftio"
+	"github.com/armadakv/armada/raft/internal/server"
+	"github.com/armadakv/armada/raft/raftio"
 )
 
 // WriteHealthMetrics writes all health metrics in Prometheus format to the

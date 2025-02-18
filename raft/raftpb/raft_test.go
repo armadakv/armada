@@ -21,8 +21,8 @@ import (
 	"testing"
 	"unsafe"
 
-	"github.com/jamf/regatta/raft/client"
-	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/armadakv/armada/raft/client"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 func TestStateMachineTypeHaveExpectedValues(t *testing.T) {

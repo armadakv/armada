@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"testing"
 
+	sm "github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/util"
 	"github.com/cockroachdb/pebble/vfs"
-	sm "github.com/jamf/regatta/raft/statemachine"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/util"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	pb "google.golang.org/protobuf/proto"

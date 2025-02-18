@@ -3,7 +3,7 @@
 package storage
 
 import (
-	"github.com/jamf/regatta/storage/table"
+	"github.com/armadakv/armada/storage/table"
 	"github.com/lni/vfs"
 	"go.uber.org/zap"
 )

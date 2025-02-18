@@ -18,7 +18,7 @@ import (
 	"reflect"
 	"testing"
 
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 func TestLogReaderNewLogReader(t *testing.T) {

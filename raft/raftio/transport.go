@@ -30,7 +30,7 @@ package raftio
 import (
 	"context"
 
-	pb "github.com/jamf/regatta/raft/raftpb"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 // MessageHandler is the handler function type for handling received message

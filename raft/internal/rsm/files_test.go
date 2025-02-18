@@ -19,7 +19,7 @@ import (
 
 	"github.com/lni/goutils/leaktest"
 
-	"github.com/jamf/regatta/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/internal/vfs"
 )
 
 const (

@@ -5,7 +5,7 @@ package fsm
 import (
 	"bytes"
 
-	"github.com/jamf/regatta/regattapb"
+	"github.com/armadakv/armada/regattapb"
 )
 
 type commandDelete struct {

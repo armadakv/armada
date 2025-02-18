@@ -4,7 +4,7 @@ FROM golang:1.23.0-alpine3.20 as builder
 RUN apk add --update --no-cache build-base tzdata \
  && addgroup -g 1000 -S regatta && adduser -u 1000 -S regatta -G regatta
 
-WORKDIR /github.com/jamf/regatta
+WORKDIR /github.com/armadakv/armada
 # Copy the source
 COPY . .
 
@@ -20,13 +20,13 @@ LABEL org.opencontainers.image.authors="Regatta Developers <regatta@jamf.com>"
 LABEL org.opencontainers.image.base.name="docker.io/library/alpine:3.19"
 LABEL org.opencontainers.image.description="Regatta is a distributed key-value store. It is Kubernetes friendly with emphasis on high read throughput and low operational cost."
 LABEL org.opencontainers.image.licenses="MIT"
-LABEL org.opencontainers.image.source="https://github.com/jamf/regatta"
+LABEL org.opencontainers.image.source="https://github.com/armadakv/armada"
 LABEL org.opencontainers.image.version="${VERSION}"
 
 WORKDIR /
 COPY --from=builder /etc/passwd /etc/
 COPY --from=builder /usr/share/zoneinfo/ /usr/share/zoneinfo/
-COPY --from=builder --chown=1000:1000 /github.com/jamf/regatta/regatta /usr/local/bin/
+COPY --from=builder --chown=1000:1000 /github.com/armadakv/armada/regatta /usr/local/bin/
 
 USER regatta
 

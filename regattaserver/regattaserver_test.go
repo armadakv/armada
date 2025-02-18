@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armadakv/armada/storage"
+	"github.com/armadakv/armada/storage/table"
 	pvfs "github.com/cockroachdb/pebble/vfs"
 	"github.com/google/uuid"
-	"github.com/jamf/regatta/storage"
-	"github.com/jamf/regatta/storage/table"
 	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"

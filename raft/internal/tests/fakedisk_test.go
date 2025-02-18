@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"testing"
 
-	sm "github.com/jamf/regatta/raft/statemachine"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 func TestSimDiskSMCanBeOpened(t *testing.T) {

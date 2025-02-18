@@ -3,7 +3,7 @@
 package storage
 
 import (
-	"github.com/jamf/regatta/raft/raftio"
+	"github.com/armadakv/armada/raft/raftio"
 )
 
 type events struct {

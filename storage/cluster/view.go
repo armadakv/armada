@@ -6,7 +6,7 @@ import (
 	"math/rand/v2"
 	"sync"
 
-	"github.com/jamf/regatta/raft"
+	"github.com/armadakv/armada/raft"
 )
 
 // noLeader if shard has no leader the value will be equal to this constant (as IDs must be >=1).

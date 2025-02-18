@@ -18,8 +18,8 @@ import (
 	"bufio"
 	"bytes"
 
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 	"github.com/lni/vfs"
 )
 

@@ -25,10 +25,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/armadakv/armada/raft/logger"
+	"github.com/armadakv/armada/raft/raftio"
+	pb "github.com/armadakv/armada/raft/raftpb"
 	"github.com/cockroachdb/errors"
-	"github.com/jamf/regatta/raft/logger"
-	"github.com/jamf/regatta/raft/raftio"
-	pb "github.com/jamf/regatta/raft/raftpb"
 	"github.com/lni/goutils/syncutil"
 	"github.com/lni/vfs"
 )

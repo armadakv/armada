@@ -22,10 +22,10 @@ import (
 	"io"
 	"time"
 
-	"github.com/jamf/regatta/raft/internal/fileutil"
-	"github.com/jamf/regatta/raft/internal/settings"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	pb "github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/internal/fileutil"
+	"github.com/armadakv/armada/raft/internal/settings"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
 // SSVersion is the snapshot version value type.

@@ -20,9 +20,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jamf/regatta/raft/config"
-	pb "github.com/jamf/regatta/raft/raftpb"
-	sm "github.com/jamf/regatta/raft/statemachine"
+	"github.com/armadakv/armada/raft/config"
+	pb "github.com/armadakv/armada/raft/raftpb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
 func init() {

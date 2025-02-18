@@ -5,7 +5,7 @@ package errors
 import (
 	"errors"
 
-	"github.com/jamf/regatta/raft"
+	"github.com/armadakv/armada/raft"
 )
 
 // IsSafeToRetry returns true for transient errors

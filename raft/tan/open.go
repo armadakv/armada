@@ -21,9 +21,9 @@ package tan
 import (
 	"sort"
 
+	pb "github.com/armadakv/armada/raft/raftpb"
 	"github.com/cockroachdb/errors"
 	"github.com/cockroachdb/errors/oserror"
-	pb "github.com/jamf/regatta/raft/raftpb"
 	"github.com/lni/goutils/syncutil"
 )
 

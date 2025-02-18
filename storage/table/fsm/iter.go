@@ -6,9 +6,9 @@ import (
 	"bytes"
 	"iter"
 
+	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble"
-	"github.com/jamf/regatta/regattapb"
-	"github.com/jamf/regatta/storage/table/key"
 )
 
 // iterate until the provided pebble.Iterator is no longer valid or the limit is reached.

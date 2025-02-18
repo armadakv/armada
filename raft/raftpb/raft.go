@@ -22,9 +22,9 @@ import (
 
 	"github.com/lni/goutils/stringutil"
 
-	"github.com/jamf/regatta/raft/client"
-	"github.com/jamf/regatta/raft/internal/vfs"
-	"github.com/jamf/regatta/raft/logger"
+	"github.com/armadakv/armada/raft/client"
+	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/raft/logger"
 )
 
 var (

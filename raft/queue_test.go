@@ -17,8 +17,8 @@ package raft
 import (
 	"testing"
 
-	"github.com/jamf/regatta/raft/raftio"
-	"github.com/jamf/regatta/raft/raftpb"
+	"github.com/armadakv/armada/raft/raftio"
+	"github.com/armadakv/armada/raft/raftpb"
 )
 
 func TestEntryQueueCanBeCreated(t *testing.T) {
