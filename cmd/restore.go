@@ -26,10 +26,10 @@ func init() {
 
 var restoreCmd = &cobra.Command{
 	Use:   "restore",
-	Short: "Restore Regatta from local files.",
+	Short: "Restore Armada from local files.",
 	Long: `WARNING: Restoring from backup is a destructive operation and should be used only as part of break glass procedure.
 
-Restore Regatta cluster from a directory of choice. All tables present in the manifest.json will be restored.
+Restore Armada cluster from a directory of choice. All tables present in the manifest.json will be restored.
 Restoring is done sequentially, for the fine-grained control of what to restore use backup manifest file.
 It is almost certain that after restore the cold-start of all the followers watching the restored leader cluster is going to be necessary.`,
 	RunE: func(cmd *cobra.Command, args []string) error {

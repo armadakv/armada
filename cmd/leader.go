@@ -41,8 +41,8 @@ func init() {
 	leaderCmd.PersistentFlags().AddFlagSet(experimentalFlagSet)
 
 	// Tables flags
-	leaderCmd.PersistentFlags().StringSlice("tables.names", nil, "Create Regatta tables with given names.")
-	leaderCmd.PersistentFlags().StringSlice("tables.delete", nil, "Delete Regatta tables with given names.")
+	leaderCmd.PersistentFlags().StringSlice("tables.names", nil, "Create Armada tables with given names.")
+	leaderCmd.PersistentFlags().StringSlice("tables.delete", nil, "Delete Armada tables with given names.")
 	_ = leaderCmd.PersistentFlags().MarkDeprecated("tables.names", "Use `regatta.v1.Tables/Create` API to create tables instead.")
 	_ = leaderCmd.PersistentFlags().MarkDeprecated("tables.delete", "Use `regatta.v1.Tables/Delete` API to delete tables instead.")
 
@@ -59,7 +59,7 @@ Under some circumstances, a larger message could be sent. Followers should be ab
 
 var leaderCmd = &cobra.Command{
 	Use:   "leader",
-	Short: "Start Regatta in leader mode.",
+	Short: "Start Armada in leader mode.",
 	RunE:  leader,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		initConfig(cmd.PersistentFlags())

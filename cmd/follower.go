@@ -61,7 +61,7 @@ func init() {
 
 var followerCmd = &cobra.Command{
 	Use:   "follower",
-	Short: "Start Regatta in follower mode.",
+	Short: "Start Armada in follower mode.",
 	RunE:  follower,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
 		initConfig(cmd.PersistentFlags())
