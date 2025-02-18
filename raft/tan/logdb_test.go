@@ -63,7 +63,7 @@ func TestFileLock(t *testing.T) {
 		if err == nil {
 			ldb.Close()
 		} else {
-			t.Fatalf(msg)
+			t.Fatal(msg)
 		}
 	}
 }
