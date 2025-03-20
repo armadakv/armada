@@ -48,7 +48,7 @@ func NewRESTServer(addr string, readTimeout time.Duration) *RESTServer {
 	mux := http.NewServeMux()
 	// expose the registered metrics at `/metrics` path.
 	mux.HandleFunc("/metrics", func(resp http.ResponseWriter, req *http.Request) {
-		metrics.WritePrometheus(resp, true)
+		metrics.WritePrometheus(resp, false)
 		mfs, err := prometheus.DefaultGatherer.Gather()
 		if err != nil {
 			resp.WriteHeader(http.StatusInternalServerError)
