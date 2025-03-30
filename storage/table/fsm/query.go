@@ -128,7 +128,7 @@ func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatt
 
 	kv := &regattapb.KeyValue{Key: req.Key}
 	value := iter.Value()
-	if !(req.KeysOnly || req.CountOnly) && len(value) > 0 {
+	if !req.KeysOnly && !req.CountOnly && len(value) > 0 {
 		kv.Value = make([]byte, len(value))
 		copy(kv.Value, value)
 	}

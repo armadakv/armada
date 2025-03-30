@@ -41,7 +41,7 @@ type reader struct {
 
 func (c *compressor) Compress(w io.Writer) (io.WriteCloser, error) {
 	z := c.poolCompressor.Get().(*writer)
-	z.Writer.Reset(w)
+	z.Reset(w)
 	return z, nil
 }
 

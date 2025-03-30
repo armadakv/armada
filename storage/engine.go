@@ -106,7 +106,7 @@ func (e *Engine) Close() error {
 }
 
 func (e *Engine) Range(ctx context.Context, req *regattapb.RangeRequest) (*regattapb.RangeResponse, error) {
-	t, err := e.Manager.GetTable(string(req.Table))
+	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +119,7 @@ func (e *Engine) Range(ctx context.Context, req *regattapb.RangeRequest) (*regat
 }
 
 func (e *Engine) IterateRange(ctx context.Context, req *regattapb.RangeRequest) (iter.Seq[*regattapb.RangeResponse], error) {
-	t, err := e.Manager.GetTable(string(req.Table))
+	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (e *Engine) IterateRange(ctx context.Context, req *regattapb.RangeRequest) 
 }
 
 func (e *Engine) Put(ctx context.Context, req *regattapb.PutRequest) (*regattapb.PutResponse, error) {
-	t, err := e.Manager.GetTable(string(req.Table))
+	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (e *Engine) Put(ctx context.Context, req *regattapb.PutRequest) (*regattapb
 }
 
 func (e *Engine) Delete(ctx context.Context, req *regattapb.DeleteRangeRequest) (*regattapb.DeleteRangeResponse, error) {
-	t, err := e.Manager.GetTable(string(req.Table))
+	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +164,7 @@ func (e *Engine) Delete(ctx context.Context, req *regattapb.DeleteRangeRequest) 
 }
 
 func (e *Engine) Txn(ctx context.Context, req *regattapb.TxnRequest) (*regattapb.TxnResponse, error) {
-	t, err := e.Manager.GetTable(string(req.Table))
+	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
 	}
@@ -248,8 +248,8 @@ func (e *Engine) clusterInfo() cluster.Info {
 		RaftAddress:   e.cfg.RaftAddress,
 		ClientAddress: e.cfg.ClientAddress,
 	}
-	info.NodeHostID = e.NodeHost.ID()
-	if nhi := e.NodeHost.GetNodeHostInfo(raft.DefaultNodeHostInfoOption); nhi != nil {
+	info.NodeHostID = e.ID()
+	if nhi := e.GetNodeHostInfo(raft.DefaultNodeHostInfoOption); nhi != nil {
 		info.ShardInfoList = nhi.ShardInfoList
 		info.LogInfo = nhi.LogInfo
 	}
