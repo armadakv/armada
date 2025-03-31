@@ -55,7 +55,7 @@ func (s *RegattaServer) Serve() error {
 // Shutdown stops underlying gRPC server.
 func (s *RegattaServer) Shutdown() {
 	s.log.Infof("stopping gRPC on: %s", s.Addr())
-	s.Server.GracefulStop()
-	s.Server.Stop()
+	s.GracefulStop()
+	s.Stop()
 	s.log.Infof("stopped gRPC on: %s", s.Addr())
 }

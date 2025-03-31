@@ -628,27 +628,27 @@ type mockKVService struct {
 }
 
 func (s *mockKVService) Range(ctx context.Context, req *regattapb.RangeRequest) (*regattapb.RangeResponse, error) {
-	called := s.Mock.Called(ctx, req)
+	called := s.Called(ctx, req)
 	return called.Get(0).(*regattapb.RangeResponse), called.Error(1)
 }
 
 func (s *mockKVService) IterateRange(ctx context.Context, req *regattapb.RangeRequest) (iter.Seq[*regattapb.RangeResponse], error) {
-	called := s.Mock.Called(ctx, req)
+	called := s.Called(ctx, req)
 	return called.Get(0).(iter.Seq[*regattapb.RangeResponse]), called.Error(1)
 }
 
 func (s *mockKVService) Put(ctx context.Context, req *regattapb.PutRequest) (*regattapb.PutResponse, error) {
-	called := s.Mock.Called(ctx, req)
+	called := s.Called(ctx, req)
 	return called.Get(0).(*regattapb.PutResponse), called.Error(1)
 }
 
 func (s *mockKVService) Delete(ctx context.Context, req *regattapb.DeleteRangeRequest) (*regattapb.DeleteRangeResponse, error) {
-	called := s.Mock.Called(ctx, req)
+	called := s.Called(ctx, req)
 	return called.Get(0).(*regattapb.DeleteRangeResponse), called.Error(1)
 }
 
 func (s *mockKVService) Txn(ctx context.Context, req *regattapb.TxnRequest) (*regattapb.TxnResponse, error) {
-	called := s.Mock.Called(ctx, req)
+	called := s.Called(ctx, req)
 	return called.Get(0).(*regattapb.TxnResponse), called.Error(1)
 }
 
@@ -669,7 +669,7 @@ func (m *mockIterateRangeServer) SendHeader(md metadata.MD) error {
 }
 
 func (m *mockIterateRangeServer) SetTrailer(md metadata.MD) {
-	m.Mock.Called(md)
+	m.Called(md)
 }
 
 func (m *mockIterateRangeServer) Context() context.Context {
@@ -689,27 +689,27 @@ type mockClient struct {
 }
 
 func (m *mockClient) Range(ctx context.Context, in *regattapb.RangeRequest, opts ...grpc.CallOption) (*regattapb.RangeResponse, error) {
-	called := m.Mock.Called(ctx, in, opts)
+	called := m.Called(ctx, in, opts)
 	return called.Get(0).(*regattapb.RangeResponse), called.Error(1)
 }
 
 func (m *mockClient) IterateRange(ctx context.Context, in *regattapb.RangeRequest, opts ...grpc.CallOption) (regattapb.KV_IterateRangeClient, error) {
-	called := m.Mock.Called(ctx, in, opts)
+	called := m.Called(ctx, in, opts)
 	return called.Get(0).(regattapb.KV_IterateRangeClient), called.Error(1)
 }
 
 func (m *mockClient) Put(ctx context.Context, in *regattapb.PutRequest, opts ...grpc.CallOption) (*regattapb.PutResponse, error) {
-	called := m.Mock.Called(ctx, in, opts)
+	called := m.Called(ctx, in, opts)
 	return called.Get(0).(*regattapb.PutResponse), called.Error(1)
 }
 
 func (m *mockClient) DeleteRange(ctx context.Context, in *regattapb.DeleteRangeRequest, opts ...grpc.CallOption) (*regattapb.DeleteRangeResponse, error) {
-	called := m.Mock.Called(ctx, in, opts)
+	called := m.Called(ctx, in, opts)
 	return called.Get(0).(*regattapb.DeleteRangeResponse), called.Error(1)
 }
 
 func (m *mockClient) Txn(ctx context.Context, in *regattapb.TxnRequest, opts ...grpc.CallOption) (*regattapb.TxnResponse, error) {
-	called := m.Mock.Called(ctx, in, opts)
+	called := m.Called(ctx, in, opts)
 	return called.Get(0).(*regattapb.TxnResponse), called.Error(1)
 }
 

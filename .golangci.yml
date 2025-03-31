@@ -1,57 +1,64 @@
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
 linters:
-  disable-all: true
+  default: none
   enable:
-  - bodyclose
-  # DISABLE temporarily - gci
-  - godot
-  - gofumpt
-  - goheader
-  - goimports
-  - gomoddirectives
-  - gomodguard
-  - gosec
-  - gosimple
-  - govet
-  - gosec
-  - ineffassign
-  - staticcheck
-  - stylecheck
-  - testifylint
-  - typecheck
-  - unconvert
-  - unparam
-  - unused
-  - usestdlibvars
-  - wastedassign
-  - whitespace
-
-linters-settings:
-  gosec:
-    excludes:
-    - G104
-    - G115
-    - G304
-    - G401
-    - G404
-    - G501
-
-  goheader:
-    template: Copyright JAMF Software, LLC
-
-issues:
-  exclude-dirs:
-  - raft
-
-  exclude-rules:
-  # Exclude some linters from running on tests files.
-  - path: _test\.go
-    linters:
-    - ineffassign
+    - bodyclose
+    - godot
+    - goheader
+    - gomoddirectives
+    - gomodguard
     - gosec
-
-  - linters:
+    - govet
+    - ineffassign
     - staticcheck
-    text: "SA4006:" #SA4006: this value of `not_used` is never used (staticcheck)
+    - testifylint
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+  settings:
+    goheader:
+      template: Copyright JAMF Software, LLC
+    gosec:
+      excludes:
+        - G104
+        - G115
+        - G304
+        - G401
+        - G404
+        - G501
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      - linters:
+          - gosec
+          - ineffassign
+        path: _test\.go
+      - linters:
+          - staticcheck
+        text: 'SA4006:'
+    paths:
+      - raft
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - raft
+      - third_party$
+      - builtin$
+      - examples$
