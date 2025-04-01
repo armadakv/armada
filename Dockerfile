@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:1.2
-FROM golang:1.24.0-alpine3.21 as builder
+FROM golang:1.24.1-alpine3.21 as builder
 
 RUN apk add --update --no-cache build-base tzdata \
  && addgroup -g 1000 -S armada && adduser -u 1000 -S armada -G armada
