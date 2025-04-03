@@ -44,7 +44,7 @@ import (
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 const (

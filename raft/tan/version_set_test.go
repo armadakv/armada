@@ -22,7 +22,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -31,7 +31,7 @@ func TestVersionSetCanBeCreated(t *testing.T) {
 	var mu sync.Mutex
 	dirname := "db-dir"
 	fs := vfs.NewMem()
-	defer vfs.ReportLeakedFD(fs, t)
+	defer reportLeakedFD(fs, t)
 	opt := &Options{MaxManifestFileSize: MaxManifestFileSize, FS: fs}
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	dir, err := fs.OpenDir(dirname)
@@ -119,7 +119,7 @@ func TestSwitchManifestFile(t *testing.T) {
 	var mu sync.Mutex
 	dirname := "db-dir"
 	fs := vfs.NewMem()
-	defer vfs.ReportLeakedFD(fs, t)
+	defer reportLeakedFD(fs, t)
 	opt := &Options{MaxManifestFileSize: 1, FS: fs}
 	require.NoError(t, fs.MkdirAll(dirname, 0700))
 	dir, err := fs.OpenDir(dirname)
@@ -150,7 +150,7 @@ func TestSwitchManifestFile(t *testing.T) {
 
 func TestLoadManifest(t *testing.T) {
 	fs := vfs.NewMem()
-	defer vfs.ReportLeakedFD(fs, t)
+	defer reportLeakedFD(fs, t)
 	testVersionSetCanBeApplied(t, fs)
 	var vs versionSet
 	defer vs.close()

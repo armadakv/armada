@@ -3,6 +3,7 @@
 package fsm
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -13,8 +14,9 @@ import (
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/storage/errors"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/sstable"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 type snapshotContext struct {
@@ -73,7 +75,7 @@ func (s *snapshot) save(ctx any, w io.Writer, stopc <-chan struct{}) error {
 				return err
 			}
 			// write SST when maxBatchSize reached and create new writer
-			if sstWriter.EstimatedSize() >= maxBatchSize {
+			if sstWriter.Raw().EstimatedSize() >= maxBatchSize {
 				if err := sstWriter.Close(); err != nil {
 					return err
 				}
@@ -140,7 +142,7 @@ read:
 				buff = make([]byte, size)
 			}
 			name := filepath.Join(s.fsm.dirname, fmt.Sprintf("ingest-%d.sst", count))
-			f, err := s.fsm.fs.Create(name)
+			f, err := s.fsm.fs.Create(name, vfs.WriteCategoryUnspecified)
 			if err != nil {
 				return err
 			}
@@ -157,7 +159,7 @@ read:
 			}
 		}
 	}
-	if err := db.Ingest(files); err != nil {
+	if err := db.Ingest(context.TODO(), files); err != nil {
 		return err
 	}
 	idx, err := readLocalIndex(db, sysLocalIndex)

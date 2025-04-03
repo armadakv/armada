@@ -28,9 +28,9 @@ import (
 	"github.com/armadakv/armada/raft/logger"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
+	"github.com/armadakv/armada/vfs"
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/syncutil"
-	"github.com/lni/vfs"
 )
 
 var (

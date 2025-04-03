@@ -18,7 +18,7 @@ import (
 	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/armada/util/iterx"
 	"github.com/armadakv/armada/version"
-	lvfs "github.com/lni/vfs"
+	lvfs "github.com/armadakv/armada/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )

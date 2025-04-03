@@ -32,7 +32,19 @@ const (
 )
 
 func reportLeakedFD(fs vfs.IFS, t *testing.T) {
-	vfs.ReportLeakedFD(fs, t)
+	mf, ok := fs.(*vfs.MemFS)
+	if !ok {
+		return
+	}
+	ff := func(path string, isDir bool, refs int32) error {
+		if refs != 0 {
+			t.Fatalf("%s (isDir %t) is not closed", path, isDir)
+		}
+		return nil
+	}
+	if err := mf.Iterate(ff); err != nil {
+		t.Fatalf("fs.Iterate failed %v", err)
+	}
 }
 
 func TestSnapshotWriterCanBeCreated(t *testing.T) {
@@ -127,17 +139,14 @@ func makeTestSnapshotFile(t *testing.T, ssz uint64,
 func corruptSnapshotPayload(t *testing.T, fs vfs.IFS) {
 	tmpFp := "testsnapshot.writing"
 	func() {
-		f, err := fs.ReuseForWrite(testSnapshotFilename, tmpFp)
+		f, err := fs.ReuseForWrite(testSnapshotFilename, tmpFp, "")
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
 		defer f.Close()
 		s := (testSessionSize + testPayloadSize) / 2
 		data := make([]byte, 1)
-		if _, err := f.ReadAt(data, int64(HeaderSize+s)); err != nil {
-			t.Fatalf("%v", err)
-		}
-		data[0] = data[0] + 1
+		data[0] = 128
 		if _, err := f.WriteAt(data, int64(HeaderSize+s)); err != nil {
 			t.Fatalf("%v", err)
 		}
@@ -436,7 +445,7 @@ func TestReplaceSnapshotFile(t *testing.T) {
 	f1name := "test_snapshot_safe_to_delete.data"
 	f2name := "test_snapshot_safe_to_delete.data2"
 	createFile := func(fn string, sz uint64) {
-		f1, err := fs.Create(fn)
+		f1, err := fs.Create(fn, "")
 		if err != nil {
 			t.Fatalf("failed to ")
 		}

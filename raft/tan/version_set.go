@@ -23,8 +23,8 @@ import (
 	"io"
 	"sync"
 
+	"github.com/armadakv/armada/vfs"
 	"github.com/cockroachdb/errors"
-	"github.com/lni/vfs"
 )
 
 // versionSet manages a collection of immutable versions, and manages the
@@ -351,7 +351,7 @@ func (vs *versionSet) createManifest(
 			err = firstError(err, vs.fs.Remove(filename))
 		}
 	}()
-	manifestFile, err = vs.fs.Create(filename)
+	manifestFile, err = vs.fs.Create(filename, "")
 	if err != nil {
 		return err
 	}

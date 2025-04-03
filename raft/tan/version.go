@@ -23,8 +23,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/armadakv/armada/vfs"
 	"github.com/cockroachdb/errors"
-	"github.com/lni/vfs"
 )
 
 // fileMetadata holds the metadata for an on-disk table.

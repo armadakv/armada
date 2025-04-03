@@ -5,7 +5,6 @@ package backup
 import (
 	"context"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,12 +12,13 @@ import (
 	"testing"
 	"time"
 
+	gvfs "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/regattaserver"
 	"github.com/armadakv/armada/storage"
+	lvfs "github.com/armadakv/armada/vfs"
 	"github.com/benbjohnson/clock"
-	pvfs "github.com/cockroachdb/pebble/vfs"
-	lvfs "github.com/lni/vfs"
+	pvfs "github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
@@ -369,113 +369,5 @@ func getTestPort() int {
 
 // wrapFS creates a new pebble/vfs.FS instance.
 func wrapFS(fs lvfs.FS) pvfs.FS {
-	return &pebbleFSAdapter{fs}
-}
-
-// pebbleFSAdapter is a wrapper struct that implements the pebble/vfs.FS interface.
-type pebbleFSAdapter struct {
-	fs lvfs.FS
-}
-
-func (p *pebbleFSAdapter) OpenReadWrite(name string, opts ...pvfs.OpenOption) (pvfs.File, error) {
-	f, err := p.fs.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	for _, opt := range opts {
-		opt.Apply(f)
-	}
-	return f, nil
-}
-
-// GetDiskUsage ...
-func (p *pebbleFSAdapter) GetDiskUsage(path string) (pvfs.DiskUsage, error) {
-	du, err := p.fs.GetDiskUsage(path)
-	return pvfs.DiskUsage{
-		AvailBytes: du.AvailBytes,
-		TotalBytes: du.TotalBytes,
-		UsedBytes:  du.UsedBytes,
-	}, err
-}
-
-// Create ...
-func (p *pebbleFSAdapter) Create(name string) (pvfs.File, error) {
-	return p.fs.Create(name)
-}
-
-// Link ...
-func (p *pebbleFSAdapter) Link(oldname, newname string) error {
-	return p.fs.Link(oldname, newname)
-}
-
-// Open ...
-func (p *pebbleFSAdapter) Open(name string, opts ...pvfs.OpenOption) (pvfs.File, error) {
-	f, err := p.fs.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	for _, opt := range opts {
-		opt.Apply(f)
-	}
-	return f, nil
-}
-
-// OpenDir ...
-func (p *pebbleFSAdapter) OpenDir(name string) (pvfs.File, error) {
-	return p.fs.OpenDir(name)
-}
-
-// Remove ...
-func (p *pebbleFSAdapter) Remove(name string) error {
-	return p.fs.Remove(name)
-}
-
-// RemoveAll ...
-func (p *pebbleFSAdapter) RemoveAll(name string) error {
-	return p.fs.RemoveAll(name)
-}
-
-// Rename ...
-func (p *pebbleFSAdapter) Rename(oldname, newname string) error {
-	return p.fs.Rename(oldname, newname)
-}
-
-// ReuseForWrite ...
-func (p *pebbleFSAdapter) ReuseForWrite(oldname, newname string) (pvfs.File, error) {
-	return p.fs.ReuseForWrite(oldname, newname)
-}
-
-// MkdirAll ...
-func (p *pebbleFSAdapter) MkdirAll(dir string, perm os.FileMode) error {
-	return p.fs.MkdirAll(dir, perm)
-}
-
-// Lock ...
-func (p *pebbleFSAdapter) Lock(name string) (io.Closer, error) {
-	return p.fs.Lock(name)
-}
-
-// List ...
-func (p *pebbleFSAdapter) List(dir string) ([]string, error) {
-	return p.fs.List(dir)
-}
-
-// Stat ...
-func (p *pebbleFSAdapter) Stat(name string) (os.FileInfo, error) {
-	return p.fs.Stat(name)
-}
-
-// PathBase ...
-func (p *pebbleFSAdapter) PathBase(path string) string {
-	return p.fs.PathBase(path)
-}
-
-// PathJoin ...
-func (p *pebbleFSAdapter) PathJoin(elem ...string) string {
-	return p.fs.PathJoin(elem...)
-}
-
-// PathDir ...
-func (p *pebbleFSAdapter) PathDir(path string) string {
-	return p.fs.PathDir(path)
+	return gvfs.NewPebbleFS(fs)
 }

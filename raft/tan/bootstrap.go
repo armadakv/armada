@@ -22,7 +22,7 @@ import (
 
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 // getBootstrap returns saved bootstrap record. Bootstrap records are saved
@@ -60,7 +60,7 @@ func saveBootstrap(fs vfs.FS,
 	buf := pb.MustMarshal(&rec)
 	fn := makeBootstrapFilename(fs, dirname, shardID, replicaID, true)
 	ffn := makeBootstrapFilename(fs, dirname, shardID, replicaID, false)
-	f, err := fs.Create(fn)
+	f, err := fs.Create(fn, "")
 	if err != nil {
 		return err
 	}

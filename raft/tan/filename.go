@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 var (
@@ -60,7 +60,7 @@ func setCurrentFile(dirname string, fs vfs.FS, fileNum fileNum) (err error) {
 	if err := fs.RemoveAll(oldFilename); err != nil {
 		return err
 	}
-	f, err := fs.Create(oldFilename)
+	f, err := fs.Create(oldFilename, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

@@ -20,7 +20,7 @@ import (
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"go.uber.org/zap"
 )
 

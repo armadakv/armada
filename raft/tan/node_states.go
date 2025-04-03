@@ -20,7 +20,7 @@ import (
 
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 type nodeStates struct {
@@ -73,7 +73,7 @@ func (s *nodeStates) save(dirname string,
 	dir vfs.File, fileNum fileNum, fs vfs.FS) (err error) {
 	tmpFn := makeFilename(fs, dirname, fileTypeIndexTemp, fileNum)
 	fn := makeFilename(fs, dirname, fileTypeIndex, fileNum)
-	file, err := fs.Create(tmpFn)
+	file, err := fs.Create(tmpFn, "")
 	if err != nil {
 		return err
 	}

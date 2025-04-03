@@ -71,7 +71,7 @@ func TestPrepareFiles(t *testing.T) {
 			t.Fatalf("%v", err)
 		}
 	}()
-	f1, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test1.data"))
+	f1, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test1.data"), "")
 	if err != nil {
 		t.Fatalf("failed to create the file, %v", err)
 	}
@@ -80,7 +80,7 @@ func TestPrepareFiles(t *testing.T) {
 		t.Fatalf("failed to write file %v", err)
 	}
 	f1.Close()
-	f2, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test2.data"))
+	f2, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test2.data"), "")
 	if err != nil {
 		t.Fatalf("failed to create the file, %v", err)
 	}

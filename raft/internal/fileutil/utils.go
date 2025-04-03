@@ -192,7 +192,7 @@ func getHash(data []byte) []byte {
 func CreateFlagFile(dir string,
 	filename string, msg pb.Marshaler, fs vfs.IFS) (err error) {
 	fp := fs.PathJoin(dir, filename)
-	f, err := fs.Create(fp)
+	f, err := fs.Create(fp, "unspecified")
 	if err != nil {
 		return err
 	}
@@ -320,7 +320,7 @@ func TempFile(dir,
 	nconflict := 0
 	for i := 0; i < 10000; i++ {
 		name = fs.PathJoin(dir, prefix+nextRandom()+suffix)
-		f, err = fs.Create(name)
+		f, err = fs.Create(name, "")
 		if vfs.IsExist(err) {
 			if nconflict++; nconflict > 10 {
 				randmu.Lock()

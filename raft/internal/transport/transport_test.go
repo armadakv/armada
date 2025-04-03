@@ -108,7 +108,7 @@ func (g *testSnapshotDir) generateSnapshotExternalFile(shardID uint64,
 	fp := g.fs.PathJoin(snapDir, filename)
 	data := make([]byte, sz)
 	rand.Read(data)
-	f, err := g.fs.Create(fp)
+	f, err := g.fs.Create(fp, "")
 	if err != nil {
 		panic(err)
 	}

@@ -17,6 +17,7 @@ package transport
 import (
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/internal/vfs"
+	"io"
 )
 
 // chunkFile is the snapshot chunk file being transferred.
@@ -29,7 +30,11 @@ type chunkFile struct {
 
 // openChunkFileForAppend opens the chunk file at fp for appending.
 func openChunkFileForAppend(fp string, fs vfs.IFS) (*chunkFile, error) {
-	f, err := fs.OpenForAppend(fp)
+	f, err := fs.OpenReadWrite(fp, "unspecified")
+	if err != nil {
+		return nil, err
+	}
+	_, err = f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +52,7 @@ func openChunkFileForRead(fp string, fs vfs.IFS) (*chunkFile, error) {
 
 // createChunkFile creates a new chunk file.
 func createChunkFile(fp string, fs vfs.IFS) (*chunkFile, error) {
-	f, err := fs.Create(fp)
+	f, err := fs.Create(fp, "unspecified")
 	if err != nil {
 		return nil, err
 	}

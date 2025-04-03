@@ -16,11 +16,9 @@ package vfs
 
 import (
 	"errors"
+	gvfs "github.com/armadakv/armada/vfs"
 	"os"
 	"path/filepath"
-	"testing"
-
-	gvfs "github.com/lni/vfs"
 )
 
 // IFS is the vfs interface used by dragonboat.
@@ -37,7 +35,7 @@ type File = gvfs.File
 
 // NewMemFS creates a in-memory fs.
 func NewMemFS() IFS {
-	return gvfs.NewStrictMem()
+	return gvfs.NewMem()
 }
 
 // IsNotExist returns a boolean value indicating whether the specified error is
@@ -60,9 +58,4 @@ func TempDir() string {
 // Clean is a wrapper for filepath.Clean.
 func Clean(dir string) string {
 	return filepath.Clean(dir)
-}
-
-// ReportLeakedFD reports leaked file fds.
-func ReportLeakedFD(fs IFS, t *testing.T) {
-	gvfs.ReportLeakedFD(fs, t)
 }

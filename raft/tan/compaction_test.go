@@ -26,7 +26,7 @@ import (
 	"github.com/cockroachdb/errors/oserror"
 
 	pb "github.com/armadakv/armada/raft/raftpb"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -214,10 +214,10 @@ func TestScanObsoleteFiles(t *testing.T) {
 	runTanTest(t, nil, tf, fs)
 	manifestFn := "MANIFEST-1000"
 	logFn := "10001.log"
-	f, err := fs.Create(fs.PathJoin(dbdir, manifestFn))
+	f, err := fs.Create(fs.PathJoin(dbdir, manifestFn), "")
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
-	f, err = fs.Create(fs.PathJoin(dbdir, logFn))
+	f, err = fs.Create(fs.PathJoin(dbdir, logFn), "")
 	require.NoError(t, err)
 	require.NoError(t, f.Close())
 	runTanTest(t, nil, tf, fs)

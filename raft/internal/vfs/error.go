@@ -15,40 +15,40 @@
 package vfs
 
 import (
-	gvfs "github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs/errorfs"
 )
 
 // ErrInjected is an error injected for testing purposes.
-var ErrInjected = gvfs.ErrInjected
+var ErrInjected = errorfs.ErrInjected
 
 // Injector injects errors into FS.
-type Injector = gvfs.Injector
+type Injector = errorfs.Injector
 
 // ErrorFS is a gvfs.FS implementation.
-type ErrorFS = gvfs.ErrorFS
+type ErrorFS = errorfs.FS
 
 // InjectIndex implements Injector
-type InjectIndex = gvfs.InjectIndex
+type InjectIndex = errorfs.InjectIndex
 
 // Op is an enum describing the type of FS operations.
-type Op = gvfs.Op
+type Op = errorfs.Op
 
 // OpRead describes read operations
-var OpRead = gvfs.OpRead
+var OpRead = errorfs.OpFileRead
 
 // OpWrite describes write operations
-var OpWrite = gvfs.OpWrite
+var OpWrite = errorfs.OpFileWrite
 
 // OpSync describes the fsync operation
-var OpSync = gvfs.OpSync
+var OpSync = errorfs.OpFileSync
 
 // OnIndex creates and returns an injector instance that returns an ErrInjected
 // on the (n+1)-th invocation of its MaybeError function.
-func OnIndex(index int32, op Op) *InjectIndex {
-	return gvfs.OnIndex(index, op)
+func OnIndex(index int32) *InjectIndex {
+	return errorfs.OnIndex(index)
 }
 
 // Wrap wraps an existing IFS implementation with the specified injector.
 func Wrap(fs IFS, inj Injector) *ErrorFS {
-	return gvfs.Wrap(fs, inj)
+	return errorfs.Wrap(fs, inj)
 }

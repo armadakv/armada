@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/armadakv/armada/raft/raftio"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 func TestEntryAppend(t *testing.T) {

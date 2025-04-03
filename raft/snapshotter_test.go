@@ -135,7 +135,7 @@ func TestSnapshotCanBeFinalized(t *testing.T) {
 			t.Errorf("failed to get stat for tmp dir, %v", err)
 		}
 		testfp := fs.PathJoin(tmpDir, "test.data")
-		f, err := fs.Create(testfp)
+		f, err := fs.Create(testfp, "")
 		if err != nil {
 			t.Errorf("failed to create test file")
 		}
@@ -488,7 +488,7 @@ func TestSnapshotterCompact(t *testing.T) {
 				t.Errorf("failed to save snapshot record")
 			}
 			fp := snapshotter.getFilePath(s.Index)
-			f, err := fs.Create(fp)
+			f, err := fs.Create(fp, "")
 			if err != nil {
 				t.Errorf("failed to create the file, %v", err)
 			}

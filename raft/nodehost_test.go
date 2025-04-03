@@ -95,7 +95,7 @@ func calcRTTMillisecond(fs vfs.IFS, dir string) uint64 {
 		_ = fs.RemoveAll(testFile)
 	}()
 	_ = fs.MkdirAll(dir, 0755)
-	f, err := fs.Create(testFile)
+	f, err := fs.Create(testFile, "")
 	if err != nil {
 		panic(err)
 	}
@@ -146,7 +146,19 @@ func getTestExpertConfig(fs vfs.IFS) config.ExpertConfig {
 }
 
 func reportLeakedFD(fs vfs.IFS, t *testing.T) {
-	vfs.ReportLeakedFD(fs, t)
+	mf, ok := fs.(*vfs.MemFS)
+	if !ok {
+		return
+	}
+	ff := func(path string, isDir bool, refs int32) error {
+		if refs != 0 {
+			t.Fatalf("%s (isDir %t) is not closed", path, isDir)
+		}
+		return nil
+	}
+	if err := mf.Iterate(ff); err != nil {
+		t.Fatalf("fs.Iterate failed %v", err)
+	}
 }
 
 func getTestNodeHostConfig(fs vfs.IFS) *config.NodeHostConfig {
@@ -4587,9 +4599,9 @@ func TestTimeoutCanBeReturned(t *testing.T) {
 	runNodeHostTest(t, to, fs)
 }
 
-func testIOErrorIsHandled(t *testing.T, op vfs.Op) {
-	inj := vfs.OnIndex(-1, op)
-	fs := vfs.Wrap(vfs.GetTestFS(), inj)
+func testIOErrorIsHandled(t *testing.T) {
+	inj := vfs.OnIndex(-1)
+	fs := vfs.Wrap(vfs.GetTestFS(), vfs.ErrInjected.If(inj))
 	to := &testOption{
 		fsErrorInjection: true,
 		defaultTestNode:  true,
@@ -4597,7 +4609,7 @@ func testIOErrorIsHandled(t *testing.T, op vfs.Op) {
 			if nh.mu.logdb.Name() == "Tan" {
 				t.Skip("skipped, using tan logdb")
 			}
-			inj.SetIndex(0)
+			inj.Store(0)
 			pto := pto(nh)
 			ctx, cancel := context.WithTimeout(context.Background(), pto)
 			session := nh.GetNoOPSession(1)
@@ -4620,8 +4632,7 @@ func testIOErrorIsHandled(t *testing.T, op vfs.Op) {
 }
 
 func TestIOErrorIsHandled(t *testing.T) {
-	testIOErrorIsHandled(t, vfs.OpWrite)
-	testIOErrorIsHandled(t, vfs.OpSync)
+	testIOErrorIsHandled(t)
 }
 
 func TestInstallSnapshotMessageIsNeverDropped(t *testing.T) {
