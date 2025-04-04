@@ -21,7 +21,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/vfs"
+
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
@@ -31,7 +32,7 @@ const (
 	testSnapshotFilename        = "testsnapshot_safe_to_delete.tmp"
 )
 
-func reportLeakedFD(fs vfs.IFS, t *testing.T) {
+func reportLeakedFD(fs vfs.FS, t *testing.T) {
 	mf, ok := fs.(*vfs.MemFS)
 	if !ok {
 		return
@@ -48,7 +49,7 @@ func reportLeakedFD(fs vfs.IFS, t *testing.T) {
 }
 
 func TestSnapshotWriterCanBeCreated(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	w, err := NewSnapshotWriter(testSnapshotFilename, pb.NoCompression, fs)
 	if err != nil {
 		t.Fatalf("failed to create snapshot writer %v", err)
@@ -62,7 +63,7 @@ func TestSnapshotWriterCanBeCreated(t *testing.T) {
 }
 
 func TestSaveHeaderSavesTheHeader(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer func() {
 		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
 			t.Fatalf("%v", err)
@@ -110,7 +111,8 @@ func TestSaveHeaderSavesTheHeader(t *testing.T) {
 }
 
 func makeTestSnapshotFile(t *testing.T, ssz uint64,
-	psz uint64, v SSVersion, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
+	psz uint64, v SSVersion, fs vfs.FS,
+) (*SnapshotWriter, []byte, []byte) {
 	if err := fs.RemoveAll(testSnapshotFilename); err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -136,7 +138,7 @@ func makeTestSnapshotFile(t *testing.T, ssz uint64,
 	return w, sessionData, storeData
 }
 
-func corruptSnapshotPayload(t *testing.T, fs vfs.IFS) {
+func corruptSnapshotPayload(t *testing.T, fs vfs.FS) {
 	tmpFp := "testsnapshot.writing"
 	func() {
 		f, err := fs.ReuseForWrite(testSnapshotFilename, tmpFp, "")
@@ -157,11 +159,12 @@ func corruptSnapshotPayload(t *testing.T, fs vfs.IFS) {
 }
 
 func createTestSnapshotFile(t *testing.T,
-	v SSVersion, fs vfs.IFS) (*SnapshotWriter, []byte, []byte) {
+	v SSVersion, fs vfs.FS,
+) (*SnapshotWriter, []byte, []byte) {
 	return makeTestSnapshotFile(t, testSessionSize, testPayloadSize, v, fs)
 }
 
-func testCorruptedPayloadWillBeDetected(t *testing.T, v SSVersion, fs vfs.IFS) {
+func testCorruptedPayloadWillBeDetected(t *testing.T, v SSVersion, fs vfs.FS) {
 	defer func() {
 		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
 			t.Fatalf("%v", err)
@@ -198,12 +201,12 @@ func testCorruptedPayloadWillBeDetected(t *testing.T, v SSVersion, fs vfs.IFS) {
 }
 
 func TestCorruptedPayloadWillBeDetected(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testCorruptedPayloadWillBeDetected(t, V1, fs)
 	testCorruptedPayloadWillBeDetected(t, V2, fs)
 }
 
-func testNormalSnapshotCanPassValidation(t *testing.T, v SSVersion, fs vfs.IFS) {
+func testNormalSnapshotCanPassValidation(t *testing.T, v SSVersion, fs vfs.FS) {
 	defer func() {
 		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
 			t.Fatalf("%v", err)
@@ -238,12 +241,12 @@ func testNormalSnapshotCanPassValidation(t *testing.T, v SSVersion, fs vfs.IFS) 
 }
 
 func TestNormalSnapshotCanPassValidation(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testNormalSnapshotCanPassValidation(t, V1, fs)
 	testNormalSnapshotCanPassValidation(t, V2, fs)
 }
 
-func readTestSnapshot(fn string, sz uint64, fs vfs.IFS) ([]byte, error) {
+func readTestSnapshot(fn string, sz uint64, fs vfs.FS) ([]byte, error) {
 	file, err := fs.Open(fn)
 	if err != nil {
 		return nil, err
@@ -257,7 +260,7 @@ func readTestSnapshot(fn string, sz uint64, fs vfs.IFS) ([]byte, error) {
 	return data[:n], nil
 }
 
-func testSingleBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
+func testSingleBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.FS) {
 	createTestSnapshotFile(t, sv, fs)
 	defer func() {
 		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
@@ -291,12 +294,12 @@ func testSingleBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
 }
 
 func TestSingleBlockSnapshotValidation(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testSingleBlockSnapshotValidation(t, V1, fs)
 	testSingleBlockSnapshotValidation(t, V2, fs)
 }
 
-func testMultiBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
+func testMultiBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.FS) {
 	makeTestSnapshotFile(t, 1024*1024, 1024*1024*8, sv, fs)
 	defer func() {
 		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
@@ -334,13 +337,13 @@ func testMultiBlockSnapshotValidation(t *testing.T, sv SSVersion, fs vfs.IFS) {
 }
 
 func TestMultiBlockSnapshotValidation(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testMultiBlockSnapshotValidation(t, V1, fs)
 	testMultiBlockSnapshotValidation(t, V2, fs)
 }
 
 func TestMustInSameDir(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	tests := []struct {
 		path1   string
 		path2   string
@@ -367,7 +370,7 @@ func TestMustInSameDir(t *testing.T) {
 }
 
 func TestShrinkSnapshot(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	snapshotFilename := "test_snapshot_safe_to_delete.data"
 	shrunkFilename := "test_snapshot_safe_to_delete.shrunk"
 	writer, err := NewSnapshotWriter(snapshotFilename, pb.NoCompression, fs)
@@ -441,7 +444,7 @@ func TestShrinkSnapshot(t *testing.T) {
 }
 
 func TestReplaceSnapshotFile(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	f1name := "test_snapshot_safe_to_delete.data"
 	f2name := "test_snapshot_safe_to_delete.data2"
 	createFile := func(fn string, sz uint64) {
@@ -484,7 +487,7 @@ func TestReplaceSnapshotFile(t *testing.T) {
 	}
 }
 
-func testV2PayloadChecksumCanBeRead(t *testing.T, sz uint64, fs vfs.IFS) {
+func testV2PayloadChecksumCanBeRead(t *testing.T, sz uint64, fs vfs.FS) {
 	defer func() {
 		if err := fs.RemoveAll(testSnapshotFilename); err != nil {
 			t.Fatalf("%v", err)
@@ -511,7 +514,7 @@ func testV2PayloadChecksumCanBeRead(t *testing.T, sz uint64, fs vfs.IFS) {
 }
 
 func TestV2PayloadChecksumCanBeRead(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testV2PayloadChecksumCanBeRead(t, blockSize-1, fs)
 	testV2PayloadChecksumCanBeRead(t, blockSize, fs)
 	testV2PayloadChecksumCanBeRead(t, blockSize+1, fs)
@@ -524,10 +527,7 @@ func TestV1SnapshotCanBeLoaded(t *testing.T) {
 	// rsm: idList sz 2
 	// rsm: client id 15771809973567514624, responded to 4, map[5:128]
 	// rsm: client id 6760681031265190231, responded to 2, map[3:128]
-	fs := vfs.GetTestFS()
-	if fs != vfs.DefaultFS {
-		t.Skip("skipped, the fs can not access the testdata")
-	}
+	fs := vfs.Default
 	fp := fs.PathJoin("testdata", "v1snapshot.gbsnap")
 	reader, header, err := NewSnapshotReader(fp, fs)
 	if err != nil {
@@ -594,7 +594,7 @@ func TestValidateHeader(t *testing.T) {
 }
 
 func TestGetWitnessSnapshot(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	if d, err := GetWitnessSnapshot(fs); err != nil {
 		t.Fatalf("failed to get witness snapshot, %v", err)
 	} else {

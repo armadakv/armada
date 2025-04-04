@@ -264,6 +264,7 @@ func TestLogAppend(t *testing.T) {
 		t.Errorf("unexpected length %d", len(ets))
 	}
 }
+
 func TestLogAppendPanicWhenAppendingCommittedEntry(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {

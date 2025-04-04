@@ -17,7 +17,8 @@ package tan
 import (
 	"testing"
 
-	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/armadakv/armada/raft/logger"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
@@ -27,11 +28,11 @@ var benchmarkTestDirname = "tan_benchmark_dir"
 func benchmarkWrite(b *testing.B, sz int) {
 	logger.GetLogger("tan").SetLevel(logger.WARNING)
 	b.ReportAllocs()
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	opts := &Options{
 		FS: fs,
 	}
-	if err := fs.MkdirAll(benchmarkTestDirname, 0766); err != nil {
+	if err := fs.MkdirAll(benchmarkTestDirname, 0o766); err != nil {
 		b.Fatalf("failed to create dir %v", err)
 	}
 	defer func() {

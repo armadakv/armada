@@ -37,9 +37,7 @@ import (
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
-var (
-	plog = logger.GetLogger("raft")
-)
+var plog = logger.GetLogger("raft")
 
 const (
 	// NoLeader is the flag used to indcate that there is no leader or the leader
@@ -93,8 +91,10 @@ func ShardID(shardID uint64) string {
 	return logutil.ShardID(shardID)
 }
 
-type handlerFunc func(pb.Message) error
-type stepFunc func(*raft, pb.Message) error
+type (
+	handlerFunc func(pb.Message) error
+	stepFunc    func(*raft, pb.Message) error
+)
 
 // Status is the struct that captures the status of a raft node.
 type Status struct {
@@ -736,7 +736,8 @@ func makeWitnessSnapshot(snapshot pb.Snapshot) pb.Snapshot {
 }
 
 func (r *raft) makeReplicateMessage(to uint64,
-	next uint64, maxSize uint64) (pb.Message, error) {
+	next uint64, maxSize uint64,
+) (pb.Message, error) {
 	term, err := r.log.term(next - 1)
 	if err != nil {
 		return pb.Message{}, err
@@ -833,7 +834,8 @@ func (r *raft) broadcastReplicateMessage() {
 }
 
 func (r *raft) sendHeartbeatMessage(to uint64,
-	hint pb.SystemCtx, match uint64) {
+	hint pb.SystemCtx, match uint64,
+) {
 	commit := min(match, r.log.committed)
 	r.send(pb.Message{
 		To:       to,
@@ -952,7 +954,8 @@ func (r *raft) appendEntries(entries []pb.Entry) error {
 //
 
 func (r *raft) toFollowerState(term uint64, leaderID uint64,
-	resetElectionTimeout bool) {
+	resetElectionTimeout bool,
+) {
 	if r.isWitness() {
 		panic("transitioning to follower from witness state")
 	}

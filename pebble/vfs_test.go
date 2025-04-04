@@ -1,10 +1,13 @@
+// Copyright JAMF Software, LLC
+
 package pebble
 
 import (
+	"testing"
+
 	gvfs "github.com/armadakv/armada/vfs"
 	pvfs "github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
-	"testing"
 )
 
 func TestFS_Create(t *testing.T) {
@@ -66,7 +69,7 @@ func TestFS_Rename(t *testing.T) {
 
 func TestFS_MkdirAll(t *testing.T) {
 	fs := NewPebbleFS(gvfs.NewMem())
-	err := fs.MkdirAll("testdir", 0755)
+	err := fs.MkdirAll("testdir", 0o755)
 	require.NoError(t, err)
 	info, err := fs.Stat("testdir")
 	require.NoError(t, err)
@@ -75,7 +78,7 @@ func TestFS_MkdirAll(t *testing.T) {
 
 func TestFS_List(t *testing.T) {
 	fs := NewPebbleFS(gvfs.NewMem())
-	err := fs.MkdirAll("testdir", 0755)
+	err := fs.MkdirAll("testdir", 0o755)
 	require.NoError(t, err)
 	_, err = fs.Create("testdir/testfile", pvfs.WriteCategoryUnspecified)
 	require.NoError(t, err)

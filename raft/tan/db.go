@@ -33,9 +33,7 @@ import (
 	"github.com/lni/goutils/syncutil"
 )
 
-var (
-	plog = logger.GetLogger("tan")
-)
+var plog = logger.GetLogger("tan")
 
 const (
 	stateFlag      uint64 = math.MaxUint64
@@ -220,7 +218,8 @@ func (d *db) getSnapshot(shardID uint64, replicaID uint64) (pb.Snapshot, error) 
 // and EntryCount. The pb.State value returned in the State field of
 // raftio.RaftState is the latest raft state written into the db.
 func (d *db) getRaftState(shardID uint64, replicaID uint64,
-	lastIndex uint64) (raftio.RaftState, error) {
+	lastIndex uint64,
+) (raftio.RaftState, error) {
 	d.mu.Lock()
 	readState := d.loadReadState()
 	ie, ok := readState.nodeStates.queryState(shardID, replicaID)
@@ -259,7 +258,8 @@ func (d *db) getRaftState(shardID uint64, replicaID uint64,
 // appended into the input entries slice which is already size bytes in size.
 func (d *db) getEntries(shardID uint64, replicaID uint64,
 	entries []pb.Entry, size uint64, low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, uint64, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, uint64, error) {
 	d.mu.Lock()
 	readState := d.loadReadState()
 	ies, ok := readState.nodeStates.query(shardID, replicaID, low, high)
@@ -318,7 +318,8 @@ func (d *db) getEntries(shardID uint64, replicaID uint64,
 // specified indexEntry parameter. For each encountered pb.Update record,
 // h will be invoked with the encountered pb.Update value passed to it.
 func (d *db) readLog(ie indexEntry,
-	h func(u pb.Update, offset int64) bool) (err error) {
+	h func(u pb.Update, offset int64) bool,
+) (err error) {
 	fn := makeFilename(d.opts.FS, d.dirname, fileTypeLog, ie.fileNum)
 	f, err := d.opts.FS.Open(fn)
 	if err != nil {

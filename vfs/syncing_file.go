@@ -174,7 +174,7 @@ func (f *syncingFile) Close() error {
 			// provides no persistence guarantee. Since it's non-blocking,
 			// there's no latency hit of a blocking sync call, but we still
 			// ensure we're not allowing significant dirty data to accumulate.
-			if _, err := f.File.SyncTo(off); err != nil {
+			if _, err := f.SyncTo(off); err != nil {
 				return err
 			}
 			f.ratchetSyncOffset(off)

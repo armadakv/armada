@@ -30,7 +30,7 @@ func RandomLatency(pred Predicate, mean time.Duration, seed int64, limit time.Du
 		mean:      mean,
 		limit:     limit,
 	}
-	rl.keyedPrng.init(seed)
+	rl.init(seed)
 	return rl
 }
 
@@ -80,7 +80,7 @@ func (rl *randomLatency) MaybeError(op Op) error {
 		return nil
 	}
 	var dur time.Duration
-	rl.keyedPrng.withKey(op.Path, func(prng *rand.Rand) {
+	rl.withKey(op.Path, func(prng *rand.Rand) {
 		// We cap the max latency to 100x: Otherwise, it seems possible
 		// (although very unlikely) ExpFloat64 generates a multiplier high
 		// enough that causes a test timeout.

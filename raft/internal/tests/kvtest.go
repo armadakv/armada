@@ -209,7 +209,8 @@ func checkExternalFile(files []sm.SnapshotFile, shardID uint64) {
 // specified io.Writer object.
 func (s *KVTest) SaveSnapshot(w io.Writer,
 	fileCollection sm.ISnapshotFileCollection,
-	done <-chan struct{}) error {
+	done <-chan struct{},
+) error {
 	if s.closed {
 		panic("save snapshot called after Close()")
 	}
@@ -247,7 +248,8 @@ func (s *KVTest) SaveSnapshot(w io.Writer,
 // RecoverFromSnapshot recovers the state using the provided snapshot.
 func (s *KVTest) RecoverFromSnapshot(r io.Reader,
 	files []sm.SnapshotFile,
-	done <-chan struct{}) error {
+	done <-chan struct{},
+) error {
 	if s.closed {
 		panic("recover from snapshot called after Close()")
 	}
@@ -328,7 +330,8 @@ func (v *VerboseSnapshotSM) Lookup(q interface{}) (interface{}, error) {
 
 // SaveSnapshot ...
 func (v *VerboseSnapshotSM) SaveSnapshot(w io.Writer,
-	collection sm.ISnapshotFileCollection, stopc <-chan struct{}) error {
+	collection sm.ISnapshotFileCollection, stopc <-chan struct{},
+) error {
 	empty := make([]byte, 1024)
 	for i := 0; i < 1024; i++ {
 		if _, err := w.Write(empty); err != nil {
@@ -340,7 +343,8 @@ func (v *VerboseSnapshotSM) SaveSnapshot(w io.Writer,
 
 // RecoverFromSnapshot ...
 func (v *VerboseSnapshotSM) RecoverFromSnapshot(r io.Reader,
-	collection []sm.SnapshotFile, stopc <-chan struct{}) error {
+	collection []sm.SnapshotFile, stopc <-chan struct{},
+) error {
 	data := make([]byte, 1024)
 	total := uint64(0)
 	defer func() {

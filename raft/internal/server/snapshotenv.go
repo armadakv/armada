@@ -21,10 +21,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 
 	"github.com/armadakv/armada/raft/internal/fileutil"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
@@ -104,7 +105,8 @@ func getShrinkedFilename(index uint64) string {
 }
 
 func getTempDirName(rootDir string,
-	suffix string, index uint64, from uint64) string {
+	suffix string, index uint64, from uint64,
+) string {
 	dir := fmt.Sprintf("%s-%d.%s", getDirName(index), from, suffix)
 	return filepath.Join(rootDir, dir)
 }
@@ -116,7 +118,7 @@ func getFinalDirName(rootDir string, index uint64) string {
 // SSEnv is the struct used to manage involved directories for taking or
 // receiving snapshots.
 type SSEnv struct {
-	fs vfs.IFS
+	fs vfs.FS
 	// rootDir is the parent of all snapshot tmp/final dirs for a specified
 	// raft node
 	rootDir  string
@@ -129,7 +131,8 @@ type SSEnv struct {
 // NewSSEnv creates and returns a new SSEnv instance.
 func NewSSEnv(f SnapshotDirFunc,
 	shardID uint64, replicaID uint64, index uint64,
-	from uint64, mode Mode, fs vfs.IFS) SSEnv {
+	from uint64, mode Mode, fs vfs.FS,
+) SSEnv {
 	var tmpSuffix string
 	if mode == SnapshotMode {
 		tmpSuffix = genTmpDirSuffix

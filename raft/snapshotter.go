@@ -17,11 +17,12 @@ package raft
 import (
 	"strconv"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/internal/rsm"
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/utils/dio"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/logreader"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
@@ -55,14 +56,15 @@ type snapshotter struct {
 	replicaID uint64
 	logdb     raftio.ILogDB
 	logReader *logreader.LogReader
-	fs        vfs.IFS
+	fs        vfs.FS
 }
 
 var _ rsm.ISnapshotter = (*snapshotter)(nil)
 
 func newSnapshotter(shardID uint64, replicaID uint64,
 	root server.SnapshotDirFunc, ldb raftio.ILogDB,
-	logReader *logreader.LogReader, fs vfs.IFS) *snapshotter {
+	logReader *logreader.LogReader, fs vfs.FS,
+) *snapshotter {
 	return &snapshotter{
 		shardID:   shardID,
 		replicaID: replicaID,
@@ -87,7 +89,8 @@ func (s *snapshotter) Shrunk(ss pb.Snapshot) (bool, error) {
 }
 
 func (s *snapshotter) Stream(streamable rsm.IStreamable,
-	meta rsm.SSMeta, sink pb.IChunkSink) error {
+	meta rsm.SSMeta, sink pb.IChunkSink,
+) error {
 	ct := compressionType(meta.CompressionType)
 	cw := dio.NewCompressor(ct, rsm.NewChunkWriter(sink, meta))
 	if err := streamable.Stream(meta.Ctx, cw); err != nil {
@@ -100,7 +103,8 @@ func (s *snapshotter) Stream(streamable rsm.IStreamable,
 }
 
 func (s *snapshotter) Save(savable rsm.ISavable,
-	meta rsm.SSMeta) (ss pb.Snapshot, env server.SSEnv, err error) {
+	meta rsm.SSMeta,
+) (ss pb.Snapshot, env server.SSEnv, err error) {
 	env = s.getCustomEnv(meta)
 	if err := env.CreateTempDir(); err != nil {
 		return pb.Snapshot{}, env, err
@@ -145,7 +149,8 @@ func (s *snapshotter) Save(savable rsm.ISavable,
 }
 
 func (s *snapshotter) Load(ss pb.Snapshot,
-	sessions rsm.ILoadable, asm rsm.IRecoverable) (err error) {
+	sessions rsm.ILoadable, asm rsm.IRecoverable,
+) (err error) {
 	fp := s.getFilePath(ss.Index)
 	fs := make([]sm.SnapshotFile, 0)
 	for _, f := range ss.Files {

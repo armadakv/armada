@@ -48,6 +48,7 @@ linters:
         text: 'SA4006:'
     paths:
       - raft
+      - vfs
       - third_party$
       - builtin$
       - examples$

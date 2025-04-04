@@ -34,7 +34,7 @@ func Or[E any](preds ...Predicate[E]) Predicate[E] { return or[E](preds) }
 // OnIndex returns a Predicate that evaluates to true on its N-th call.
 func OnIndex[E any](n int32) *Index[E] {
 	p := new(Index[E])
-	p.Int32.Store(n)
+	p.Store(n)
 	return p
 }
 
@@ -45,11 +45,11 @@ type Index[E any] struct {
 
 // String implements fmt.Stringer.
 func (p *Index[E]) String() string {
-	return fmt.Sprintf("(OnIndex %d)", p.Int32.Load())
+	return fmt.Sprintf("(OnIndex %d)", p.Load())
 }
 
 // Evaluate implements Predicate.
-func (p *Index[E]) Evaluate(E) bool { return p.Int32.Add(-1) == -1 }
+func (p *Index[E]) Evaluate(E) bool { return p.Add(-1) == -1 }
 
 type not[E any] struct {
 	Predicate[E]

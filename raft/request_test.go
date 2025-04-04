@@ -544,7 +544,8 @@ func TestCompactionOverheadDetailsIsRecorded(t *testing.T) {
 }
 
 func getPendingConfigChange(notifyCommit bool) (pendingConfigChange,
-	chan configChangeRequest) {
+	chan configChangeRequest,
+) {
 	c := make(chan configChangeRequest, 1)
 	return newPendingConfigChange(c, notifyCommit), c
 }

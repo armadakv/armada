@@ -17,9 +17,9 @@ package rsm
 import (
 	"testing"
 
-	"github.com/lni/goutils/leaktest"
+	"github.com/armadakv/armada/vfs"
 
-	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/lni/goutils/leaktest"
 )
 
 const (
@@ -58,12 +58,9 @@ func TestFileWithDuplicatedIDCanNotBeAdded(t *testing.T) {
 }
 
 func TestPrepareFiles(t *testing.T) {
-	fs := vfs.GetTestFS()
-	if fs != vfs.DefaultFS {
-		t.Skip("this test only support the default fs")
-	}
+	fs := vfs.Default
 	defer leaktest.AfterTest(t)()
-	if err := fs.MkdirAll(rdbTestDirectory, 0755); err != nil {
+	if err := fs.MkdirAll(rdbTestDirectory, 0o755); err != nil {
 		t.Errorf("failed to make dir %v", err)
 	}
 	defer func() {

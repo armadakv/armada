@@ -99,7 +99,8 @@ func (f *FakeDiskSM) Sync() error {
 
 // SaveSnapshot saves the state to a snapshot.
 func (f *FakeDiskSM) SaveSnapshot(ctx interface{},
-	w io.Writer, stopc <-chan struct{}) error {
+	w io.Writer, stopc <-chan struct{},
+) error {
 	if !f.aborted {
 		f.aborted = true
 		return sm.ErrSnapshotAborted
@@ -120,7 +121,8 @@ func (f *FakeDiskSM) SaveSnapshot(ctx interface{},
 
 // RecoverFromSnapshot recovers the state of the state machine from a snapshot.
 func (f *FakeDiskSM) RecoverFromSnapshot(r io.Reader,
-	stopc <-chan struct{}) error {
+	stopc <-chan struct{},
+) error {
 	f.recovered = true
 	v := make([]byte, 8)
 	if _, err := io.ReadFull(r, v); err != nil {
@@ -194,7 +196,8 @@ func (s *SimDiskSM) PrepareSnapshot() (interface{}, error) {
 
 // SaveSnapshot ...
 func (s *SimDiskSM) SaveSnapshot(ctx interface{},
-	w io.Writer, stopc <-chan struct{}) error {
+	w io.Writer, stopc <-chan struct{},
+) error {
 	pit := ctx.(*SimDiskSM)
 	v := make([]byte, 8)
 	binary.LittleEndian.PutUint64(v, pit.applied)
@@ -204,7 +207,8 @@ func (s *SimDiskSM) SaveSnapshot(ctx interface{},
 
 // RecoverFromSnapshot ...
 func (s *SimDiskSM) RecoverFromSnapshot(r io.Reader,
-	stopc <-chan struct{}) error {
+	stopc <-chan struct{},
+) error {
 	atomic.AddUint64(&s.recovered, 1)
 	v := make([]byte, 8)
 	if _, err := io.ReadFull(r, v); err != nil {

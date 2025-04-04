@@ -33,7 +33,7 @@ import (
 // remove the ballast on the unwrapped FS.
 func OnDiskFull(fs FS, fn func()) FS {
 	newFS := &enospcFS{inner: fs}
-	newFS.mu.Cond.L = &newFS.mu.Mutex
+	newFS.mu.L = &newFS.mu.Mutex
 	newFS.mu.onDiskFull = fn
 	return newFS
 }

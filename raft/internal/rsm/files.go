@@ -38,7 +38,8 @@ func NewFileCollection() *Files {
 
 // AddFile adds the specified file to the external file collection.
 func (fc *Files) AddFile(fileID uint64,
-	path string, metadata []byte) {
+	path string, metadata []byte,
+) {
 	if _, ok := fc.idmap[fileID]; ok {
 		plog.Panicf("trying to add file %d again", fileID)
 	}
@@ -64,7 +65,8 @@ func (fc *Files) GetFileAt(idx uint64) *pb.SnapshotFile {
 
 // PrepareFiles finalize the external files added to the collection.
 func (fc *Files) PrepareFiles(tmpdir string,
-	finaldir string) ([]*pb.SnapshotFile, error) {
+	finaldir string,
+) ([]*pb.SnapshotFile, error) {
 	for _, file := range fc.files {
 		fn := file.Filename()
 		fp := filepath.Join(tmpdir, fn)

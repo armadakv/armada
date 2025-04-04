@@ -89,7 +89,7 @@ func (p opKindPred) Evaluate(op Op) bool { return p.kind == op.Kind.ReadOrWrite(
 // files.
 func Randomly(p float64, seed int64) Predicate {
 	rs := &randomSeed{p: p}
-	rs.keyedPrng.init(seed)
+	rs.init(seed)
 	return rs
 }
 
@@ -108,7 +108,7 @@ func (rs *randomSeed) String() string {
 
 func (rs *randomSeed) Evaluate(op Op) bool {
 	var ok bool
-	rs.keyedPrng.withKey(op.Path, func(prng *rand.Rand) {
+	rs.withKey(op.Path, func(prng *rand.Rand) {
 		ok = prng.Float64() < rs.p
 	})
 	return ok

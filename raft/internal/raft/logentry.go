@@ -22,9 +22,7 @@ import (
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
-var (
-	maxEntriesToApplySize = settings.MaxApplyEntrySize
-)
+var maxEntriesToApplySize = settings.MaxApplyEntrySize
 
 // ErrCompacted is the error returned to indicate that the requested entries
 // are no longer in the LogDB due to compaction.
@@ -110,7 +108,6 @@ func (l *entryLog) lastIndex() uint64 {
 	}
 	_, index := l.logdb.GetRange()
 	return index
-
 }
 
 func (l *entryLog) termEntryRange() (uint64, uint64) {
@@ -178,7 +175,8 @@ func (l *entryLog) getUncommittedEntries() []pb.Entry {
 }
 
 func (l *entryLog) getEntriesFromLogDB(low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, bool, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, bool, error) {
 	if low >= l.inmem.markerIndex {
 		return nil, true, nil
 	}
@@ -195,7 +193,8 @@ func (l *entryLog) getEntriesFromLogDB(low uint64,
 }
 
 func (l *entryLog) getEntriesFromInMem(ents []pb.Entry,
-	low uint64, high uint64) []pb.Entry {
+	low uint64, high uint64,
+) []pb.Entry {
 	if high <= l.inmem.markerIndex {
 		return ents
 	}
@@ -212,7 +211,8 @@ func (l *entryLog) getEntriesFromInMem(ents []pb.Entry,
 }
 
 func (l *entryLog) getEntries(low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, error) {
 	err := l.checkBound(low, high)
 	if err != nil {
 		return nil, err
@@ -278,7 +278,8 @@ func (l *entryLog) getEntriesToApply(limit uint64) ([]pb.Entry, error) {
 }
 
 func (l *entryLog) getCommittedEntries(low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, error) {
 	if low < l.firstIndex() || low > l.committed {
 		return nil, ErrCompacted
 	}

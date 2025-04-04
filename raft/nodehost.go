@@ -22,6 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/armadakv/armada/vfs"
+	"github.com/armadakv/armada/vfs/errorfs"
+
 	"github.com/armadakv/armada/raft/client"
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/raft/internal/id"
@@ -31,7 +34,6 @@ import (
 	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/internal/transport"
 	"github.com/armadakv/armada/raft/internal/utils"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/logreader"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
@@ -231,7 +233,7 @@ type NodeHost struct {
 		sys         *sysEventListener
 	}
 	nodes        raftio.INodeRegistry
-	fs           vfs.IFS
+	fs           vfs.FS
 	transport    transport.ITransport
 	id           *id.UUID
 	stopper      *syncutil.Stopper
@@ -310,7 +312,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig) (*NodeHost, error) {
 	}
 	errorInjection := false
 	if nhConfig.Expert.FS != nil {
-		_, errorInjection = nhConfig.Expert.FS.(*vfs.ErrorFS)
+		_, errorInjection = nhConfig.Expert.FS.(*errorfs.FS)
 		plog.Infof("filesystem error injection mode enabled: %t", errorInjection)
 	}
 	nh.engine = newExecEngine(nh, nhConfig.Expert.Engine,
@@ -441,9 +443,11 @@ func (nh *NodeHost) ID() string {
 //     initialMembers map to be empty. This applies to both initial member nodes
 //     and those joined later.
 func (nh *NodeHost) StartReplica(initialMembers map[uint64]Target,
-	join bool, create sm.CreateStateMachineFunc, cfg config.Config) error {
+	join bool, create sm.CreateStateMachineFunc, cfg config.Config,
+) error {
 	cf := func(shardID uint64, replicaID uint64,
-		done <-chan struct{}) rsm.IManagedStateMachine {
+		done <-chan struct{},
+	) rsm.IManagedStateMachine {
 		sm := create(shardID, replicaID)
 		return rsm.NewNativeSM(cfg, rsm.NewInMemStateMachine(sm), done)
 	}
@@ -453,9 +457,11 @@ func (nh *NodeHost) StartReplica(initialMembers map[uint64]Target,
 // StartConcurrentReplica is similar to the StartReplica method but it is used
 // to start a Raft node backed by a concurrent state machine.
 func (nh *NodeHost) StartConcurrentReplica(initialMembers map[uint64]Target,
-	join bool, create sm.CreateConcurrentStateMachineFunc, cfg config.Config) error {
+	join bool, create sm.CreateConcurrentStateMachineFunc, cfg config.Config,
+) error {
 	cf := func(shardID uint64, replicaID uint64,
-		done <-chan struct{}) rsm.IManagedStateMachine {
+		done <-chan struct{},
+	) rsm.IManagedStateMachine {
 		sm := create(shardID, replicaID)
 		return rsm.NewNativeSM(cfg, rsm.NewConcurrentStateMachine(sm), done)
 	}
@@ -466,9 +472,11 @@ func (nh *NodeHost) StartConcurrentReplica(initialMembers map[uint64]Target,
 // StartOnDiskReplica is similar to the StartReplica method but it is used to
 // start a Raft node backed by an IOnDiskStateMachine.
 func (nh *NodeHost) StartOnDiskReplica(initialMembers map[uint64]Target,
-	join bool, create sm.CreateOnDiskStateMachineFunc, cfg config.Config) error {
+	join bool, create sm.CreateOnDiskStateMachineFunc, cfg config.Config,
+) error {
 	cf := func(shardID uint64, replicaID uint64,
-		done <-chan struct{}) rsm.IManagedStateMachine {
+		done <-chan struct{},
+	) rsm.IManagedStateMachine {
 		sm := create(shardID, replicaID)
 		return rsm.NewNativeSM(cfg, rsm.NewOnDiskStateMachine(sm), done)
 	}
@@ -518,7 +526,8 @@ func (nh *NodeHost) StopReplica(shardID uint64, replicaID uint64) error {
 // event. When the proposal completed successfully, caller must call
 // client.ProposalCompleted() to get it ready to be used in future proposals.
 func (nh *NodeHost) SyncPropose(ctx context.Context,
-	session *client.Session, cmd []byte) (sm.Result, error) {
+	session *client.Session, cmd []byte,
+) (sm.Result, error) {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return sm.Result{}, err
@@ -542,7 +551,8 @@ func (nh *NodeHost) SyncPropose(ctx context.Context,
 // determines that it is safe to perform the local read. It returns the query
 // result from the Lookup method or the error encountered.
 func (nh *NodeHost) SyncRead(ctx context.Context, shardID uint64,
-	query interface{}) (interface{}, error) {
+	query interface{},
+) (interface{}, error) {
 	v, err := nh.linearizableRead(ctx, shardID,
 		func(node *node) (interface{}, error) {
 			data, err := node.sm.Lookup(query)
@@ -594,7 +604,8 @@ type Membership struct {
 // information from the specified Raft shard. The specified context parameter
 // must have the timeout value set.
 func (nh *NodeHost) SyncGetShardMembership(ctx context.Context,
-	shardID uint64) (*Membership, error) {
+	shardID uint64,
+) (*Membership, error) {
 	v, err := nh.linearizableRead(ctx, shardID,
 		func(node *node) (interface{}, error) {
 			m := node.sm.GetMembership()
@@ -667,7 +678,8 @@ func (nh *NodeHost) GetNoOPSession(shardID uint64) *client.Session {
 // machines. NO-OP client session must be used on IOnDiskStateMachine based
 // state machines.
 func (nh *NodeHost) SyncGetSession(ctx context.Context,
-	shardID uint64) (*client.Session, error) {
+	shardID uint64,
+) (*client.Session, error) {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -695,7 +707,8 @@ func (nh *NodeHost) SyncGetSession(ctx context.Context,
 //
 // Closed client session should not be used in future proposals.
 func (nh *NodeHost) SyncCloseSession(ctx context.Context,
-	cs *client.Session) error {
+	cs *client.Session,
+) error {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return err
@@ -723,7 +736,8 @@ func (nh *NodeHost) SyncCloseSession(ctx context.Context,
 // can use the CompletedC channel of the returned RequestState to get notified
 // when the query result becomes available.
 func (nh *NodeHost) QueryRaftLog(shardID uint64, firstIndex uint64,
-	lastIndex uint64, maxSize uint64) (*RequestState, error) {
+	lastIndex uint64, maxSize uint64,
+) (*RequestState, error) {
 	return nh.queryRaftLog(shardID, firstIndex, lastIndex, maxSize)
 }
 
@@ -747,7 +761,8 @@ func (nh *NodeHost) QueryRaftLog(shardID uint64, firstIndex uint64,
 // RequestCompleted value, application must call client.ProposalCompleted() to
 // get the client session ready to be used in future proposals.
 func (nh *NodeHost) Propose(session *client.Session, cmd []byte,
-	timeout time.Duration) (*RequestState, error) {
+	timeout time.Duration,
+) (*RequestState, error) {
 	return nh.propose(session, cmd, timeout)
 }
 
@@ -758,7 +773,8 @@ func (nh *NodeHost) Propose(session *client.Session, cmd []byte,
 // channel of the returned RequestState instance to get notified for the
 // completion (RequestResult.Completed() is true) of the operation.
 func (nh *NodeHost) ProposeSession(session *client.Session,
-	timeout time.Duration) (*RequestState, error) {
+	timeout time.Duration,
+) (*RequestState, error) {
 	n, ok := nh.getShard(session.ShardID)
 	if !ok {
 		return nil, ErrShardNotFound
@@ -782,7 +798,8 @@ func (nh *NodeHost) ProposeSession(session *client.Session,
 // can then be invoked to query the state of the IStateMachine or
 // IOnDiskStateMachine with linearizability guarantee.
 func (nh *NodeHost) ReadIndex(shardID uint64,
-	timeout time.Duration) (*RequestState, error) {
+	timeout time.Duration,
+) (*RequestState, error) {
 	rs, _, err := nh.readIndex(shardID, timeout)
 	return rs, err
 }
@@ -791,7 +808,8 @@ func (nh *NodeHost) ReadIndex(shardID uint64,
 // instance. ReadLocalNode is only allowed to be called after receiving a
 // RequestCompleted notification from the ReadIndex method.
 func (nh *NodeHost) ReadLocalNode(rs *RequestState,
-	query interface{}) (interface{}, error) {
+	query interface{},
+) (interface{}, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -810,7 +828,8 @@ func (nh *NodeHost) ReadLocalNode(rs *RequestState,
 // StaleRead queries the specified Raft node directly without any
 // linearizability guarantee.
 func (nh *NodeHost) StaleRead(shardID uint64,
-	query interface{}) (interface{}, error) {
+	query interface{},
+) (interface{}, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -839,7 +858,8 @@ func (nh *NodeHost) StaleRead(shardID uint64,
 // SyncRequestSnapshot returns the index of the created snapshot or the error
 // encountered.
 func (nh *NodeHost) SyncRequestSnapshot(ctx context.Context,
-	shardID uint64, opt SnapshotOption) (uint64, error) {
+	shardID uint64, opt SnapshotOption,
+) (uint64, error) {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return 0, err
@@ -876,7 +896,8 @@ func (nh *NodeHost) SyncRequestSnapshot(ctx context.Context,
 // Requested snapshot operation will be rejected if there is already an existing
 // snapshot in the system at the same Raft log index.
 func (nh *NodeHost) RequestSnapshot(shardID uint64,
-	opt SnapshotOption, timeout time.Duration) (*RequestState, error) {
+	opt SnapshotOption, timeout time.Duration,
+) (*RequestState, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -906,7 +927,8 @@ func (nh *NodeHost) RequestSnapshot(shardID uint64,
 // requested compaction is completed. ErrRejected is returned when there is
 // nothing to be reclaimed.
 func (nh *NodeHost) RequestCompaction(shardID uint64,
-	replicaID uint64) (*SysOpState, error) {
+	replicaID uint64,
+) (*SysOpState, error) {
 	nh.mu.Lock()
 	defer nh.mu.Unlock()
 	if atomic.LoadInt32(&nh.closed) != 0 {
@@ -933,7 +955,8 @@ func (nh *NodeHost) RequestCompaction(shardID uint64,
 //
 // The input context object must have its deadline set.
 func (nh *NodeHost) SyncRequestDeleteReplica(ctx context.Context,
-	shardID uint64, replicaID uint64, configChangeIndex uint64) error {
+	shardID uint64, replicaID uint64, configChangeIndex uint64,
+) error {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return err
@@ -952,7 +975,8 @@ func (nh *NodeHost) SyncRequestDeleteReplica(ctx context.Context,
 // The input context object must have its deadline set.
 func (nh *NodeHost) SyncRequestAddReplica(ctx context.Context,
 	shardID uint64, replicaID uint64,
-	target string, configChangeIndex uint64) error {
+	target string, configChangeIndex uint64,
+) error {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return err
@@ -972,7 +996,8 @@ func (nh *NodeHost) SyncRequestAddReplica(ctx context.Context,
 // The input context object must have its deadline set.
 func (nh *NodeHost) SyncRequestAddNonVoting(ctx context.Context,
 	shardID uint64, replicaID uint64,
-	target string, configChangeIndex uint64) error {
+	target string, configChangeIndex uint64,
+) error {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return err
@@ -992,7 +1017,8 @@ func (nh *NodeHost) SyncRequestAddNonVoting(ctx context.Context,
 // The input context object must have its deadline set.
 func (nh *NodeHost) SyncRequestAddWitness(ctx context.Context,
 	shardID uint64, replicaID uint64,
-	target string, configChangeIndex uint64) error {
+	target string, configChangeIndex uint64,
+) error {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return err
@@ -1028,7 +1054,8 @@ func (nh *NodeHost) SyncRequestAddWitness(ctx context.Context,
 // to the SyncGetShardMembership method.
 func (nh *NodeHost) RequestDeleteReplica(shardID uint64,
 	replicaID uint64,
-	configChangeIndex uint64, timeout time.Duration) (*RequestState, error) {
+	configChangeIndex uint64, timeout time.Duration,
+) (*RequestState, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -1071,7 +1098,8 @@ func (nh *NodeHost) RequestDeleteReplica(shardID uint64,
 // to the SyncGetShardMembership method.
 func (nh *NodeHost) RequestAddReplica(shardID uint64,
 	replicaID uint64, target Target, configChangeIndex uint64,
-	timeout time.Duration) (*RequestState, error) {
+	timeout time.Duration,
+) (*RequestState, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -1103,7 +1131,8 @@ func (nh *NodeHost) RequestAddReplica(shardID uint64,
 // configChangeIndex parameters.
 func (nh *NodeHost) RequestAddNonVoting(shardID uint64,
 	replicaID uint64, target Target, configChangeIndex uint64,
-	timeout time.Duration) (*RequestState, error) {
+	timeout time.Duration,
+) (*RequestState, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -1133,7 +1162,8 @@ func (nh *NodeHost) RequestAddNonVoting(shardID uint64,
 // configChangeIndex parameters.
 func (nh *NodeHost) RequestAddWitness(shardID uint64,
 	replicaID uint64, target Target, configChangeIndex uint64,
-	timeout time.Duration) (*RequestState, error) {
+	timeout time.Duration,
+) (*RequestState, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -1151,7 +1181,8 @@ func (nh *NodeHost) RequestAddWitness(shardID uint64,
 // returns an error if the request fails to be started. There is no guarantee
 // that such request can be fulfilled.
 func (nh *NodeHost) RequestLeaderTransfer(shardID uint64,
-	targetReplicaID uint64) error {
+	targetReplicaID uint64,
+) error {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return ErrClosed
 	}
@@ -1172,7 +1203,8 @@ func (nh *NodeHost) RequestLeaderTransfer(shardID uint64,
 // Similar to RemoveData, calling SyncRemoveData on a node that is still a Raft
 // shard member will corrupt the Raft shard.
 func (nh *NodeHost) SyncRemoveData(ctx context.Context,
-	shardID uint64, replicaID uint64) error {
+	shardID uint64, replicaID uint64,
+) error {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return ErrClosed
 	}
@@ -1293,7 +1325,8 @@ func (nh *NodeHost) GetNodeHostInfo(opt NodeHostInfoOption) *NodeHostInfo {
 }
 
 func (nh *NodeHost) propose(s *client.Session,
-	cmd []byte, timeout time.Duration) (*RequestState, error) {
+	cmd []byte, timeout time.Duration,
+) (*RequestState, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -1310,7 +1343,8 @@ func (nh *NodeHost) propose(s *client.Session,
 }
 
 func (nh *NodeHost) readIndex(shardID uint64,
-	timeout time.Duration) (*RequestState, *node, error) {
+	timeout time.Duration,
+) (*RequestState, *node, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, nil, ErrClosed
 	}
@@ -1327,7 +1361,8 @@ func (nh *NodeHost) readIndex(shardID uint64,
 }
 
 func (nh *NodeHost) queryRaftLog(shardID uint64,
-	firstIndex uint64, lastIndex uint64, maxSize uint64) (*RequestState, error) {
+	firstIndex uint64, lastIndex uint64, maxSize uint64,
+) (*RequestState, error) {
 	if atomic.LoadInt32(&nh.closed) != 0 {
 		return nil, ErrClosed
 	}
@@ -1344,7 +1379,8 @@ func (nh *NodeHost) queryRaftLog(shardID uint64,
 }
 
 func (nh *NodeHost) linearizableRead(ctx context.Context,
-	shardID uint64, f func(n *node) (interface{}, error)) (interface{}, error) {
+	shardID uint64, f func(n *node) (interface{}, error),
+) (interface{}, error) {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -1398,7 +1434,8 @@ func (nh *NodeHost) getShardSetIndex() uint64 {
 //     implementation to indicate that a certain node exists here
 func (nh *NodeHost) bootstrapShard(initialMembers map[uint64]Target,
 	join bool, cfg config.Config,
-	smType pb.StateMachineType) (map[uint64]string, bool, error) {
+	smType pb.StateMachineType,
+) (map[uint64]string, bool, error) {
 	bi, err := nh.mu.logdb.GetBootstrapInfo(cfg.ShardID, cfg.ReplicaID)
 	if errors.Is(err, raftio.ErrNoBootstrapInfo) {
 		if !join && len(initialMembers) == 0 {
@@ -1428,7 +1465,8 @@ func (nh *NodeHost) bootstrapShard(initialMembers map[uint64]Target,
 
 func (nh *NodeHost) startShard(initialMembers map[uint64]Target,
 	join bool, createStateMachine rsm.ManagedStateMachineFactory,
-	cfg config.Config, smType pb.StateMachineType) error {
+	cfg config.Config, smType pb.StateMachineType,
+) error {
 	shardID := cfg.ShardID
 	replicaID := cfg.ReplicaID
 	validator := nh.nhConfig.GetTargetValidator()
@@ -1901,7 +1939,8 @@ func (nu *nodeUser) ReplicaID() uint64 {
 }
 
 func (nu *nodeUser) Propose(s *client.Session,
-	cmd []byte, timeout time.Duration) (*RequestState, error) {
+	cmd []byte, timeout time.Duration,
+) (*RequestState, error) {
 	req, err := nu.node.propose(s, cmd, nu.nh.getTimeoutTick(timeout))
 	nu.setStepReady(s.ShardID)
 	return req, err
@@ -1977,7 +2016,8 @@ func (h *messageHandler) HandleMessageBatch(msg pb.MessageBatch) (uint64, uint64
 }
 
 func (h *messageHandler) HandleSnapshotStatus(shardID uint64,
-	replicaID uint64, failed bool) {
+	replicaID uint64, failed bool,
+) {
 	eventType := server.SendSnapshotCompleted
 	if failed {
 		eventType = server.SendSnapshotAborted
@@ -2010,7 +2050,8 @@ func (h *messageHandler) HandleUnreachable(shardID uint64, replicaID uint64) {
 }
 
 func (h *messageHandler) HandleSnapshot(shardID uint64,
-	replicaID uint64, from uint64) {
+	replicaID uint64, from uint64,
+) {
 	m := pb.Message{
 		To:      from,
 		From:    replicaID,

@@ -117,7 +117,7 @@ type mockSyncToFile struct {
 
 func (f *mockSyncToFile) SyncTo(length int64) (fullSync bool, err error) {
 	if !f.canSyncTo {
-		if err = f.File.SyncData(); err != nil {
+		if err = f.SyncData(); err != nil {
 			return false, err
 		}
 		return true, nil

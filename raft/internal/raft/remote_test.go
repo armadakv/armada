@@ -59,8 +59,10 @@ func TestSetSnapshotAckWhenNotInSnapshotStateIsNotAllowed(t *testing.T) {
 }
 
 func TestRemoteString(t *testing.T) {
-	for _, tt := range []remoteStateType{remoteRetry,
-		remoteReplicate, remoteSnapshot} {
+	for _, tt := range []remoteStateType{
+		remoteRetry,
+		remoteReplicate, remoteSnapshot,
+	} {
 		if tt.String() != remoteNames[uint64(tt)] {
 			t.Errorf("unexpected string name")
 		}
