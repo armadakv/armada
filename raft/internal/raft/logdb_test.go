@@ -68,7 +68,8 @@ func (db *TestLogDB) CreateSnapshot(ss pb.Snapshot) error {
 }
 
 func (db *TestLogDB) getSnapshot(index uint64,
-	cs *pb.Membership) (pb.Snapshot, error) {
+	cs *pb.Membership,
+) (pb.Snapshot, error) {
 	if index <= db.snapshot.Index {
 		return pb.Snapshot{}, ErrSnapshotOutOfDate
 	}
@@ -141,7 +142,8 @@ func (db *TestLogDB) Append(entries []pb.Entry) error {
 }
 
 func (db *TestLogDB) Entries(low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, error) {
 	if low <= db.markerIndex {
 		return nil, ErrCompacted
 	}

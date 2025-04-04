@@ -857,7 +857,7 @@ func TestIndexSaveLoad(t *testing.T) {
 	nodeStates.indexes[ni2] = i2
 	fs := vfs.NewMem()
 	dirname := "db-dir"
-	require.NoError(t, fs.MkdirAll(dirname, 0755))
+	require.NoError(t, fs.MkdirAll(dirname, 0o755))
 	dir, err := fs.OpenDir(dirname)
 	require.NoError(t, err)
 	defer dir.Close()
@@ -892,7 +892,7 @@ func TestIndexLoadIsAppendOnly(t *testing.T) {
 	currEntries := i.currEntries
 	fs := vfs.NewMem()
 	dirname := "db-dir"
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	dir, err := fs.OpenDir(dirname)
 	require.NoError(t, err)
 	defer dir.Close()

@@ -57,7 +57,8 @@ func (d *dummySM) NALookup(query []byte) ([]byte, error)         { return nil, n
 func (d *dummySM) Sync() error                                   { return nil }
 func (d *dummySM) Prepare() (interface{}, error)                 { return nil, nil }
 func (d *dummySM) Save(interface{},
-	io.Writer, sm.ISnapshotFileCollection, <-chan struct{}) error {
+	io.Writer, sm.ISnapshotFileCollection, <-chan struct{},
+) error {
 	return nil
 }
 func (d *dummySM) Recover(io.Reader, []sm.SnapshotFile, <-chan struct{}) error { return nil }

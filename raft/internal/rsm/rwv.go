@@ -38,11 +38,12 @@ import (
 	"io"
 	"math"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
@@ -105,12 +106,14 @@ type IBlockWriter interface {
 
 // NewBlockWriter creates and returns a block writer.
 func NewBlockWriter(blockSize uint64,
-	nb func(data []byte, crc []byte) error, t pb.ChecksumType) *BlockWriter {
+	nb func(data []byte, crc []byte) error, t pb.ChecksumType,
+) *BlockWriter {
 	return newBlockWriter(blockSize, nb, t)
 }
 
 func newBlockWriter(blockSize uint64,
-	nb func(data []byte, crc []byte) error, t pb.ChecksumType) *BlockWriter {
+	nb func(data []byte, crc []byte) error, t pb.ChecksumType,
+) *BlockWriter {
 	return &BlockWriter{
 		blockSize:  blockSize,
 		block:      make([]byte, 0, blockSize+checksumSize),
@@ -197,7 +200,8 @@ type blockReader struct {
 // and magic number fields should not be included, use a io.LimitReader to
 // exclude them
 func newBlockReader(r io.Reader,
-	blockSize uint64, t pb.ChecksumType) *blockReader {
+	blockSize uint64, t pb.ChecksumType,
+) *blockReader {
 	return &blockReader{
 		r:         r,
 		t:         t,
@@ -493,7 +497,7 @@ func (v *v2validator) validateBlock(block []byte) bool {
 
 // GetV2PayloadChecksum calculates the payload checksum of the specified
 // snapshot file.
-func GetV2PayloadChecksum(fp string, fs vfs.IFS) (crc []byte, err error) {
+func GetV2PayloadChecksum(fp string, fs vfs.FS) (crc []byte, err error) {
 	offsets, err := getV2CRCOffsetList(fp, fs)
 	if err != nil {
 		return nil, err
@@ -523,7 +527,7 @@ func GetV2PayloadChecksum(fp string, fs vfs.IFS) (crc []byte, err error) {
 	return
 }
 
-func getV2ChecksumType(fp string, fs vfs.IFS) (ct pb.ChecksumType, err error) {
+func getV2ChecksumType(fp string, fs vfs.FS) (ct pb.ChecksumType, err error) {
 	reader, header, err := NewSnapshotReader(fp, fs)
 	if err != nil {
 		return 0, err
@@ -537,7 +541,7 @@ func getV2ChecksumType(fp string, fs vfs.IFS) (ct pb.ChecksumType, err error) {
 	return header.ChecksumType, nil
 }
 
-func getV2CRCOffsetList(fp string, fs vfs.IFS) ([]uint64, error) {
+func getV2CRCOffsetList(fp string, fs vfs.FS) ([]uint64, error) {
 	fi, err := fs.Stat(fp)
 	if err != nil {
 		return nil, err

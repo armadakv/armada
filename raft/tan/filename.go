@@ -83,7 +83,8 @@ func setCurrentFile(dirname string, fs vfs.FS, fileNum fileNum) (err error) {
 }
 
 func makeBootstrapFilename(fs vfs.FS,
-	dirname string, shardID uint64, replicaID uint64, tmp bool) string {
+	dirname string, shardID uint64, replicaID uint64, tmp bool,
+) string {
 	pattern := "BOOTSTRAP-%d-%d"
 	if tmp {
 		pattern = "BOOTSTRAP-%d-%d.tmp"

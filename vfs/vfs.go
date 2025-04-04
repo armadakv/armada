@@ -474,3 +474,19 @@ func Root(fs FS) FS {
 
 // ErrUnsupported may be returned a FS when it does not support an operation.
 var ErrUnsupported = errors.New("pebble: not supported")
+
+func IsNotExist(err error) bool {
+	return errors.Is(err, os.ErrNotExist)
+}
+
+func Clean(dir string) string {
+	return filepath.Clean(dir)
+}
+
+func IsExist(err error) bool {
+	return errors.Is(err, os.ErrExist)
+}
+
+func TempDir() string {
+	return os.TempDir()
+}

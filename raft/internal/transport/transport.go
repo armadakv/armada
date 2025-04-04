@@ -46,6 +46,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/netutil"
@@ -56,7 +58,6 @@ import (
 	"github.com/armadakv/armada/raft/internal/registry"
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/logger"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
@@ -66,9 +67,7 @@ const (
 	maxMsgBatchSize = settings.MaxMessageBatchSize
 )
 
-var (
-	lazyFreeCycle = settings.LazyFreeCycle
-)
+var lazyFreeCycle = settings.LazyFreeCycle
 
 var (
 	plog                = logger.GetLogger("transport")
@@ -157,7 +156,8 @@ type DefaultTransportFactory struct{}
 // Create creates a default transport instance.
 func (dtm *DefaultTransportFactory) Create(nhConfig config.NodeHostConfig,
 	handler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler) raftio.ITransport {
+	chunkHandler raftio.ChunkHandler,
+) raftio.ITransport {
 	return NewTCPTransport(nhConfig, handler, chunkHandler)
 }
 
@@ -182,7 +182,7 @@ type Transport struct {
 	msgHandler   IMessageHandler
 	resolver     registry.IResolver
 	trans        raftio.ITransport
-	fs           vfs.IFS
+	fs           vfs.FS
 	stopper      *syncutil.Stopper
 	dir          server.SnapshotDirFunc
 	env          *server.Env
@@ -200,7 +200,8 @@ var _ ITransport = (*Transport)(nil)
 func NewTransport(nhConfig config.NodeHostConfig,
 	handler IMessageHandler, env *server.Env, resolver registry.IResolver,
 	dir server.SnapshotDirFunc, sysEvents ITransportEvent,
-	fs vfs.IFS) (*Transport, error) {
+	fs vfs.FS,
+) (*Transport, error) {
 	sourceID := nhConfig.RaftAddress
 	if nhConfig.NodeRegistryEnabled() {
 		sourceID = env.NodeHostID()
@@ -326,7 +327,8 @@ func (t *Transport) handleRequest(req pb.MessageBatch) {
 }
 
 func (t *Transport) snapshotReceived(shardID uint64,
-	replicaID uint64, from uint64) {
+	replicaID uint64, from uint64,
+) {
 	t.msgHandler.HandleSnapshot(shardID, replicaID, from)
 }
 
@@ -408,7 +410,8 @@ func (t *Transport) send(req pb.Message) (bool, failedSend) {
 // connectAndProcess returns a boolean value indicating whether it is stopped
 // gracefully when the system is being shutdown
 func (t *Transport) connectAndProcess(remoteHost string,
-	sq sendQueue, from uint64, affected nodeMap) bool {
+	sq sendQueue, from uint64, affected nodeMap,
+) bool {
 	breaker := t.GetCircuitBreaker(remoteHost)
 	successes := breaker.Successes()
 	consecFailures := breaker.ConsecFailures()
@@ -439,7 +442,8 @@ func (t *Transport) connectAndProcess(remoteHost string,
 }
 
 func (t *Transport) processMessages(remoteHost string,
-	sq sendQueue, conn raftio.IConnection, affected nodeMap) error {
+	sq sendQueue, conn raftio.IConnection, affected nodeMap,
+) error {
 	idleTimer := time.NewTimer(idleTimeout)
 	defer idleTimer.Stop()
 	sz := uint64(0)
@@ -506,7 +510,8 @@ func (t *Transport) processMessages(remoteHost string,
 }
 
 func lazyFree(reqs []pb.Message,
-	mb pb.MessageBatch) ([]pb.Message, pb.MessageBatch) {
+	mb pb.MessageBatch,
+) ([]pb.Message, pb.MessageBatch) {
 	if lazyFreeCycle > 0 {
 		for i := 0; i < len(reqs); i++ {
 			reqs[i].Entries = nil
@@ -517,7 +522,8 @@ func lazyFree(reqs []pb.Message,
 }
 
 func (t *Transport) sendMessageBatch(conn raftio.IConnection,
-	batch pb.MessageBatch) error {
+	batch pb.MessageBatch,
+) error {
 	if f := t.preSendBatch.Load(); f != nil {
 		updated, shouldSend := f.(SendMessageBatchFunc)(batch)
 		if !shouldSend {
@@ -535,7 +541,8 @@ func (t *Transport) sendMessageBatch(conn raftio.IConnection,
 
 func create(nhConfig config.NodeHostConfig,
 	requestHandler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler) raftio.ITransport {
+	chunkHandler raftio.ChunkHandler,
+) raftio.ITransport {
 	var tm config.TransportFactory
 	if nhConfig.Expert.TransportFactory != nil {
 		tm = nhConfig.Expert.TransportFactory

@@ -18,10 +18,11 @@ import (
 	"context"
 	"sync/atomic"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/logutil"
 
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
@@ -70,7 +71,7 @@ type job struct {
 	conn         raftio.ISnapshotConnection
 	preSend      atomic.Value
 	postSend     atomic.Value
-	fs           vfs.IFS
+	fs           vfs.FS
 	ctx          context.Context
 	transport    raftio.ITransport
 	ch           chan pb.Chunk
@@ -86,7 +87,8 @@ type job struct {
 func newJob(ctx context.Context,
 	shardID uint64, replicaID uint64,
 	did uint64, streaming bool, sz int, transport raftio.ITransport,
-	stopc chan struct{}, fs vfs.IFS) *job {
+	stopc chan struct{}, fs vfs.FS,
+) *job {
 	j := &job{
 		shardID:      shardID,
 		replicaID:    replicaID,
@@ -247,7 +249,8 @@ func (j *job) sendChunks(chunks []pb.Chunk) error {
 }
 
 func (j *job) sendChunk(c pb.Chunk,
-	conn raftio.ISnapshotConnection) error {
+	conn raftio.ISnapshotConnection,
+) error {
 	if f := j.preSend.Load(); f != nil {
 		updated, shouldSend := f.(StreamChunkSendFunc)(c)
 		if !shouldSend {

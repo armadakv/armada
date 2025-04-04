@@ -20,6 +20,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/logutil"
 
@@ -28,7 +30,6 @@ import (
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/internal/utils"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
@@ -70,7 +71,7 @@ func (l *ssLock) unlock() {
 
 // Chunk managed on the receiving side
 type Chunk struct {
-	fs        vfs.IFS
+	fs        vfs.FS
 	tracked   map[string]*tracked
 	locks     map[string]*ssLock
 	dir       server.SnapshotDirFunc
@@ -85,9 +86,7 @@ type Chunk struct {
 }
 
 // NewChunk creates and returns a new snapshot chunks instance.
-func NewChunk(onReceive func(pb.MessageBatch),
-	confirm func(uint64, uint64, uint64), dir server.SnapshotDirFunc,
-	did uint64, fs vfs.IFS) *Chunk {
+func NewChunk(onReceive func(pb.MessageBatch), confirm func(uint64, uint64, uint64), dir server.SnapshotDirFunc, did uint64, fs vfs.FS) *Chunk {
 	return &Chunk{
 		did:       did,
 		validate:  true,
@@ -374,7 +373,8 @@ func (c *Chunk) removeTempDir(chunk pb.Chunk) {
 }
 
 func (c *Chunk) toMessage(chunk pb.Chunk,
-	files []*pb.SnapshotFile) pb.MessageBatch {
+	files []*pb.SnapshotFile,
+) pb.MessageBatch {
 	if chunk.ChunkId != 0 {
 		panic("not first chunk")
 	}

@@ -68,7 +68,8 @@ func TestInMemGetSnapshotIndex(t *testing.T) {
 }
 
 func testGetEntriesPanicWithInvalidInput(low uint64,
-	high uint64, marker uint64, firstIndex uint64, length uint64, t *testing.T) {
+	high uint64, marker uint64, firstIndex uint64, length uint64, t *testing.T,
+) {
 	defer func() {
 		if r := recover(); r != nil {
 			return

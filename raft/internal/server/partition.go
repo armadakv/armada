@@ -14,9 +14,7 @@
 
 package server
 
-var (
-	defaultShardIDMod uint64 = 512
-)
+var defaultShardIDMod uint64 = 512
 
 // IPartitioner is the interface for partitioning shards.
 type IPartitioner interface {
@@ -48,7 +46,8 @@ type DoubleFixedPartitioner struct {
 
 // NewDoubleFixedPartitioner creates a new DoubleFixedPartitioner instance.
 func NewDoubleFixedPartitioner(capacity uint64,
-	workerCount uint64) *DoubleFixedPartitioner {
+	workerCount uint64,
+) *DoubleFixedPartitioner {
 	return &DoubleFixedPartitioner{
 		capacity:    capacity,
 		workerCount: workerCount,

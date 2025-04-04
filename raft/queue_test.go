@@ -342,5 +342,4 @@ func TestReadIndexQueueCanHandleAddFailure(t *testing.T) {
 	if !stopped {
 		t.Errorf("failed to report state as stopped")
 	}
-
 }

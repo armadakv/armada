@@ -121,7 +121,8 @@ func (s *ConcurrentKVTest) PrepareSnapshot() (interface{}, error) {
 func (s *ConcurrentKVTest) SaveSnapshot(ctx interface{},
 	w io.Writer,
 	fileCollection sm.ISnapshotFileCollection,
-	done <-chan struct{}) error {
+	done <-chan struct{},
+) error {
 	if s.isClosed() {
 		panic("save snapshot called after Close()")
 	}
@@ -165,7 +166,8 @@ func (s *ConcurrentKVTest) SaveSnapshot(ctx interface{},
 // RecoverFromSnapshot recovers the state using the provided snapshot.
 func (s *ConcurrentKVTest) RecoverFromSnapshot(r io.Reader,
 	files []sm.SnapshotFile,
-	done <-chan struct{}) error {
+	done <-chan struct{},
+) error {
 	if s.isClosed() {
 		panic("recover from snapshot called after Close()")
 	}

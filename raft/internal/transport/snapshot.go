@@ -36,11 +36,12 @@ package transport
 import (
 	"sync/atomic"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 
 	"github.com/armadakv/armada/raft/internal/rsm"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
@@ -142,7 +143,8 @@ func (t *Transport) doSendSnapshot(m pb.Message) bool {
 }
 
 func (t *Transport) createJob(key raftio.NodeInfo,
-	addr string, streaming bool, sz int) *job {
+	addr string, streaming bool, sz int,
+) *job {
 	if v := atomic.AddUint64(&t.jobs, 1); v > maxConnectionCount {
 		r := atomic.AddUint64(&t.jobs, ^uint64(0))
 		plog.Warningf("job count is rate limited %d", r)
@@ -190,7 +192,8 @@ func (t *Transport) processSnapshot(c *job, addr string) {
 }
 
 func (t *Transport) sendSnapshotNotification(shardID uint64,
-	replicaID uint64, rejected bool) {
+	replicaID uint64, rejected bool,
+) {
 	if rejected {
 		t.metrics.snapshotSendFailure()
 	} else {
@@ -203,7 +206,8 @@ func (t *Transport) sendSnapshotNotification(shardID uint64,
 
 func splitBySnapshotFile(msg pb.Message,
 	filepath string, filesize uint64, startChunkID uint64,
-	sf *pb.SnapshotFile) []pb.Chunk {
+	sf *pb.SnapshotFile,
+) []pb.Chunk {
 	if filesize == 0 {
 		panic("empty file")
 	}
@@ -259,7 +263,7 @@ func getChunks(m pb.Message) []pb.Chunk {
 	return results
 }
 
-func getWitnessChunk(m pb.Message, fs vfs.IFS) ([]pb.Chunk, error) {
+func getWitnessChunk(m pb.Message, fs vfs.FS) ([]pb.Chunk, error) {
 	ss, err := rsm.GetWitnessSnapshot(fs)
 	if err != nil {
 		return nil, err
@@ -287,7 +291,7 @@ func getWitnessChunk(m pb.Message, fs vfs.IFS) ([]pb.Chunk, error) {
 	return results, nil
 }
 
-func splitSnapshotMessage(m pb.Message, fs vfs.IFS) ([]pb.Chunk, error) {
+func splitSnapshotMessage(m pb.Message, fs vfs.FS) ([]pb.Chunk, error) {
 	if m.Type != pb.InstallSnapshot {
 		panic("not a snapshot message")
 	}
@@ -297,8 +301,7 @@ func splitSnapshotMessage(m pb.Message, fs vfs.IFS) ([]pb.Chunk, error) {
 	return getChunks(m), nil
 }
 
-func loadChunkData(chunk pb.Chunk,
-	data []byte, fs vfs.IFS) (result []byte, err error) {
+func loadChunkData(chunk pb.Chunk, data []byte, fs vfs.FS) (result []byte, err error) {
 	f, err := openChunkFileForRead(chunk.Filepath, fs)
 	if err != nil {
 		return nil, err

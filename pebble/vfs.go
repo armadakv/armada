@@ -3,11 +3,12 @@
 package pebble
 
 import (
-	gvfs "github.com/armadakv/armada/vfs"
-	pvfs "github.com/cockroachdb/pebble/v2/vfs"
 	"io"
 	"os"
 	"reflect"
+
+	gvfs "github.com/armadakv/armada/vfs"
+	pvfs "github.com/cockroachdb/pebble/v2/vfs"
 )
 
 type fileCompat struct {

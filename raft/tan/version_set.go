@@ -74,7 +74,8 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 
 // create creates a version set for a fresh DB.
 func (vs *versionSet) create(dirname string, opt *Options, dir vfs.File,
-	mu *sync.Mutex) error {
+	mu *sync.Mutex,
+) error {
 	vs.init(dirname, opt, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
@@ -99,7 +100,8 @@ func (vs *versionSet) create(dirname string, opt *Options, dir vfs.File,
 
 // load loads the version set from the manifest file.
 func (vs *versionSet) load(dirname string,
-	opt *Options, mu *sync.Mutex) (err error) {
+	opt *Options, mu *sync.Mutex,
+) (err error) {
 	vs.init(dirname, opt, mu)
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(makeFilename(vs.fs, dirname, fileTypeCurrent, 0))

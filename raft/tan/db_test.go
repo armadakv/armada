@@ -19,7 +19,6 @@
 package tan
 
 import (
-	ivfs "github.com/armadakv/armada/raft/internal/vfs"
 	"math"
 	"os"
 	"sync"
@@ -35,7 +34,7 @@ import (
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
-func reportLeakedFD(fs ivfs.IFS, t *testing.T) {
+func reportLeakedFD(fs vfs.FS, t *testing.T) {
 	mf, ok := fs.(*vfs.MemFS)
 	if !ok {
 		return
@@ -481,7 +480,7 @@ func TestDBConcurrentAccess(t *testing.T) {
 		FS:                  fs,
 	}
 	dirname := "db-dir"
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	db, err := open(dirname, dirname, opts)
 	require.NoError(t, err)
 	defer db.close()
@@ -638,7 +637,7 @@ func TestRebuildLog(t *testing.T) {
 	}
 	dirname := "db-dir"
 	require.NoError(t, fs.RemoveAll(dirname))
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	defer func() {
 		require.NoError(t, fs.RemoveAll(dirname))
 	}()
@@ -660,7 +659,7 @@ func TestRebuildLog(t *testing.T) {
 	require.NoError(t, db.close())
 	logFn := makeFilename(fs, dirname, fileTypeLog, logNum)
 	idxFn := makeFilename(fs, dirname, fileTypeIndex, logNum)
-	lf, err := os.OpenFile(logFn, os.O_RDWR, 0755)
+	lf, err := os.OpenFile(logFn, os.O_RDWR, 0o755)
 	require.NoError(t, err)
 	fi, err := lf.Stat()
 	require.NoError(t, err)

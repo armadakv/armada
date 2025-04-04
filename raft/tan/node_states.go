@@ -70,7 +70,8 @@ func (s *nodeStates) getIndex(shardID uint64, replicaID uint64) *nodeIndex {
 }
 
 func (s *nodeStates) save(dirname string,
-	dir vfs.File, fileNum fileNum, fs vfs.FS) (err error) {
+	dir vfs.File, fileNum fileNum, fs vfs.FS,
+) (err error) {
 	tmpFn := makeFilename(fs, dirname, fileTypeIndexTemp, fileNum)
 	fn := makeFilename(fs, dirname, fileTypeIndex, fileNum)
 	file, err := fs.Create(tmpFn, "")
@@ -250,7 +251,8 @@ func (s *nodeStates) queryState(shardID uint64, replicaID uint64) (indexEntry, b
 }
 
 func (s *nodeStates) query(shardID uint64, replicaID uint64,
-	low uint64, high uint64) ([]indexEntry, bool) {
+	low uint64, high uint64,
+) ([]indexEntry, bool) {
 	n := s.getIndex(shardID, replicaID)
 	return n.query(low, high)
 }

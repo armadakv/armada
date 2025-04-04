@@ -47,7 +47,8 @@ type MessageQueue struct {
 
 // NewMessageQueue creates a new MessageQueue instance.
 func NewMessageQueue(size uint64,
-	ch bool, lazyFreeCycle uint64, maxMemorySize uint64) *MessageQueue {
+	ch bool, lazyFreeCycle uint64, maxMemorySize uint64,
+) *MessageQueue {
 	q := &MessageQueue{
 		rl:            NewRateLimiter(maxMemorySize),
 		size:          size,

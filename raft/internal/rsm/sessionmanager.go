@@ -45,7 +45,8 @@ func (ds *SessionManager) GetSessionHash() uint64 {
 // UpdateRespondedTo updates the responded to value of the specified
 // client session.
 func (ds *SessionManager) UpdateRespondedTo(session *Session,
-	respondedTo uint64) {
+	respondedTo uint64,
+) {
 	session.clearTo(RaftSeriesID(respondedTo))
 }
 
@@ -98,7 +99,8 @@ func (ds *SessionManager) ClientRegistered(clientID uint64) (*Session, bool) {
 // UpdateRequired return a tuple of request result, responded before,
 // update required.
 func (ds *SessionManager) UpdateRequired(session *Session,
-	seriesID uint64) (sm.Result, bool, bool) {
+	seriesID uint64,
+) (sm.Result, bool, bool) {
 	if session.hasResponded(RaftSeriesID(seriesID)) {
 		return sm.Result{}, true, false
 	}
@@ -112,7 +114,8 @@ func (ds *SessionManager) UpdateRequired(session *Session,
 // MustHaveClientSeries checks whether the session manager contains a client
 // session identified as clientID and whether it has seriesID responded.
 func (ds *SessionManager) MustHaveClientSeries(session *Session,
-	seriesID uint64) {
+	seriesID uint64,
+) {
 	_, ok := session.getResponse(RaftSeriesID(seriesID))
 	if ok {
 		panic("already has response in session")
@@ -121,7 +124,8 @@ func (ds *SessionManager) MustHaveClientSeries(session *Session,
 
 // AddResponse adds the specified result to the session.
 func (ds *SessionManager) AddResponse(session *Session,
-	seriesID uint64, result sm.Result) {
+	seriesID uint64, result sm.Result,
+) {
 	session.addResponse(RaftSeriesID(seriesID), result)
 }
 

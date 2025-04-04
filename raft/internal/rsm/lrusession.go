@@ -146,7 +146,8 @@ func (rec *lrusession) load(reader io.Reader, v SSVersion) error {
 }
 
 func (rec *lrusession) makeEntry(key RaftClientID,
-	value Session) *cache.Entry {
+	value Session,
+) *cache.Entry {
 	alloc := struct {
 		entry cache.Entry
 		value Session

@@ -33,7 +33,7 @@ func TestVersionSetCanBeCreated(t *testing.T) {
 	fs := vfs.NewMem()
 	defer reportLeakedFD(fs, t)
 	opt := &Options{MaxManifestFileSize: MaxManifestFileSize, FS: fs}
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	dir, err := fs.OpenDir(dirname)
 	require.NoError(t, err)
 	defer dir.Close()
@@ -57,7 +57,7 @@ func testVersionSetCanBeApplied(t *testing.T, fs vfs.FS) {
 	var mu sync.Mutex
 	dirname := "db-dir"
 	opt := &Options{MaxManifestFileSize: MaxManifestFileSize, FS: fs}
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	dir, err := fs.OpenDir(dirname)
 	require.NoError(t, err)
 	defer dir.Close()
@@ -121,7 +121,7 @@ func TestSwitchManifestFile(t *testing.T) {
 	fs := vfs.NewMem()
 	defer reportLeakedFD(fs, t)
 	opt := &Options{MaxManifestFileSize: 1, FS: fs}
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	dir, err := fs.OpenDir(dirname)
 	require.NoError(t, err)
 	defer dir.Close()

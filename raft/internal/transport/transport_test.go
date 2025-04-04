@@ -26,6 +26,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/netutil"
 	"github.com/lni/goutils/syncutil"
@@ -35,7 +37,6 @@ import (
 	"github.com/armadakv/armada/raft/internal/rsm"
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/raftio"
 	"github.com/armadakv/armada/raft/raftpb"
 )
@@ -62,21 +63,23 @@ func (d *dummyTransportEvent) ConnectionEstablished(addr string, snapshot bool) 
 func (d *dummyTransportEvent) ConnectionFailed(addr string, snapshot bool)      {}
 
 type testSnapshotDir struct {
-	fs vfs.IFS
+	fs vfs.FS
 }
 
-func newTestSnapshotDir(fs vfs.IFS) *testSnapshotDir {
+func newTestSnapshotDir(fs vfs.FS) *testSnapshotDir {
 	return &testSnapshotDir{fs: fs}
 }
 
 func (g *testSnapshotDir) GetSnapshotRootDir(shardID uint64,
-	replicaID uint64) string {
+	replicaID uint64,
+) string {
 	snapNodeDir := fmt.Sprintf("snapshot-%d-%d", shardID, replicaID)
 	return g.fs.PathJoin(snapshotDir, snapNodeDir)
 }
 
 func (g *testSnapshotDir) GetSnapshotDir(shardID uint64,
-	replicaID uint64, lastApplied uint64) string {
+	replicaID uint64, lastApplied uint64,
+) string {
 	snapNodeDir := fmt.Sprintf("snapshot-%d-%d", shardID, replicaID)
 	snapDir := fmt.Sprintf("snapshot-%016X", lastApplied)
 	d := g.fs.PathJoin(snapshotDir, snapNodeDir, snapDir)
@@ -84,7 +87,8 @@ func (g *testSnapshotDir) GetSnapshotDir(shardID uint64,
 }
 
 func (g *testSnapshotDir) getSnapshotFileMD5(shardID uint64,
-	replicaID uint64, index uint64, filename string) ([]byte, error) {
+	replicaID uint64, index uint64, filename string,
+) ([]byte, error) {
 	snapDir := g.GetSnapshotDir(shardID, replicaID, index)
 	fp := g.fs.PathJoin(snapDir, filename)
 	f, err := g.fs.Open(fp)
@@ -100,9 +104,10 @@ func (g *testSnapshotDir) getSnapshotFileMD5(shardID uint64,
 }
 
 func (g *testSnapshotDir) generateSnapshotExternalFile(shardID uint64,
-	replicaID uint64, index uint64, filename string, sz uint64) {
+	replicaID uint64, index uint64, filename string, sz uint64,
+) {
 	snapDir := g.GetSnapshotDir(shardID, replicaID, index)
-	if err := g.fs.MkdirAll(snapDir, 0755); err != nil {
+	if err := g.fs.MkdirAll(snapDir, 0o755); err != nil {
 		panic(err)
 	}
 	fp := g.fs.PathJoin(snapDir, filename)
@@ -123,9 +128,10 @@ func (g *testSnapshotDir) generateSnapshotExternalFile(shardID uint64,
 }
 
 func (g *testSnapshotDir) generateSnapshotFile(shardID uint64,
-	replicaID uint64, index uint64, filename string, sz uint64, fs vfs.IFS) {
+	replicaID uint64, index uint64, filename string, sz uint64, fs vfs.FS,
+) {
 	snapDir := g.GetSnapshotDir(shardID, replicaID, index)
-	if err := g.fs.MkdirAll(snapDir, 0755); err != nil {
+	if err := g.fs.MkdirAll(snapDir, 0o755); err != nil {
 		panic(err)
 	}
 	fp := g.fs.PathJoin(snapDir, filename)
@@ -212,7 +218,8 @@ func (h *testMessageHandler) HandleMessageBatch(reqs raftpb.MessageBatch) (uint6
 }
 
 func (h *testMessageHandler) HandleSnapshotStatus(shardID uint64,
-	replicaID uint64, failed bool) {
+	replicaID uint64, failed bool,
+) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	epk := raftio.GetNodeInfo(shardID, replicaID)
@@ -231,7 +238,8 @@ func (h *testMessageHandler) HandleSnapshotStatus(shardID uint64,
 }
 
 func (h *testMessageHandler) HandleUnreachable(shardID uint64,
-	replicaID uint64) {
+	replicaID uint64,
+) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	epk := raftio.GetNodeInfo(shardID, replicaID)
@@ -244,7 +252,8 @@ func (h *testMessageHandler) HandleUnreachable(shardID uint64,
 }
 
 func (h *testMessageHandler) HandleSnapshot(shardID uint64,
-	replicaID uint64, from uint64) {
+	replicaID uint64, from uint64,
+) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	epk := raftio.GetNodeInfo(shardID, replicaID)
@@ -264,37 +273,44 @@ func (h *testMessageHandler) HandleSnapshot(shardID uint64,
 }
 
 func (h *testMessageHandler) getReceivedSnapshotCount(shardID uint64,
-	replicaID uint64) uint64 {
+	replicaID uint64,
+) uint64 {
 	return h.getMessageCount(h.receivedSnapshotCount, shardID, replicaID)
 }
 
 func (h *testMessageHandler) getReceivedSnapshotFromCount(shardID uint64,
-	replicaID uint64) uint64 {
+	replicaID uint64,
+) uint64 {
 	return h.getMessageCount(h.receivedSnapshotFromCount, shardID, replicaID)
 }
 
 func (h *testMessageHandler) getRequestCount(shardID uint64,
-	replicaID uint64) uint64 {
+	replicaID uint64,
+) uint64 {
 	return h.getMessageCount(h.requestCount, shardID, replicaID)
 }
 
 func (h *testMessageHandler) getFailedSnapshotCount(shardID uint64,
-	replicaID uint64) uint64 {
+	replicaID uint64,
+) uint64 {
 	return h.getMessageCount(h.snapshotFailedCount, shardID, replicaID)
 }
 
 func (h *testMessageHandler) getSnapshotSuccessCount(shardID uint64,
-	replicaID uint64) uint64 {
+	replicaID uint64,
+) uint64 {
 	return h.getMessageCount(h.snapshotSuccessCount, shardID, replicaID)
 }
 
 func (h *testMessageHandler) getSnapshotCount(shardID uint64,
-	replicaID uint64) uint64 {
+	replicaID uint64,
+) uint64 {
 	return h.getMessageCount(h.snapshotCount, shardID, replicaID)
 }
 
 func (h *testMessageHandler) getMessageCount(m map[raftio.NodeInfo]uint64,
-	shardID uint64, replicaID uint64) uint64 {
+	shardID uint64, replicaID uint64,
+) uint64 {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	epk := raftio.GetNodeInfo(shardID, replicaID)
@@ -305,8 +321,9 @@ func (h *testMessageHandler) getMessageCount(m map[raftio.NodeInfo]uint64,
 	return 0
 }
 
-func newNOOPTestTransport(handler IMessageHandler, fs vfs.IFS) (*Transport,
-	*registry.Registry, *NOOPTransport, *noopRequest, *noopConnectRequest) {
+func newNOOPTestTransport(handler IMessageHandler, fs vfs.FS) (*Transport,
+	*registry.Registry, *NOOPTransport, *noopRequest, *noopConnectRequest,
+) {
 	t := newTestSnapshotDir(fs)
 	nodes := registry.NewNodeRegistry(nil)
 	c := config.NodeHostConfig{
@@ -333,8 +350,9 @@ func newNOOPTestTransport(handler IMessageHandler, fs vfs.IFS) (*Transport,
 }
 
 func newTestTransport(handler IMessageHandler,
-	mutualTLS bool, fs vfs.IFS) (*Transport, *registry.Registry,
-	*syncutil.Stopper, *testSnapshotDir) {
+	mutualTLS bool, fs vfs.FS) (*Transport, *registry.Registry,
+	*syncutil.Stopper, *testSnapshotDir,
+) {
 	stopper := syncutil.NewStopper()
 	nodes := registry.NewNodeRegistry(nil)
 	t := newTestSnapshotDir(fs)
@@ -359,7 +377,7 @@ func newTestTransport(handler IMessageHandler,
 	return transport, nodes, stopper, t
 }
 
-func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.IFS) {
+func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.FS) {
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
@@ -432,7 +450,7 @@ func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.IFS) {
 }
 
 func TestMessageCanBeSent(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	testMessageCanBeSent(t, false, settings.LargeEntitySize+1, fs)
 	testMessageCanBeSent(t, false, recvBufSize/2, fs)
@@ -458,7 +476,7 @@ func TestMessageCanBeSent(t *testing.T) {
 // net.core.rmem_max = 25165824
 // net.ipv4.tcp_rmem = 4096 87380 25165824
 // net.ipv4.tcp_wmem = 4096 87380 25165824
-func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.IFS) {
+func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.FS) {
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
@@ -500,14 +518,15 @@ func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.I
 
 // latency need to be simulated by configuring your environment
 func TestMessageCanBeSentWithLargeLatency(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	testMessageCanBeSentWithLargeLatency(t, true, fs)
 	testMessageCanBeSentWithLargeLatency(t, false, fs)
 }
 
 func testMessageBatchWithNotMatchedDBVAreDropped(t *testing.T,
-	f SendMessageBatchFunc, mutualTLS bool, fs vfs.IFS) {
+	f SendMessageBatchFunc, mutualTLS bool, fs vfs.FS,
+) {
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
@@ -542,7 +561,7 @@ func testMessageBatchWithNotMatchedDBVAreDropped(t *testing.T,
 }
 
 func TestMessageBatchWithNotMatchedDeploymentIDAreDropped(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	f := func(b raftpb.MessageBatch) (raftpb.MessageBatch, bool) {
 		b.DeploymentId = 2
@@ -558,7 +577,7 @@ func TestMessageBatchWithNotMatchedBinVerAreDropped(t *testing.T) {
 		b.BinVer = raftio.TransportBinVersion + 1
 		return b, true
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testMessageBatchWithNotMatchedDBVAreDropped(t, f, true, fs)
 	testMessageBatchWithNotMatchedDBVAreDropped(t, f, false, fs)
 }
@@ -579,7 +598,7 @@ func (t *Transport) queueSize() int {
 }
 
 func TestCircuitBreakerKicksInOnConnectivityIssue(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(handler, false, fs)
@@ -641,7 +660,7 @@ func getTestSnapshotMessage(to uint64) raftpb.Message {
 }
 
 func TestSnapshotCanBeSent(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	mutualTLSValues := []bool{true, false}
 	for _, v := range mutualTLSValues {
@@ -656,7 +675,7 @@ func TestSnapshotCanBeSent(t *testing.T) {
 
 // FIXME: re-enable this test
 /*
-func testSourceAddressWillBeAddedToNodeRegistry(t *testing.T, mutualTLS bool, fs vfs.IFS) {
+func testSourceAddressWillBeAddedToNodeRegistry(t *testing.T, mutualTLS bool, fs vfs.FS) {
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, _ := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
@@ -708,14 +727,15 @@ func testSourceAddressWillBeAddedToNodeRegistry(t *testing.T, mutualTLS bool, fs
 }
 
 func TestSourceAddressWillBeAddedToNodeRegistry(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	testSourceAddressWillBeAddedToNodeRegistry(t, true, fs)
 	testSourceAddressWillBeAddedToNodeRegistry(t, false, fs)
 }*/
 
 func waitForTotalSnapshotStatusUpdateCount(handler *testMessageHandler,
-	maxWait uint64, count uint64) {
+	maxWait uint64, count uint64,
+) {
 	total := uint64(0)
 
 	for total < maxWait {
@@ -735,11 +755,11 @@ func waitForTotalSnapshotStatusUpdateCount(handler *testMessageHandler,
 			return
 		}
 	}
-
 }
 
 func waitForFirstSnapshotStatusUpdate(handler *testMessageHandler,
-	maxWait uint64) {
+	maxWait uint64,
+) {
 	total := uint64(0)
 	for total < maxWait {
 		time.Sleep(10 * time.Millisecond)
@@ -778,7 +798,8 @@ type noopCompactor struct{}
 func (noopCompactor) Compact(uint64) error { return nil }
 
 func testSnapshotCanBeSent(t *testing.T,
-	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.IFS) {
+	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.FS,
+) {
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
@@ -808,7 +829,7 @@ func testSnapshotCanBeSent(t *testing.T,
 	chunks := NewChunk(trans.handleRequest,
 		trans.snapshotReceived, trans.dir, trans.nhConfig.GetDeploymentID(), fs)
 	snapDir := chunks.dir(100, 2)
-	if err := fs.MkdirAll(snapDir, 0755); err != nil {
+	if err := fs.MkdirAll(snapDir, 0o755); err != nil {
 		t.Fatalf("%v", err)
 	}
 	m.Snapshot.Filepath = fs.PathJoin(dir, "testsnapshot.gbsnap")
@@ -855,7 +876,8 @@ func testSnapshotCanBeSent(t *testing.T,
 }
 
 func testSnapshotWithNotMatchedDBVWillBeDropped(t *testing.T,
-	f StreamChunkSendFunc, mutualTLS bool, fs vfs.IFS) {
+	f StreamChunkSendFunc, mutualTLS bool, fs vfs.FS,
+) {
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
@@ -897,7 +919,7 @@ func testSnapshotWithNotMatchedDBVWillBeDropped(t *testing.T,
 }
 
 func TestSnapshotWithNotMatchedDeploymentIDWillBeDropped(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	f := func(c raftpb.Chunk) (raftpb.Chunk, bool) {
 		c.DeploymentId = 2
@@ -908,7 +930,7 @@ func TestSnapshotWithNotMatchedDeploymentIDWillBeDropped(t *testing.T) {
 }
 
 func TestSnapshotWithNotMatchedBinVerWillBeDropped(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	f := func(c raftpb.Chunk) (raftpb.Chunk, bool) {
 		c.BinVer = raftio.TransportBinVersion + 1
@@ -919,7 +941,7 @@ func TestSnapshotWithNotMatchedBinVerWillBeDropped(t *testing.T) {
 }
 
 func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(handler, false, fs)
 	defer func() {
@@ -969,7 +991,8 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 }
 
 func testFailedConnectionReportsSnapshotFailure(t *testing.T,
-	mutualTLS bool, fs vfs.IFS) {
+	mutualTLS bool, fs vfs.FS,
+) {
 	snapshotSize := snapshotChunkSize * 10
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
@@ -1007,14 +1030,15 @@ func testFailedConnectionReportsSnapshotFailure(t *testing.T,
 }
 
 func TestFailedConnectionReportsSnapshotFailure(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	testFailedConnectionReportsSnapshotFailure(t, true, fs)
 	testFailedConnectionReportsSnapshotFailure(t, false, fs)
 }
 
 func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
-	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.IFS) {
+	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.FS,
+) {
 	handler := newTestMessageHandler()
 	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
@@ -1038,7 +1062,7 @@ func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
 		trans.snapshotReceived, trans.dir, trans.nhConfig.GetDeploymentID(), fs)
 	ts := getTestChunk()
 	snapDir := chunks.dir(ts[0].ShardID, ts[0].ReplicaID)
-	if err := fs.MkdirAll(snapDir, 0755); err != nil {
+	if err := fs.MkdirAll(snapDir, 0o755); err != nil {
 		t.Fatalf("%v", err)
 	}
 	nodes.Add(100, 2, serverAddress)
@@ -1099,7 +1123,7 @@ func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
 }
 
 func TestSnapshotWithExternalFilesCanBeSend(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize/2, 3000, false, fs)
 	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize*3+100, 3000, false, fs)
 	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize/2, 3000, true, fs)
@@ -1107,7 +1131,7 @@ func TestSnapshotWithExternalFilesCanBeSend(t *testing.T) {
 }
 
 func TestNoOPTransportCanBeCreated(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, _, _, _, _ := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1118,7 +1142,7 @@ func TestNoOPTransportCanBeCreated(t *testing.T) {
 }
 
 func TestInitialMessageCanBeSent(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, noopTransport, req, connReq := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1156,7 +1180,7 @@ func TestInitialMessageCanBeSent(t *testing.T) {
 }
 
 func TestFailedConnectionIsRemovedFromTransport(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, _, req, connReq := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1195,7 +1219,7 @@ func TestFailedConnectionIsRemovedFromTransport(t *testing.T) {
 }
 
 func TestCircuitBreakerCauseFailFast(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, noopTransport, req, connReq := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1246,7 +1270,7 @@ func TestCircuitBreakerCauseFailFast(t *testing.T) {
 }
 
 func TestCircuitBreakerForResolveNotShared(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, noopTransport, req, connReq := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1292,7 +1316,7 @@ func TestCircuitBreakerForResolveNotShared(t *testing.T) {
 
 // unknown target
 func TestStreamToUnknownTargetWillHaveSnapshotStatusUpdated(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, _, _, _ := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1315,7 +1339,7 @@ func TestStreamToUnknownTargetWillHaveSnapshotStatusUpdated(t *testing.T) {
 
 // failed to connect
 func TestFailedStreamConnectionWillHaveSnapshotStatusUpdated(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, _, req, connReq := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1343,7 +1367,7 @@ func TestFailedStreamConnectionWillHaveSnapshotStatusUpdated(t *testing.T) {
 
 // failed to connect due to too many connections
 func TestFailedStreamingDueToTooManyConnectionsHaveStatusUpdated(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, _, _, _ := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1380,7 +1404,7 @@ func TestFailedStreamingDueToTooManyConnectionsHaveStatusUpdated(t *testing.T) {
 }
 
 func TestInMemoryEntrySizeCanBeLimitedWhenSendingMessages(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, _, req, _ := newNOOPTestTransport(handler, fs)
 	defer func() {
@@ -1415,7 +1439,7 @@ func TestInMemoryEntrySizeCanBeLimitedWhenSendingMessages(t *testing.T) {
 }
 
 func TestInMemoryEntrySizeCanDropToZero(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
 	tt, nodes, _, _, _ := newNOOPTestTransport(handler, fs)
 	defer func() {
