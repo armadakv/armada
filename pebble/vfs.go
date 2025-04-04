@@ -3,11 +3,11 @@
 package pebble
 
 import (
-	"io"
-	"os"
-
 	gvfs "github.com/armadakv/armada/vfs"
 	pvfs "github.com/cockroachdb/pebble/v2/vfs"
+	"io"
+	"os"
+	"reflect"
 )
 
 type fileCompat struct {
@@ -27,7 +27,12 @@ type statCompat struct {
 }
 
 func (s *statCompat) DeviceID() pvfs.DeviceID {
-	return s.DeviceID()
+	id := s.FileInfo.DeviceID()
+	pid := pvfs.DeviceID{}
+	v := reflect.ValueOf(&pid).Elem()
+	*(*uint64)(v.FieldByName("major").Addr().UnsafePointer()) = uint64(id.Major())
+	*(*uint64)(v.FieldByName("minor").Addr().UnsafePointer()) = uint64(id.Minor())
+	return pid
 }
 
 // FS is a wrapper struct that implements the pebble/vfs.FS interface.

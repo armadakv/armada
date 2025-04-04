@@ -193,6 +193,16 @@ type DeviceID struct {
 	minor uint32
 }
 
+// Major returns the major device number.
+func (d DeviceID) Major() uint32 {
+	return d.major
+}
+
+// Minor returns the minor device number.
+func (d DeviceID) Minor() uint32 {
+	return d.minor
+}
+
 // String returns the string representation of the device ID.
 func (d DeviceID) String() string {
 	return fmt.Sprintf("%d:%d", d.major, d.minor)
