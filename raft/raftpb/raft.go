@@ -20,10 +20,11 @@ import (
 	"strings"
 	"unsafe"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/lni/goutils/stringutil"
 
 	"github.com/armadakv/armada/raft/client"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/logger"
 )
 
@@ -127,7 +128,8 @@ func (m *Entry) IsUpdateEntry() bool {
 
 // NewBootstrapInfo creates and returns a new bootstrap record.
 func NewBootstrapInfo(join bool,
-	smType StateMachineType, nodes map[uint64]string) Bootstrap {
+	smType StateMachineType, nodes map[uint64]string,
+) Bootstrap {
 	bootstrap := Bootstrap{
 		Join:      join,
 		Addresses: make(map[uint64]string),
@@ -142,7 +144,8 @@ func NewBootstrapInfo(join bool,
 // Validate checks whether the incoming nodes parameter and the join flag is
 // valid given the recorded bootstrap infomration in Log DB.
 func (b *Bootstrap) Validate(nodes map[uint64]string,
-	join bool, smType StateMachineType) bool {
+	join bool, smType StateMachineType,
+) bool {
 	if b.Type != UnknownStateMachine && b.Type != smType {
 		plog.Errorf("recorded sm type %s, got %s", b.Type, smType)
 		return false
@@ -180,7 +183,7 @@ func (b *Bootstrap) Validate(nodes map[uint64]string,
 	return valid
 }
 
-func checkFileSize(path string, size uint64, fs vfs.IFS) {
+func checkFileSize(path string, size uint64, fs vfs.FS) {
 	fi, err := fs.Stat(path)
 	if err != nil {
 		plog.Panicf("failed to access %s", path)
@@ -191,7 +194,7 @@ func checkFileSize(path string, size uint64, fs vfs.IFS) {
 }
 
 // Validate validates the snapshot instance.
-func (snapshot *Snapshot) Validate(fs vfs.IFS) bool {
+func (snapshot *Snapshot) Validate(fs vfs.FS) bool {
 	if len(snapshot.Filepath) == 0 || snapshot.FileSize == 0 {
 		return false
 	}

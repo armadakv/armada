@@ -38,9 +38,7 @@ import (
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
-var (
-	testRateLimit = uint64(1024 * 128)
-)
+var testRateLimit = uint64(1024 * 128)
 
 func (r *raft) testOnlyHasConfigChangeToApply() bool {
 	entries, err := r.log.getEntriesToApply(noLimit)
@@ -479,9 +477,11 @@ func testLeaderElection(t *testing.T) {
 
 		// three logs further along than 0, but in the same term so rejections
 		// are returned instead of the votes being ignored.
-		{newNetworkWithConfig(cfg,
-			nil, entsWithConfig(cfg, 1), entsWithConfig(cfg, 1), entsWithConfig(cfg, 1, 1), nil),
-			follower, 1},
+		{
+			newNetworkWithConfig(cfg,
+				nil, entsWithConfig(cfg, 1), entsWithConfig(cfg, 1), entsWithConfig(cfg, 1, 1), nil),
+			follower, 1,
+		},
 	}
 
 	for i, tt := range tests {
@@ -1020,7 +1020,8 @@ func TestOldMessages(t *testing.T) {
 		logdb: &TestLogDB{
 			entries: []pb.Entry{
 				{Cmd: nil, Term: 1, Index: 1},
-				{Cmd: nil, Term: 2, Index: 2}, {Cmd: nil, Term: 3, Index: 3},
+				{Cmd: nil, Term: 2, Index: 2},
+				{Cmd: nil, Term: 3, Index: 3},
 				{Cmd: []byte("somedata"), Term: 3, Index: 4},
 			},
 		},
@@ -1085,7 +1086,8 @@ func TestProposal(t *testing.T) {
 					entries: []pb.Entry{{Cmd: nil, Term: 1, Index: 1}, {Term: 1, Index: 2, Cmd: data}},
 				},
 				inmem:     inMemory{markerIndex: 3},
-				committed: 2}
+				committed: 2,
+			}
 		}
 		base := ltoa(wantLog)
 		for i, p := range tt.peers {
@@ -1124,7 +1126,8 @@ func TestProposalByProxy(t *testing.T) {
 				entries: []pb.Entry{{Cmd: nil, Term: 1, Index: 1}, {Term: 1, Cmd: data, Index: 2}},
 			},
 			inmem:     inMemory{markerIndex: 3},
-			committed: 2}
+			committed: 2,
+		}
 		base := ltoa(wantLog)
 		for i, p := range tt.peers {
 			if sm, ok := p.(*raft); ok {
@@ -2727,13 +2730,11 @@ func TestCommitAfterRemoveNode(t *testing.T) {
 	}
 }
 
-var (
-	testingSnap = pb.Snapshot{
-		Index:      11, // magic number
-		Term:       11, // magic number
-		Membership: getTestMembership([]uint64{1, 2}),
-	}
-)
+var testingSnap = pb.Snapshot{
+	Index:      11, // magic number
+	Term:       11, // magic number
+	Membership: getTestMembership([]uint64{1, 2}),
+}
 
 func TestSendingSnapshotSetPendingSnapshot(t *testing.T) {
 	storage := NewTestLogDB()

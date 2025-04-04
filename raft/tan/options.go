@@ -19,7 +19,7 @@
 package tan
 
 import (
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 const (

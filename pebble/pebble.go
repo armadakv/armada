@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 const (
@@ -46,8 +46,10 @@ func DefaultOptions() *pebble.Options {
 	sz := targetFileSizeBase
 	for l := int64(0); l < levels; l++ {
 		opt := pebble.LevelOptions{
-			BlockSize:      blockSize,
-			Compression:    pebble.SnappyCompression,
+			BlockSize: blockSize,
+			Compression: func() pebble.Compression {
+				return pebble.SnappyCompression
+			},
 			FilterPolicy:   bloom.FilterPolicy(10),
 			FilterType:     pebble.TableFilter,
 			IndexBlockSize: indexBlockSize,
@@ -113,7 +115,7 @@ func (fdo *funcOption) apply(do *pebble.Options) {
 
 func WithFS(fs vfs.FS) Option {
 	return &funcOption{func(options *pebble.Options) {
-		options.FS, _ = vfs.WithDiskHealthChecks(fs, 5*time.Second, func(info pebble.DiskSlowInfo) {
+		options.FS, _ = vfs.WithDiskHealthChecks(fs, 5*time.Second, nil, func(info pebble.DiskSlowInfo) {
 			if options.EventListener != nil {
 				options.EventListener.DiskSlow(info)
 			}

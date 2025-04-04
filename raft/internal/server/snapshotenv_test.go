@@ -18,12 +18,25 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/vfs"
+
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
-func reportLeakedFD(fs vfs.IFS, t *testing.T) {
-	vfs.ReportLeakedFD(fs, t)
+func reportLeakedFD(fs vfs.FS, t *testing.T) {
+	mf, ok := fs.(*vfs.MemFS)
+	if !ok {
+		return
+	}
+	ff := func(path string, isDir bool, refs int32) error {
+		if refs != 0 {
+			t.Fatalf("%s (isDir %t) is not closed", path, isDir)
+		}
+		return nil
+	}
+	if err := mf.Iterate(ff); err != nil {
+		t.Fatalf("fs.Iterate failed %v", err)
+	}
 }
 
 func TestGetSnapshotDirName(t *testing.T) {
@@ -76,7 +89,7 @@ func TestTempSuffix(t *testing.T) {
 	f := func(cid uint64, nid uint64) string {
 		return "/data"
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	env := NewSSEnv(f, 1, 1, 1, 2, SnapshotMode, fs)
 	dir := env.GetTempDir()
 	if !strings.Contains(dir, ".generating") {
@@ -94,7 +107,7 @@ func TestFinalSnapshotDirDoesNotContainTempSuffix(t *testing.T) {
 	f := func(cid uint64, nid uint64) string {
 		return "/data"
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	env := NewSSEnv(f, 1, 1, 1, 2, SnapshotMode, fs)
 	dir := env.GetFinalDir()
 	if strings.Contains(dir, ".generating") {
@@ -106,7 +119,7 @@ func TestRootDirIsTheParentOfTempFinalDirs(t *testing.T) {
 	f := func(cid uint64, nid uint64) string {
 		return "/data"
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	env := NewSSEnv(f, 1, 1, 1, 2, SnapshotMode, fs)
 	tmpDir := env.GetTempDir()
 	finalDir := env.GetFinalDir()
@@ -116,7 +129,7 @@ func TestRootDirIsTheParentOfTempFinalDirs(t *testing.T) {
 	reportLeakedFD(fs, t)
 }
 
-func runEnvTest(t *testing.T, f func(t *testing.T, env SSEnv), fs vfs.IFS) {
+func runEnvTest(t *testing.T, f func(t *testing.T, env SSEnv), fs vfs.FS) {
 	rd := "server-pkg-test-data-safe-to-delete"
 	defer func() {
 		if err := fs.RemoveAll(rd); err != nil {
@@ -129,7 +142,7 @@ func runEnvTest(t *testing.T, f func(t *testing.T, env SSEnv), fs vfs.IFS) {
 		}
 		env := NewSSEnv(ff, 1, 1, 1, 2, SnapshotMode, fs)
 		tmpDir := env.GetTempDir()
-		if err := fs.MkdirAll(tmpDir, 0755); err != nil {
+		if err := fs.MkdirAll(tmpDir, 0o755); err != nil {
 			t.Fatalf("%v", err)
 		}
 		f(t, env)
@@ -143,7 +156,7 @@ func TestRenameTempDirToFinalDir(t *testing.T) {
 			t.Errorf("failed to rename dir, %v", err)
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runEnvTest(t, tf, fs)
 }
 
@@ -163,7 +176,7 @@ func TestRenameTempDirToFinalDirCanComplete(t *testing.T) {
 			t.Errorf("flag file not suppose to be there")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runEnvTest(t, tf, fs)
 }
 
@@ -187,7 +200,7 @@ func TestFlagFileExists(t *testing.T) {
 			t.Errorf("flag file not suppose to be there")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runEnvTest(t, tf, fs)
 }
 
@@ -204,14 +217,14 @@ func TestFinalizeSnapshotCanComplete(t *testing.T) {
 			t.Errorf("no final dir")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runEnvTest(t, tf, fs)
 }
 
 func TestFinalizeSnapshotReturnOutOfDateWhenFinalDirExist(t *testing.T) {
 	tf := func(t *testing.T, env SSEnv) {
 		finalDir := env.GetFinalDir()
-		if err := env.fs.MkdirAll(finalDir, 0755); err != nil {
+		if err := env.fs.MkdirAll(finalDir, 0o755); err != nil {
 			t.Fatalf("%v", err)
 		}
 		m := &pb.Message{}
@@ -222,6 +235,6 @@ func TestFinalizeSnapshotReturnOutOfDateWhenFinalDirExist(t *testing.T) {
 			t.Errorf("flag file exist")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runEnvTest(t, tf, fs)
 }

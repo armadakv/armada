@@ -196,13 +196,15 @@ func (d *db) removeAll(shardID uint64, replicaID uint64) error {
 }
 
 func (d *db) importSnapshot(shardID uint64,
-	replicaID uint64, ss pb.Snapshot) error {
+	replicaID uint64, ss pb.Snapshot,
+) error {
 	// TODO: need to remove the bootstrap record first
 	return d.installSnapshot(shardID, replicaID, ss)
 }
 
 func (d *db) installSnapshot(shardID uint64,
-	replicaID uint64, ss pb.Snapshot) error {
+	replicaID uint64, ss pb.Snapshot,
+) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if err := d.removeAllLocked(shardID, replicaID, true); err != nil {

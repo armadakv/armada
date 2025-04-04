@@ -4,7 +4,7 @@ package table
 
 import (
 	"github.com/armadakv/armada/storage/table/fsm"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 type Config struct {

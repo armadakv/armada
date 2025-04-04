@@ -63,7 +63,8 @@ type Peer struct {
 // Launch starts or restarts a Raft node.
 func Launch(config config.Config,
 	logdb ILogDB, events server.IRaftEventListener,
-	addresses []PeerAddress, initial bool, newNode bool) Peer {
+	addresses []PeerAddress, initial bool, newNode bool,
+) Peer {
 	checkLaunchRequest(config, addresses, initial, newNode)
 	plog.Infof("%s created, initial: %t, new: %t",
 		dn(config.ShardID, config.ReplicaID), initial, newNode)
@@ -94,7 +95,8 @@ func (p *Peer) QuiescedTick() error {
 }
 
 func (p *Peer) QueryRaftLog(firstIndex uint64,
-	lastIndex uint64, maxSize uint64) error {
+	lastIndex uint64, maxSize uint64,
+) error {
 	return p.raft.Handle(pb.Message{
 		Type: pb.LogQuery,
 		From: firstIndex,
@@ -196,7 +198,8 @@ func (p *Peer) Handle(m pb.Message) error {
 
 // GetUpdate returns the current state of the Peer.
 func (p *Peer) GetUpdate(moreToApply bool,
-	lastApplied uint64) (pb.Update, error) {
+	lastApplied uint64,
+) (pb.Update, error) {
 	ud, err := p.getUpdate(moreToApply, lastApplied)
 	if err != nil {
 		return pb.Update{}, err
@@ -331,7 +334,8 @@ func (p *Peer) entryLog() *entryLog {
 }
 
 func (p *Peer) getUpdate(moreToApply bool,
-	lastApplied uint64) (pb.Update, error) {
+	lastApplied uint64,
+) (pb.Update, error) {
 	ud := pb.Update{
 		ShardID:       p.raft.shardID,
 		ReplicaID:     p.raft.replicaID,
@@ -379,7 +383,8 @@ func (p *Peer) getUpdate(moreToApply bool,
 }
 
 func checkLaunchRequest(config config.Config,
-	addresses []PeerAddress, initial bool, newNode bool) {
+	addresses []PeerAddress, initial bool, newNode bool,
+) {
 	if config.ReplicaID == 0 {
 		panic("config.ReplicaID must not be zero")
 	}

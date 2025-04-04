@@ -17,9 +17,9 @@ package rsm
 import (
 	"testing"
 
-	"github.com/lni/goutils/leaktest"
+	"github.com/armadakv/armada/vfs"
 
-	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/lni/goutils/leaktest"
 )
 
 const (
@@ -58,12 +58,9 @@ func TestFileWithDuplicatedIDCanNotBeAdded(t *testing.T) {
 }
 
 func TestPrepareFiles(t *testing.T) {
-	fs := vfs.GetTestFS()
-	if fs != vfs.DefaultFS {
-		t.Skip("this test only support the default fs")
-	}
+	fs := vfs.Default
 	defer leaktest.AfterTest(t)()
-	if err := fs.MkdirAll(rdbTestDirectory, 0755); err != nil {
+	if err := fs.MkdirAll(rdbTestDirectory, 0o755); err != nil {
 		t.Errorf("failed to make dir %v", err)
 	}
 	defer func() {
@@ -71,7 +68,7 @@ func TestPrepareFiles(t *testing.T) {
 			t.Fatalf("%v", err)
 		}
 	}()
-	f1, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test1.data"))
+	f1, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test1.data"), "")
 	if err != nil {
 		t.Fatalf("failed to create the file, %v", err)
 	}
@@ -80,7 +77,7 @@ func TestPrepareFiles(t *testing.T) {
 		t.Fatalf("failed to write file %v", err)
 	}
 	f1.Close()
-	f2, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test2.data"))
+	f2, err := fs.Create(fs.PathJoin(rdbTestDirectory, "test2.data"), "")
 	if err != nil {
 		t.Fatalf("failed to create the file, %v", err)
 	}

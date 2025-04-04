@@ -49,9 +49,7 @@ const (
 	maxEntrySliceSize uint64 = 4 * 1024 * 1024
 )
 
-var (
-	plog = logger.GetLogger("logdb")
-)
+var plog = logger.GetLogger("logdb")
 
 var dn = logutil.DescribeNode
 
@@ -75,7 +73,8 @@ var _ raft.ILogDB = (*LogReader)(nil)
 
 // NewLogReader creates and returns a new LogReader instance.
 func NewLogReader(shardID uint64,
-	replicaID uint64, logdb raftio.ILogDB) *LogReader {
+	replicaID uint64, logdb raftio.ILogDB,
+) *LogReader {
 	l := &LogReader{
 		logdb:     logdb,
 		shardID:   shardID,
@@ -108,7 +107,8 @@ func (lr *LogReader) NodeState() (pb.State, pb.Membership) {
 // Entries returns persisted entries between [low, high) with a total limit of
 // up to maxSize bytes.
 func (lr *LogReader) Entries(low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, error) {
 	ents, size, err := lr.entries(low, high, maxSize)
 	if err != nil {
 		return nil, err
@@ -122,14 +122,16 @@ func (lr *LogReader) Entries(low uint64,
 }
 
 func (lr *LogReader) entries(low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, uint64, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, uint64, error) {
 	lr.Lock()
 	defer lr.Unlock()
 	return lr.entriesLocked(low, high, maxSize)
 }
 
 func (lr *LogReader) entriesLocked(low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, uint64, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, uint64, error) {
 	if low > high {
 		return nil, 0, fmt.Errorf("high (%d) < low (%d)", high, low)
 	}

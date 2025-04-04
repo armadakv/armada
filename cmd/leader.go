@@ -18,7 +18,7 @@ import (
 	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage"
 	serrors "github.com/armadakv/armada/storage/errors"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

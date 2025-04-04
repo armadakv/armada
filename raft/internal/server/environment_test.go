@@ -19,12 +19,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/internal/id"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/raftio"
 	"github.com/armadakv/armada/raft/raftpb"
 )
@@ -47,7 +48,7 @@ func getTestNodeHostConfig() config.NodeHostConfig {
 }
 
 func TestCheckNodeHostDirWorksWhenEverythingMatches(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer func() {
 		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
 			t.Fatalf("%v", err)
@@ -95,7 +96,8 @@ func TestCheckNodeHostDirWorksWhenEverythingMatches(t *testing.T) {
 
 func testNodeHostDirectoryDetectsMismatches(t *testing.T,
 	addr string, hostname string, binVer uint32, name string,
-	hardHashMismatch bool, expErr error, fs vfs.IFS) {
+	hardHashMismatch bool, expErr error, fs vfs.FS,
+) {
 	c := getTestNodeHostConfig()
 	defer func() {
 		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
@@ -138,35 +140,35 @@ func testNodeHostDirectoryDetectsMismatches(t *testing.T,
 }
 
 func TestCanDetectMismatchedHostname(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testNodeHostDirectoryDetectsMismatches(t,
 		testAddress, "incorrect-hostname", raftio.LogDBBinVersion,
 		testLogDBName, false, ErrHostnameChanged, fs)
 }
 
 func TestCanDetectMismatchedLogDBName(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testNodeHostDirectoryDetectsMismatches(t,
 		testAddress, "", raftio.LogDBBinVersion,
 		"incorrect name", false, ErrLogDBType, fs)
 }
 
 func TestCanDetectMismatchedBinVer(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testNodeHostDirectoryDetectsMismatches(t,
 		testAddress, "", raftio.LogDBBinVersion+1,
 		testLogDBName, false, ErrIncompatibleData, fs)
 }
 
 func TestCanDetectMismatchedAddress(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	testNodeHostDirectoryDetectsMismatches(t,
 		"invalid:12345", "", raftio.LogDBBinVersion,
 		testLogDBName, false, ErrNotOwner, fs)
 }
 
 func TestLockFileCanBeLockedAndUnlocked(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	c := getTestNodeHostConfig()
 	defer func() {
 		if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
@@ -190,11 +192,11 @@ func TestLockFileCanBeLockedAndUnlocked(t *testing.T) {
 }
 
 func TestNodeHostIDCanBeGenerated(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if err := fs.MkdirAll(singleNodeHostTestDir, 0755); err != nil {
+	if err := fs.MkdirAll(singleNodeHostTestDir, 0o755); err != nil {
 		t.Fatalf("%v", err)
 	}
 	defer func() {
@@ -217,11 +219,11 @@ func TestNodeHostIDCanBeGenerated(t *testing.T) {
 }
 
 func TestPrepareNodeHostIDWillReportNodeHostIDChange(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if err := fs.MkdirAll(singleNodeHostTestDir, 0755); err != nil {
+	if err := fs.MkdirAll(singleNodeHostTestDir, 0o755); err != nil {
 		t.Fatalf("%v", err)
 	}
 	defer func() {
@@ -255,11 +257,11 @@ func TestPrepareNodeHostIDWillReportNodeHostIDChange(t *testing.T) {
 }
 
 func TestRemoveSavedSnapshots(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	if err := fs.RemoveAll(singleNodeHostTestDir); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if err := fs.MkdirAll(singleNodeHostTestDir, 0755); err != nil {
+	if err := fs.MkdirAll(singleNodeHostTestDir, 0o755); err != nil {
 		t.Fatalf("%v", err)
 	}
 	defer func() {
@@ -269,13 +271,13 @@ func TestRemoveSavedSnapshots(t *testing.T) {
 	}()
 	for i := 0; i < 16; i++ {
 		ssdir := fs.PathJoin(singleNodeHostTestDir, fmt.Sprintf("snapshot-%X", i))
-		if err := fs.MkdirAll(ssdir, 0755); err != nil {
+		if err := fs.MkdirAll(ssdir, 0o755); err != nil {
 			t.Fatalf("failed to mkdir %v", err)
 		}
 	}
 	for i := 1; i <= 2; i++ {
 		ssdir := fs.PathJoin(singleNodeHostTestDir, fmt.Sprintf("mydata-%X", i))
-		if err := fs.MkdirAll(ssdir, 0755); err != nil {
+		if err := fs.MkdirAll(ssdir, 0o755); err != nil {
 			t.Fatalf("failed to mkdir %v", err)
 		}
 	}
@@ -307,7 +309,7 @@ func TestWALDirCanBeSet(t *testing.T) {
 		NodeHostDir: "d1",
 		WALDir:      walDir,
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	c, err := NewEnv(nhConfig, fs)
 	if err != nil {
 		t.Fatalf("failed to get environment %v", err)

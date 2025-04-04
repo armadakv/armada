@@ -21,7 +21,7 @@ import (
 
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/raftio"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 // dbKeeper keeps all tan db instances managed by a tan LogDB.

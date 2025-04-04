@@ -21,7 +21,7 @@ package tan
 import (
 	"testing"
 
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 	"github.com/stretchr/testify/require"
 )
 

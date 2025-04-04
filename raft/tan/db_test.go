@@ -24,15 +24,31 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/armadakv/armada/vfs"
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/leaktest"
-	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
+
+func reportLeakedFD(fs vfs.FS, t *testing.T) {
+	mf, ok := fs.(*vfs.MemFS)
+	if !ok {
+		return
+	}
+	ff := func(path string, isDir bool, refs int32) error {
+		if refs != 0 {
+			t.Fatalf("%s (isDir %t) is not closed", path, isDir)
+		}
+		return nil
+	}
+	if err := mf.Iterate(ff); err != nil {
+		t.Fatalf("fs.Iterate failed %v", err)
+	}
+}
 
 func runTanTest(t *testing.T, opts *Options, tf func(t *testing.T, d *db), fs vfs.FS) {
 	defer leaktest.AfterTest(t)()
@@ -45,7 +61,7 @@ func runTanTest(t *testing.T, opts *Options, tf func(t *testing.T, d *db), fs vf
 	} else if opts.FS == nil {
 		panic("fs not specified")
 	}
-	defer vfs.ReportLeakedFD(opts.FS, t)
+	defer reportLeakedFD(opts.FS, t)
 	dirname := "/Users/lni/db-dir"
 	require.NoError(t, fileutil.MkdirAll(dirname, opts.FS))
 	db, err := open(dirname, dirname, opts)
@@ -457,14 +473,14 @@ func TestDBRestart(t *testing.T) {
 func TestDBConcurrentAccess(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	fs := vfs.NewMem()
-	defer vfs.ReportLeakedFD(fs, t)
+	defer reportLeakedFD(fs, t)
 	opts := &Options{
 		MaxLogFileSize:      1,
 		MaxManifestFileSize: MaxManifestFileSize,
 		FS:                  fs,
 	}
 	dirname := "db-dir"
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	db, err := open(dirname, dirname, opts)
 	require.NoError(t, err)
 	defer db.close()
@@ -614,14 +630,14 @@ func TestRebuildIndex(t *testing.T) {
 func TestRebuildLog(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	fs := vfs.Default
-	defer vfs.ReportLeakedFD(fs, t)
+	defer reportLeakedFD(fs, t)
 	opts := &Options{
 		MaxManifestFileSize: MaxManifestFileSize,
 		FS:                  fs,
 	}
 	dirname := "db-dir"
 	require.NoError(t, fs.RemoveAll(dirname))
-	require.NoError(t, fs.MkdirAll(dirname, 0700))
+	require.NoError(t, fs.MkdirAll(dirname, 0o700))
 	defer func() {
 		require.NoError(t, fs.RemoveAll(dirname))
 	}()
@@ -643,7 +659,7 @@ func TestRebuildLog(t *testing.T) {
 	require.NoError(t, db.close())
 	logFn := makeFilename(fs, dirname, fileTypeLog, logNum)
 	idxFn := makeFilename(fs, dirname, fileTypeIndex, logNum)
-	lf, err := os.OpenFile(logFn, os.O_RDWR, 0755)
+	lf, err := os.OpenFile(logFn, os.O_RDWR, 0o755)
 	require.NoError(t, err)
 	fi, err := lf.Stat()
 	require.NoError(t, err)

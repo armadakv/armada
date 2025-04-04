@@ -41,7 +41,8 @@ func newReadIndex() *readIndex {
 }
 
 func (r *readIndex) addRequest(index uint64,
-	ctx raftpb.SystemCtx, from uint64) {
+	ctx raftpb.SystemCtx, from uint64,
+) {
 	if _, ok := r.pending[ctx]; ok {
 		return
 	}
@@ -75,7 +76,8 @@ func (r *readIndex) peepCtx() raftpb.SystemCtx {
 }
 
 func (r *readIndex) confirm(ctx raftpb.SystemCtx,
-	from uint64, quorum int) []*readStatus {
+	from uint64, quorum int,
+) []*readStatus {
 	p, ok := r.pending[ctx]
 	if !ok {
 		return nil

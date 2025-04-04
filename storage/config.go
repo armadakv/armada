@@ -4,7 +4,7 @@ package storage
 
 import (
 	"github.com/armadakv/armada/storage/table"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 	"go.uber.org/zap"
 )
 

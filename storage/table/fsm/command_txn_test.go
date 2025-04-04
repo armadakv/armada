@@ -3,6 +3,7 @@
 package fsm
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,8 +11,8 @@ import (
 
 	rp "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/regattapb"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,6 +23,10 @@ func (e errorReader) Get(key []byte) (value []byte, closer io.Closer, err error)
 }
 
 func (e errorReader) NewIter(o *pebble.IterOptions) (*pebble.Iterator, error) {
+	return &pebble.Iterator{}, nil
+}
+
+func (e errorReader) NewIterWithContext(ctx context.Context, o *pebble.IterOptions) (*pebble.Iterator, error) {
 	return &pebble.Iterator{}, nil
 }
 

@@ -128,7 +128,8 @@ type NOOPTransportFactory struct{}
 // Create creates a noop transport instance.
 func (n *NOOPTransportFactory) Create(nhConfig config.NodeHostConfig,
 	handler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler) raftio.ITransport {
+	chunkHandler raftio.ChunkHandler,
+) raftio.ITransport {
 	return NewNOOPTransport(nhConfig, handler, chunkHandler)
 }
 
@@ -151,7 +152,8 @@ type NOOPTransport struct {
 // NewNOOPTransport creates a new NOOPTransport instance.
 func NewNOOPTransport(nhConfig config.NodeHostConfig,
 	requestHandler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler) raftio.ITransport {
+	chunkHandler raftio.ChunkHandler,
+) raftio.ITransport {
 	return &NOOPTransport{
 		req:     &noopRequest{},
 		connReq: &noopConnectRequest{},
@@ -170,7 +172,8 @@ func (g *NOOPTransport) Close() error {
 
 // GetConnection returns a connection.
 func (g *NOOPTransport) GetConnection(ctx context.Context,
-	target string) (raftio.IConnection, error) {
+	target string,
+) (raftio.IConnection, error) {
 	atomic.AddUint64(&g.tryConnect, 1)
 	if g.connReq.Fail() {
 		return nil, ErrRequestedToFail
@@ -181,7 +184,8 @@ func (g *NOOPTransport) GetConnection(ctx context.Context,
 
 // GetSnapshotConnection returns a snapshot connection.
 func (g *NOOPTransport) GetSnapshotConnection(ctx context.Context,
-	target string) (raftio.ISnapshotConnection, error) {
+	target string,
+) (raftio.ISnapshotConnection, error) {
 	atomic.AddUint64(&g.tryConnect, 1)
 	if g.connReq.Fail() {
 		return nil, ErrRequestedToFail

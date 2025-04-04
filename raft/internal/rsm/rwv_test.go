@@ -125,7 +125,8 @@ func TestWellFormedDataCanPassV2Validator(t *testing.T) {
 }
 
 func testCorruptedDataCanBeDetectedByValidator(t *testing.T,
-	corruptFn func([]byte) []byte, ok bool) {
+	corruptFn func([]byte) []byte, ok bool,
+) {
 	szs := []uint64{
 		1,
 		blockSize,
@@ -302,10 +303,12 @@ func TestBlockReaderCanReadData(t *testing.T) {
 		blockSize*128 - 4,
 	}
 	for idx, sz := range testSz {
-		readBufSz := []uint64{3, 1,
+		readBufSz := []uint64{
+			3, 1,
 			blockSize - 1, blockSize, blockSize + 1,
 			blockSize * 3, blockSize*3 - 1, blockSize*3 + 1,
-			sz, sz - 1, sz + 1}
+			sz, sz - 1, sz + 1,
+		}
 		for _, bufSz := range readBufSz {
 			buf := bytes.NewBuffer(make([]byte, 0, 128*1024))
 			onBlock := func(data []byte, crc []byte) error {

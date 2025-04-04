@@ -25,10 +25,8 @@ import (
 	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
-var (
-	// ErrShardClosed indicates that the shard has been closed
-	ErrShardClosed = errors.New("raft shard already closed")
-)
+// ErrShardClosed indicates that the shard has been closed
+var ErrShardClosed = errors.New("raft shard already closed")
 
 // IStreamable is the interface for types that can be snapshot streamed.
 type IStreamable interface {
@@ -104,13 +102,16 @@ type NativeSM struct {
 	mu     sync.RWMutex
 }
 
-var _ ISavable = (*NativeSM)(nil)
-var _ IStreamable = (*NativeSM)(nil)
-var _ IRecoverable = (*NativeSM)(nil)
+var (
+	_ ISavable     = (*NativeSM)(nil)
+	_ IStreamable  = (*NativeSM)(nil)
+	_ IRecoverable = (*NativeSM)(nil)
+)
 
 // NewNativeSM creates and returns a new NativeSM object.
 func NewNativeSM(config config.Config, ism IStateMachine,
-	done <-chan struct{}) *NativeSM {
+	done <-chan struct{},
+) *NativeSM {
 	s := &NativeSM{
 		config: config,
 		sm:     ism,
@@ -229,7 +230,8 @@ func (ds *NativeSM) Prepare() (interface{}, error) {
 
 // Save saves the state of the data store to the specified writer.
 func (ds *NativeSM) Save(meta SSMeta,
-	w io.Writer, session []byte, c sm.ISnapshotFileCollection) (bool, error) {
+	w io.Writer, session []byte, c sm.ISnapshotFileCollection,
+) (bool, error) {
 	if ds.config.IsWitness || (ds.sm.OnDisk() && !meta.Request.Exported()) {
 		return true, ds.saveDummy(w, session)
 	}
@@ -247,7 +249,8 @@ func (ds *NativeSM) saveDummy(w io.Writer, session []byte) error {
 }
 
 func (ds *NativeSM) save(ctx interface{},
-	w io.Writer, session []byte, c sm.ISnapshotFileCollection) error {
+	w io.Writer, session []byte, c sm.ISnapshotFileCollection,
+) error {
 	if _, err := w.Write(session); err != nil {
 		return err
 	}

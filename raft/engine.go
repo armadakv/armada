@@ -100,7 +100,8 @@ func (l *loadedNodes) get(shardID uint64, replicaID uint64) *node {
 }
 
 func (l *loadedNodes) update(workerID uint64,
-	from from, nodes map[uint64]*node) {
+	from from, nodes map[uint64]*node,
+) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	nt := nodeType{workerID: workerID, from: from}
@@ -114,7 +115,8 @@ func (l *loadedNodes) updateFromBusySSNodes(nodes map[uint64]*node) {
 
 // nodes is a map of shardID -> *node
 func (l *loadedNodes) updateFromLoadedSSNodes(from from,
-	nodes map[uint64]*node) {
+	nodes map[uint64]*node,
+) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	nt := nodeType{workerID: 0, from: from}
@@ -331,7 +333,8 @@ type workerPool struct {
 }
 
 func newWorkerPool(nh nodeLoader,
-	snapshotWorkerCount uint64, loaded *loadedNodes) *workerPool {
+	snapshotWorkerCount uint64, loaded *loadedNodes,
+) *workerPool {
 	w := &workerPool{
 		nh:            nh,
 		loaded:        loaded,
@@ -1006,7 +1009,8 @@ type engine struct {
 }
 
 func newExecEngine(nh nodeLoader, cfg config.EngineConfig, notifyCommit bool,
-	errorInjection bool, env *server.Env, logdb raftio.ILogDB) *engine {
+	errorInjection bool, env *server.Env, logdb raftio.ILogDB,
+) *engine {
 	if cfg.ExecShards == 0 {
 		panic("ExecShards == 0")
 	}
@@ -1093,7 +1097,8 @@ func (e *engine) destroyedC(shardID uint64, replicaID uint64) <-chan struct{} {
 
 func (e *engine) load(workerID uint64,
 	cci uint64, nodes map[uint64]*node,
-	from from, ready *workReady) (map[uint64]*node, uint64) {
+	from from, ready *workReady,
+) (map[uint64]*node, uint64) {
 	result, offloaded, cci := e.loadBucketNodes(workerID, cci, nodes,
 		ready.getPartitioner(), from)
 	e.loaded.update(workerID, from, result)
@@ -1129,12 +1134,14 @@ func (e *engine) commitWorkerMain(workerID uint64) {
 }
 
 func (e *engine) loadCommitNodes(workerID uint64, cci uint64,
-	nodes map[uint64]*node) (map[uint64]*node, uint64) {
+	nodes map[uint64]*node,
+) (map[uint64]*node, uint64) {
 	return e.load(workerID, cci, nodes, fromCommitWorker, e.commitWorkReady)
 }
 
 func (e *engine) processCommits(idmap map[uint64]struct{},
-	nodes map[uint64]*node) {
+	nodes map[uint64]*node,
+) {
 	if len(idmap) == 0 {
 		for k := range nodes {
 			idmap[k] = struct{}{}
@@ -1188,7 +1195,8 @@ func (e *engine) applyWorkerMain(workerID uint64) {
 }
 
 func (e *engine) loadApplyNodes(workerID uint64, cci uint64,
-	nodes map[uint64]*node) (map[uint64]*node, uint64) {
+	nodes map[uint64]*node,
+) (map[uint64]*node, uint64) {
 	return e.load(workerID, cci, nodes, fromApplyWorker, e.applyWorkReady)
 }
 
@@ -1201,7 +1209,8 @@ func (e *engine) loadApplyNodes(workerID uint64, cci uint64,
 // R, S, won't happen, when in R state, processApplies will not process the node
 
 func (e *engine) processApplies(idmap map[uint64]struct{},
-	nodes map[uint64]*node, batch []rsm.Task, entries []sm.Entry) error {
+	nodes map[uint64]*node, batch []rsm.Task, entries []sm.Entry,
+) error {
 	if len(idmap) == 0 {
 		for k := range nodes {
 			idmap[k] = struct{}{}
@@ -1259,13 +1268,15 @@ func (e *engine) stepWorkerMain(workerID uint64) {
 }
 
 func (e *engine) loadStepNodes(workerID uint64,
-	cci uint64, nodes map[uint64]*node) (map[uint64]*node, uint64) {
+	cci uint64, nodes map[uint64]*node,
+) (map[uint64]*node, uint64) {
 	return e.load(workerID, cci, nodes, fromStepWorker, e.stepWorkReady)
 }
 
 func (e *engine) loadBucketNodes(workerID uint64,
 	csi uint64, nodes map[uint64]*node, partitioner server.IPartitioner,
-	from from) (map[uint64]*node, []*node, uint64) {
+	from from,
+) (map[uint64]*node, []*node, uint64) {
 	bucket := workerID - 1
 	newCSI := e.nh.getShardSetIndex()
 	var offloaded []*node
@@ -1302,7 +1313,8 @@ func (e *engine) loadBucketNodes(workerID uint64,
 
 func (e *engine) processSteps(workerID uint64,
 	active map[uint64]struct{},
-	nodes map[uint64]*node, nodeUpdates []pb.Update, stopC chan struct{}) error {
+	nodes map[uint64]*node, nodeUpdates []pb.Update, stopC chan struct{},
+) error {
 	if len(nodes) == 0 {
 		return nil
 	}
@@ -1379,7 +1391,8 @@ func (e *engine) processMoreCommittedEntries(ud pb.Update) {
 }
 
 func (e *engine) applySnapshotAndUpdate(updates []pb.Update,
-	nodes map[uint64]*node, fastApply bool) error {
+	nodes map[uint64]*node, fastApply bool,
+) error {
 	notifyCommit := false
 	for _, ud := range updates {
 		if ud.FastApply != fastApply {
@@ -1403,7 +1416,8 @@ func (e *engine) applySnapshotAndUpdate(updates []pb.Update,
 }
 
 func (e *engine) onSnapshotSaved(updates []pb.Update,
-	nodes map[uint64]*node) error {
+	nodes map[uint64]*node,
+) error {
 	for _, ud := range updates {
 		if !pb.IsEmptySnapshot(ud.Snapshot) {
 			node := nodes[ud.ShardID]

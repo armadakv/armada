@@ -44,7 +44,7 @@ import (
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 const (
@@ -74,12 +74,14 @@ type LogDB struct {
 // CreateTan creates and return a regular tan instance. Each raft node will
 // be backed by a dedicated log file.
 func CreateTan(cfg config.NodeHostConfig, cb config.LogDBCallback,
-	dirs []string, wals []string) (*LogDB, error) {
+	dirs []string, wals []string,
+) (*LogDB, error) {
 	return createTan(cfg, cb, dirs, wals)
 }
 
 func createTan(cfg config.NodeHostConfig, cb config.LogDBCallback,
-	dirs []string, wals []string) (*LogDB, error) {
+	dirs []string, wals []string,
+) (*LogDB, error) {
 	if cfg.Expert.FS == nil {
 		panic("fs not set")
 	}
@@ -187,7 +189,8 @@ func (l *LogDB) ListNodeInfo() ([]raftio.NodeInfo, error) {
 
 // SaveBootstrapInfo saves the specified bootstrap info to the log DB.
 func (l *LogDB) SaveBootstrapInfo(shardID uint64,
-	replicaID uint64, rec pb.Bootstrap) error {
+	replicaID uint64, rec pb.Bootstrap,
+) error {
 	return saveBootstrap(l.fs, l.bsDirname, l.bsDir, shardID, replicaID, rec)
 }
 
@@ -195,7 +198,8 @@ func (l *LogDB) SaveBootstrapInfo(shardID uint64,
 // ErrNoBootstrapInfo when there is no previously saved bootstrap info for
 // the specified node.
 func (l *LogDB) GetBootstrapInfo(shardID uint64,
-	replicaID uint64) (pb.Bootstrap, error) {
+	replicaID uint64,
+) (pb.Bootstrap, error) {
 	return getBootstrap(l.fs, l.bsDirname, shardID, replicaID)
 }
 
@@ -247,7 +251,8 @@ func (l *LogDB) sequentialSaveState(updates []pb.Update, shardID uint64) error {
 // size in bytes and the occurred error.
 func (l *LogDB) IterateEntries(ents []pb.Entry,
 	size uint64, shardID uint64, replicaID uint64, low uint64,
-	high uint64, maxSize uint64) ([]pb.Entry, uint64, error) {
+	high uint64, maxSize uint64,
+) ([]pb.Entry, uint64, error) {
 	db, err := l.getDB(shardID, replicaID)
 	if err != nil {
 		return nil, 0, err
@@ -257,7 +262,8 @@ func (l *LogDB) IterateEntries(ents []pb.Entry,
 
 // ReadRaftState returns the persistented raft state found in Log DB.
 func (l *LogDB) ReadRaftState(shardID uint64,
-	replicaID uint64, lastIndex uint64) (raftio.RaftState, error) {
+	replicaID uint64, lastIndex uint64,
+) (raftio.RaftState, error) {
 	db, err := l.getDB(shardID, replicaID)
 	if err != nil {
 		return raftio.RaftState{}, err
@@ -267,7 +273,8 @@ func (l *LogDB) ReadRaftState(shardID uint64,
 
 // RemoveEntriesTo removes entries between (0, index].
 func (l *LogDB) RemoveEntriesTo(shardID uint64,
-	replicaID uint64, index uint64) error {
+	replicaID uint64, index uint64,
+) error {
 	db, err := l.getDB(shardID, replicaID)
 	if err != nil {
 		return err
@@ -281,7 +288,8 @@ func (l *LogDB) RemoveEntriesTo(shardID uint64,
 // CompactEntriesTo reclaims underlying storage space used for storing
 // entries up to the specified index.
 func (l *LogDB) CompactEntriesTo(shardID uint64,
-	replicaID uint64, index uint64) (<-chan struct{}, error) {
+	replicaID uint64, index uint64,
+) (<-chan struct{}, error) {
 	ch := make(chan struct{}, 1)
 	ch <- struct{}{}
 	return ch, nil
@@ -316,7 +324,8 @@ func (l *LogDB) SaveSnapshots(updates []pb.Update) error {
 // GetSnapshot lists available snapshots associated with the specified
 // Raft node for index range (0, index].
 func (l *LogDB) GetSnapshot(shardID uint64,
-	replicaID uint64) (pb.Snapshot, error) {
+	replicaID uint64,
+) (pb.Snapshot, error) {
 	db, err := l.getDB(shardID, replicaID)
 	if err != nil {
 		return pb.Snapshot{}, err

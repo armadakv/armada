@@ -12,8 +12,8 @@ import (
 	"github.com/armadakv/armada/replication/snapshot"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/kv"
-	pvfs "github.com/cockroachdb/pebble/vfs"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
+	pvfs "github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
 

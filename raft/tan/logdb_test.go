@@ -24,8 +24,8 @@ import (
 
 	"github.com/armadakv/armada/raft/config"
 	pb "github.com/armadakv/armada/raft/raftpb"
+	"github.com/armadakv/armada/vfs"
 	"github.com/lni/goutils/leaktest"
-	"github.com/lni/vfs"
 	"github.com/stretchr/testify/require"
 )
 

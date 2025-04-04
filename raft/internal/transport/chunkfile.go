@@ -15,21 +15,27 @@
 package transport
 
 import (
+	"io"
+
 	"github.com/armadakv/armada/raft/internal/fileutil"
-	"github.com/armadakv/armada/raft/internal/vfs"
+	"github.com/armadakv/armada/vfs"
 )
 
 // chunkFile is the snapshot chunk file being transferred.
 type chunkFile struct {
 	file    vfs.File
-	fs      vfs.IFS
+	fs      vfs.FS
 	dir     string
 	syncDir bool
 }
 
 // openChunkFileForAppend opens the chunk file at fp for appending.
-func openChunkFileForAppend(fp string, fs vfs.IFS) (*chunkFile, error) {
-	f, err := fs.OpenForAppend(fp)
+func openChunkFileForAppend(fp string, fs vfs.FS) (*chunkFile, error) {
+	f, err := fs.OpenReadWrite(fp, "unspecified")
+	if err != nil {
+		return nil, err
+	}
+	_, err = f.Seek(0, io.SeekEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +43,7 @@ func openChunkFileForAppend(fp string, fs vfs.IFS) (*chunkFile, error) {
 }
 
 // openChunkFileForRead opens for the chunk file for read-only operation.
-func openChunkFileForRead(fp string, fs vfs.IFS) (*chunkFile, error) {
+func openChunkFileForRead(fp string, fs vfs.FS) (*chunkFile, error) {
 	f, err := fs.Open(fp)
 	if err != nil {
 		return nil, err
@@ -46,8 +52,8 @@ func openChunkFileForRead(fp string, fs vfs.IFS) (*chunkFile, error) {
 }
 
 // createChunkFile creates a new chunk file.
-func createChunkFile(fp string, fs vfs.IFS) (*chunkFile, error) {
-	f, err := fs.Create(fp)
+func createChunkFile(fp string, fs vfs.FS) (*chunkFile, error) {
+	f, err := fs.Create(fp, "unspecified")
 	if err != nil {
 		return nil, err
 	}

@@ -140,7 +140,8 @@ func waitPoisonAck(conn net.Conn) {
 }
 
 func writeMessage(conn net.Conn,
-	header requestHeader, buf []byte, headerBuf []byte, encrypted bool) error {
+	header requestHeader, buf []byte, headerBuf []byte, encrypted bool,
+) error {
 	header.size = uint64(len(buf))
 	if !encrypted {
 		header.crc = crc32.ChecksumIEEE(buf)
@@ -178,7 +179,8 @@ func writeMessage(conn net.Conn,
 }
 
 func readMessage(conn net.Conn,
-	header []byte, rbuf []byte, encrypted bool) (requestHeader, []byte, error) {
+	header []byte, rbuf []byte, encrypted bool,
+) (requestHeader, []byte, error) {
 	tt := time.Now().Add(headerDuration)
 	if err := conn.SetReadDeadline(tt); err != nil {
 		return requestHeader{}, nil, err
@@ -347,7 +349,8 @@ var _ raftio.ISnapshotConnection = (*TCPSnapshotConnection)(nil)
 
 // NewTCPSnapshotConnection creates and returns a new snapshot connection.
 func NewTCPSnapshotConnection(conn net.Conn,
-	encrypted bool) *TCPSnapshotConnection {
+	encrypted bool,
+) *TCPSnapshotConnection {
 	return &TCPSnapshotConnection{
 		conn:      newConnection(conn),
 		header:    make([]byte, requestHeaderSize),
@@ -393,7 +396,8 @@ var _ raftio.ITransport = (*TCP)(nil)
 // NewTCPTransport creates and returns a new TCP transport module.
 func NewTCPTransport(nhConfig config.NodeHostConfig,
 	requestHandler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler) raftio.ITransport {
+	chunkHandler raftio.ChunkHandler,
+) raftio.ITransport {
 	return &TCP{
 		nhConfig:       nhConfig,
 		stopper:        syncutil.NewStopper(),
@@ -472,7 +476,8 @@ func (t *TCP) Close() error {
 
 // GetConnection returns a new raftio.IConnection for sending raft messages.
 func (t *TCP) GetConnection(ctx context.Context,
-	target string) (raftio.IConnection, error) {
+	target string,
+) (raftio.IConnection, error) {
 	conn, err := t.getConnection(ctx, target)
 	if err != nil {
 		return nil, err
@@ -483,7 +488,8 @@ func (t *TCP) GetConnection(ctx context.Context,
 // GetSnapshotConnection returns a new raftio.IConnection for sending raft
 // snapshots.
 func (t *TCP) GetSnapshotConnection(ctx context.Context,
-	target string) (raftio.ISnapshotConnection, error) {
+	target string,
+) (raftio.ISnapshotConnection, error) {
 	conn, err := t.getConnection(ctx, target)
 	if err != nil {
 		return nil, err
@@ -555,7 +561,8 @@ func setTCPConn(conn *net.TCPConn) error {
 // FIXME:
 // context.Context is ignored
 func (t *TCP) getConnection(ctx context.Context,
-	target string) (net.Conn, error) {
+	target string,
+) (net.Conn, error) {
 	timeout := time.Duration(dialTimeoutSecond) * time.Second
 	conn, err := net.DialTimeout("tcp", target, timeout)
 	if err != nil {

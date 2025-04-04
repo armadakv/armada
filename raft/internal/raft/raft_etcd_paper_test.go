@@ -45,9 +45,11 @@ import (
 func TestFollowerUpdateTermFromMessage(t *testing.T) {
 	testUpdateTermFromMessage(t, follower)
 }
+
 func TestCandidateUpdateTermFromMessage(t *testing.T) {
 	testUpdateTermFromMessage(t, candidate)
 }
+
 func TestLeaderUpdateTermFromMessage(t *testing.T) {
 	testUpdateTermFromMessage(t, leader)
 }
@@ -141,6 +143,7 @@ func TestLeaderBcastBeat(t *testing.T) {
 func TestFollowerStartElection(t *testing.T) {
 	testNonleaderStartElection(t, follower)
 }
+
 func TestCandidateStartNewElection(t *testing.T) {
 	testNonleaderStartElection(t, candidate)
 }
@@ -305,6 +308,7 @@ func TestFollowerElectionTimeoutRandomized(t *testing.T) {
 	defer plog.SetLevel(logger.INFO)
 	testNonleaderElectionTimeoutRandomized(t, follower)
 }
+
 func TestCandidateElectionTimeoutRandomized(t *testing.T) {
 	// SetLogger(discardLogger)
 	// defer SetLogger(defaultLogger)
@@ -350,6 +354,7 @@ func TestFollowersElectioinTimeoutNonconflict(t *testing.T) {
 	defer plog.SetLevel(logger.INFO)
 	testNonleadersElectionTimeoutNonconflict(t, follower)
 }
+
 func TestCandidatesElectionTimeoutNonconflict(t *testing.T) {
 	// SetLogger(discardLogger)
 	// defer SetLogger(defaultLogger)
@@ -690,50 +695,90 @@ func TestFollowerAppendEntries(t *testing.T) {
 func TestLeaderSyncFollowerLog(t *testing.T) {
 	ents := []pb.Entry{
 		{},
-		{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
-		{Term: 4, Index: 4}, {Term: 4, Index: 5},
-		{Term: 5, Index: 6}, {Term: 5, Index: 7},
-		{Term: 6, Index: 8}, {Term: 6, Index: 9}, {Term: 6, Index: 10},
+		{Term: 1, Index: 1},
+		{Term: 1, Index: 2},
+		{Term: 1, Index: 3},
+		{Term: 4, Index: 4},
+		{Term: 4, Index: 5},
+		{Term: 5, Index: 6},
+		{Term: 5, Index: 7},
+		{Term: 6, Index: 8},
+		{Term: 6, Index: 9},
+		{Term: 6, Index: 10},
 	}
 	term := uint64(8)
 	tests := [][]pb.Entry{
 		{
 			{},
-			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
-			{Term: 4, Index: 4}, {Term: 4, Index: 5},
-			{Term: 5, Index: 6}, {Term: 5, Index: 7},
-			{Term: 6, Index: 8}, {Term: 6, Index: 9},
+			{Term: 1, Index: 1},
+			{Term: 1, Index: 2},
+			{Term: 1, Index: 3},
+			{Term: 4, Index: 4},
+			{Term: 4, Index: 5},
+			{Term: 5, Index: 6},
+			{Term: 5, Index: 7},
+			{Term: 6, Index: 8},
+			{Term: 6, Index: 9},
 		},
 		{
 			{},
-			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
+			{Term: 1, Index: 1},
+			{Term: 1, Index: 2},
+			{Term: 1, Index: 3},
 			{Term: 4, Index: 4},
 		},
 		{
 			{},
-			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
-			{Term: 4, Index: 4}, {Term: 4, Index: 5},
-			{Term: 5, Index: 6}, {Term: 5, Index: 7},
-			{Term: 6, Index: 8}, {Term: 6, Index: 9}, {Term: 6, Index: 10}, {Term: 6, Index: 11},
+			{Term: 1, Index: 1},
+			{Term: 1, Index: 2},
+			{Term: 1, Index: 3},
+			{Term: 4, Index: 4},
+			{Term: 4, Index: 5},
+			{Term: 5, Index: 6},
+			{Term: 5, Index: 7},
+			{Term: 6, Index: 8},
+			{Term: 6, Index: 9},
+			{Term: 6, Index: 10},
+			{Term: 6, Index: 11},
 		},
 		{
 			{},
-			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
-			{Term: 4, Index: 4}, {Term: 4, Index: 5},
-			{Term: 5, Index: 6}, {Term: 5, Index: 7},
-			{Term: 6, Index: 8}, {Term: 6, Index: 9}, {Term: 6, Index: 10},
-			{Term: 7, Index: 11}, {Term: 7, Index: 12},
+			{Term: 1, Index: 1},
+			{Term: 1, Index: 2},
+			{Term: 1, Index: 3},
+			{Term: 4, Index: 4},
+			{Term: 4, Index: 5},
+			{Term: 5, Index: 6},
+			{Term: 5, Index: 7},
+			{Term: 6, Index: 8},
+			{Term: 6, Index: 9},
+			{Term: 6, Index: 10},
+			{Term: 7, Index: 11},
+			{Term: 7, Index: 12},
 		},
 		{
 			{},
-			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
-			{Term: 4, Index: 4}, {Term: 4, Index: 5}, {Term: 4, Index: 6}, {Term: 4, Index: 7},
+			{Term: 1, Index: 1},
+			{Term: 1, Index: 2},
+			{Term: 1, Index: 3},
+			{Term: 4, Index: 4},
+			{Term: 4, Index: 5},
+			{Term: 4, Index: 6},
+			{Term: 4, Index: 7},
 		},
 		{
 			{},
-			{Term: 1, Index: 1}, {Term: 1, Index: 2}, {Term: 1, Index: 3},
-			{Term: 2, Index: 4}, {Term: 2, Index: 5}, {Term: 2, Index: 6},
-			{Term: 3, Index: 7}, {Term: 3, Index: 8}, {Term: 3, Index: 9}, {Term: 3, Index: 10}, {Term: 3, Index: 11},
+			{Term: 1, Index: 1},
+			{Term: 1, Index: 2},
+			{Term: 1, Index: 3},
+			{Term: 2, Index: 4},
+			{Term: 2, Index: 5},
+			{Term: 2, Index: 6},
+			{Term: 3, Index: 7},
+			{Term: 3, Index: 8},
+			{Term: 3, Index: 9},
+			{Term: 3, Index: 10},
+			{Term: 3, Index: 11},
 		},
 	}
 	for i, tt := range tests {

@@ -9,7 +9,7 @@ import (
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/util"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	pb "google.golang.org/protobuf/proto"

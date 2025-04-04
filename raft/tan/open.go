@@ -176,7 +176,7 @@ func (d *db) createNewLog() error {
 	}
 	logNum := d.mu.versions.getNextFileNum()
 	logName := makeFilename(d.opts.FS, d.dirname, fileTypeLog, logNum)
-	logFile, err := d.opts.FS.Create(logName)
+	logFile, err := d.opts.FS.Create(logName, "")
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (d *db) rebuildLog(logNum fileNum) (err error) {
 	// the last broken chunk or block.
 	fn := makeFilename(d.opts.FS, d.dirname, fileTypeLogTemp, logNum)
 	ln := makeFilename(d.opts.FS, d.dirname, fileTypeLog, logNum)
-	f, err := d.opts.FS.Create(fn)
+	f, err := d.opts.FS.Create(fn, "")
 	if err != nil {
 		return err
 	}
