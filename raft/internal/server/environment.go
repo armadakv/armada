@@ -20,6 +20,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/random"
 
@@ -28,7 +30,6 @@ import (
 	"github.com/armadakv/armada/raft/internal/id"
 	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/internal/utils"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/logger"
 	"github.com/armadakv/armada/raft/raftpb"
 )
@@ -74,7 +75,7 @@ var firstError = utils.FirstError
 
 // Env is the server environment for NodeHost.
 type Env struct {
-	fs           vfs.IFS
+	fs           vfs.FS
 	randomSource random.Source
 	partitioner  IPartitioner
 	nhid         *id.UUID
@@ -84,7 +85,7 @@ type Env struct {
 }
 
 // NewEnv creates and returns a new server Env object.
-func NewEnv(nhConfig config.NodeHostConfig, fs vfs.IFS) (*Env, error) {
+func NewEnv(nhConfig config.NodeHostConfig, fs vfs.FS) (*Env, error) {
 	s := &Env{
 		randomSource: random.NewLockedRand(),
 		nhConfig:     nhConfig,
@@ -118,13 +119,15 @@ func (env *Env) GetRandomSource() random.Source {
 
 // GetSnapshotDir returns the snapshot directory name.
 func (env *Env) GetSnapshotDir(did uint64, shardID uint64,
-	replicaID uint64) string {
+	replicaID uint64,
+) string {
 	parts, _, _ := env.getSnapshotDirParts(did, shardID, replicaID)
 	return env.fs.PathJoin(parts...)
 }
 
 func (env *Env) getSnapshotDirParts(did uint64,
-	shardID uint64, replicaID uint64) ([]string, string, []string) {
+	shardID uint64, replicaID uint64,
+) ([]string, string, []string) {
 	dd := env.getDeploymentIDSubDirName(did)
 	pd := fmt.Sprintf("snapshot-part-%d", env.partitioner.GetPartitionID(shardID))
 	sd := fmt.Sprintf("snapshot-%d-%d", shardID, replicaID)
@@ -170,7 +173,8 @@ func (env *Env) CreateNodeHostDir(did uint64) (string, string, error) {
 
 // CreateSnapshotDir creates the snapshot directory for the specified node.
 func (env *Env) CreateSnapshotDir(did uint64,
-	shardID uint64, replicaID uint64) error {
+	shardID uint64, replicaID uint64,
+) error {
 	_, path, parts := env.getSnapshotDirParts(did, shardID, replicaID)
 	for _, part := range parts {
 		path = env.fs.PathJoin(path, part)
@@ -270,13 +274,15 @@ func (env *Env) SetNodeHostID(nhid *id.UUID) {
 // CheckNodeHostDir checks whether NodeHost dir is owned by the
 // current nodehost.
 func (env *Env) CheckNodeHostDir(cfg config.NodeHostConfig,
-	binVer uint32, dbType string) error {
+	binVer uint32, dbType string,
+) error {
 	return env.checkNodeHostDir(cfg, binVer, dbType, false)
 }
 
 // CheckLogDBType checks whether LogDB type is compatible.
 func (env *Env) CheckLogDBType(cfg config.NodeHostConfig,
-	dbType string) error {
+	dbType string,
+) error {
 	return env.checkNodeHostDir(cfg, 0, dbType, true)
 }
 
@@ -295,7 +301,8 @@ func (env *Env) LockNodeHostDir() error {
 // RemoveSnapshotDir marks the node snapshot directory as removed and have all
 // existing snapshots deleted.
 func (env *Env) RemoveSnapshotDir(did uint64,
-	shardID uint64, replicaID uint64) error {
+	shardID uint64, replicaID uint64,
+) error {
 	dir := env.GetSnapshotDir(did, shardID, replicaID)
 	exist, err := fileutil.Exist(dir, env.fs)
 	if err != nil {
@@ -313,13 +320,14 @@ func (env *Env) RemoveSnapshotDir(did uint64,
 }
 
 func (env *Env) markSnapshotDirRemoved(did uint64, shardID uint64,
-	replicaID uint64) error {
+	replicaID uint64,
+) error {
 	dir := env.GetSnapshotDir(did, shardID, replicaID)
 	s := &raftpb.RaftDataStatus{}
 	return fileutil.MarkDirAsDeleted(dir, s, env.fs)
 }
 
-func removeSavedSnapshots(dir string, fs vfs.IFS) error {
+func removeSavedSnapshots(dir string, fs vfs.FS) error {
 	files, err := fs.List(dir)
 	if err != nil {
 		return err
@@ -343,7 +351,8 @@ func removeSavedSnapshots(dir string, fs vfs.IFS) error {
 }
 
 func (env *Env) checkNodeHostDir(cfg config.NodeHostConfig,
-	binVer uint32, name string, dbto bool) error {
+	binVer uint32, name string, dbto bool,
+) error {
 	dir, lldir := env.getDataDirs()
 	if err := env.check(cfg, dir, binVer, name, dbto); err != nil {
 		return err
@@ -381,7 +390,8 @@ func compatibleLogDBType(saved string, name string) bool {
 }
 
 func (env *Env) check(cfg config.NodeHostConfig,
-	dir string, binVer uint32, name string, dbto bool) error {
+	dir string, binVer uint32, name string, dbto bool,
+) error {
 	fn := flagFilename
 	fp := env.fs.PathJoin(dir, fn)
 	se := func(s1 string, s2 string) bool {
@@ -419,7 +429,8 @@ func (env *Env) check(cfg config.NodeHostConfig,
 }
 
 func (env *Env) createFlagFile(cfg config.NodeHostConfig,
-	dir string, ver uint32, name string) error {
+	dir string, ver uint32, name string,
+) error {
 	s := raftpb.RaftDataStatus{
 		Address:         cfg.RaftAddress,
 		BinVer:          ver,

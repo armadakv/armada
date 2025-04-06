@@ -44,8 +44,10 @@ type UUID struct {
 	v uuid.UUID
 }
 
-var _ pb.Marshaler = (*UUID)(nil)
-var _ pb.Unmarshaler = (*UUID)(nil)
+var (
+	_ pb.Marshaler   = (*UUID)(nil)
+	_ pb.Unmarshaler = (*UUID)(nil)
+)
 
 func (u UUID) String() string {
 	return u.v.String()

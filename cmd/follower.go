@@ -17,7 +17,7 @@ import (
 	"github.com/armadakv/armada/replication"
 	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

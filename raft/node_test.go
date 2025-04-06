@@ -24,6 +24,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/armadakv/armada/raft/logreader"
 	"github.com/armadakv/armada/raft/tan"
 	"github.com/lni/goutils/leaktest"
@@ -37,7 +39,6 @@ import (
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/internal/tests"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 	sm "github.com/armadakv/armada/raft/statemachine"
@@ -133,7 +134,8 @@ func (r *testRouter) send(msg pb.Message) {
 }
 
 func (r *testRouter) getQ(shardID uint64,
-	replicaID uint64) *server.MessageQueue {
+	replicaID uint64,
+) *server.MessageQueue {
 	if shardID != r.shardID {
 		panic("shard id does not match")
 	}
@@ -148,19 +150,19 @@ func (r *testRouter) addQ(replicaID uint64, q *server.MessageQueue) {
 	r.qm[replicaID] = q
 }
 
-func cleanupTestDir(fs vfs.IFS) {
+func cleanupTestDir(fs vfs.FS) {
 	if err := fs.RemoveAll(raftTestTopDir); err != nil {
 		panic(err)
 	}
 }
 
 func getTestRaftNodes(count int, ordered bool,
-	fs vfs.IFS) ([]*node, []*rsm.StateMachine, *testRouter, raftio.ILogDB) {
+	fs vfs.FS,
+) ([]*node, []*rsm.StateMachine, *testRouter, raftio.ILogDB) {
 	return doGetTestRaftNodes(1, count, ordered, nil, fs)
 }
 
-type dummyEngine struct {
-}
+type dummyEngine struct{}
 
 func (d *dummyEngine) setCloseReady(n *node)          {}
 func (d *dummyEngine) setStepReady(shardID uint64)    {}
@@ -171,8 +173,9 @@ func (d *dummyEngine) setSaveReady(shardID uint64)    {}
 func (d *dummyEngine) setRecoverReady(shardID uint64) {}
 
 func doGetTestRaftNodes(startID uint64, count int, ordered bool,
-	ldb raftio.ILogDB, fs vfs.IFS) ([]*node, []*rsm.StateMachine,
-	*testRouter, raftio.ILogDB) {
+	ldb raftio.ILogDB, fs vfs.FS) ([]*node, []*rsm.StateMachine,
+	*testRouter, raftio.ILogDB,
+) {
 	nodes := make([]*node, 0)
 	smList := make([]*rsm.StateMachine, 0)
 	replicaIDList := make([]uint64, 0)
@@ -195,10 +198,10 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 	if ldb == nil {
 		nodeLogDir := fs.PathJoin(raftTestTopDir, logdbDir)
 		nodeLowLatencyLogDir := fs.PathJoin(raftTestTopDir, lowLatencyLogDBDir)
-		if err := fs.MkdirAll(nodeLogDir, 0755); err != nil {
+		if err := fs.MkdirAll(nodeLogDir, 0o755); err != nil {
 			panic(err)
 		}
-		if err := fs.MkdirAll(nodeLowLatencyLogDir, 0755); err != nil {
+		if err := fs.MkdirAll(nodeLowLatencyLogDir, 0o755); err != nil {
 			panic(err)
 		}
 		cfg := config.NodeHostConfig{
@@ -218,7 +221,7 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 		// create the snapshotter object
 		nodeSnapDir := fmt.Sprintf(snapDir, testShardID, i)
 		snapdir := fs.PathJoin(raftTestTopDir, nodeSnapDir)
-		if err := fs.MkdirAll(snapdir, 0755); err != nil {
+		if err := fs.MkdirAll(snapdir, 0o755); err != nil {
 			panic(err)
 		}
 		rootDirFunc := func(cid uint64, nid uint64) string {
@@ -240,7 +243,8 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 			OrderedConfigChange: ordered,
 		}
 		create := func(shardID uint64, replicaID uint64,
-			done <-chan struct{}) rsm.IManagedStateMachine {
+			done <-chan struct{},
+		) rsm.IManagedStateMachine {
 			return rsm.NewNativeSM(cfg, rsm.NewInMemStateMachine(noopSM), done)
 		}
 		// node registry
@@ -352,7 +356,8 @@ func step(nodes []*node) bool {
 }
 
 func singleStepNodes(nodes []*node, smList []*rsm.StateMachine,
-	r *testRouter) {
+	r *testRouter,
+) {
 	for _, node := range nodes {
 		tick := node.pendingReadIndexes.getTick() + 1
 		tickMsg := pb.Message{Type: pb.LocalTick, To: node.replicaID, Hint: tick}
@@ -363,7 +368,8 @@ func singleStepNodes(nodes []*node, smList []*rsm.StateMachine,
 }
 
 func stepNodes(nodes []*node, smList []*rsm.StateMachine,
-	r *testRouter, ticks uint64) {
+	r *testRouter, ticks uint64,
+) {
 	s := ticks + 10
 	for i := uint64(0); i < s; i++ {
 		for _, node := range nodes {
@@ -381,7 +387,8 @@ func stepNodes(nodes []*node, smList []*rsm.StateMachine,
 }
 
 func stepNodesUntilThereIsLeader(nodes []*node, smList []*rsm.StateMachine,
-	r *testRouter) {
+	r *testRouter,
+) {
 	count := 0
 	for {
 		stepNodes(nodes, smList, r, 1)
@@ -420,7 +427,7 @@ func stopNodes(nodes []*node) {
 }
 
 func TestNodeCanBeCreatedAndStarted(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	defer cleanupTestDir(fs)
 	nodes, smList, router, ldb := getTestRaftNodes(3, false, fs)
@@ -448,7 +455,8 @@ func getMaxLastApplied(smList []*rsm.StateMachine) uint64 {
 
 func getProposalTestClient(n *node,
 	nodes []*node, smList []*rsm.StateMachine,
-	router *testRouter) (*client.Session, bool) {
+	router *testRouter,
+) (*client.Session, bool) {
 	cs := client.NewSession(n.shardID, random.NewLockedRand())
 	cs.PrepareForRegister()
 	rs, err := n.pendingProposals.propose(cs, nil, 50)
@@ -474,7 +482,8 @@ func getProposalTestClient(n *node,
 
 func closeProposalTestClient(n *node,
 	nodes []*node, smList []*rsm.StateMachine,
-	router *testRouter, session *client.Session) {
+	router *testRouter, session *client.Session,
+) {
 	session.PrepareForUnregister()
 	rs, err := n.pendingProposals.propose(session, nil, 50)
 	if err != nil {
@@ -494,7 +503,8 @@ func closeProposalTestClient(n *node,
 func makeCheckedTestProposal(t *testing.T, session *client.Session,
 	data []byte, timeoutInMillisecond uint64,
 	nodes []*node, smList []*rsm.StateMachine, router *testRouter,
-	expectedCode RequestResultCode, checkResult bool, expectedResult uint64) {
+	expectedCode RequestResultCode, checkResult bool, expectedResult uint64,
+) {
 	n := mustHasLeaderNode(nodes, t)
 	tick := uint64(50)
 	rs, err := n.propose(session, data, tick)
@@ -517,7 +527,7 @@ func makeCheckedTestProposal(t *testing.T, session *client.Session,
 	}
 }
 
-func runRaftNodeTest(t *testing.T, ordered bool, tf func(t *testing.T, nodes []*node, smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB), fs vfs.IFS) {
+func runRaftNodeTest(t *testing.T, ordered bool, tf func(t *testing.T, nodes []*node, smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB), fs vfs.FS) {
 	defer leaktest.AfterTest(t)()
 	defer cleanupTestDir(fs)
 	nodes, smList, router, ldb := getTestRaftNodes(3, ordered, fs)
@@ -531,9 +541,10 @@ func runRaftNodeTest(t *testing.T, ordered bool, tf func(t *testing.T, nodes []*
 }
 
 func TestLastAppliedValueCanBeReturned(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		sm := smList[0]
 		for i := uint64(5); i <= 100; i++ {
@@ -579,9 +590,10 @@ func TestLastAppliedValueCanBeReturned(t *testing.T) {
 }
 
 func TestLastAppliedValueIsAlwaysOneWayIncreasing(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		defer func() {
 			if r := recover(); r == nil {
 				t.Fatalf("not panic")
@@ -602,7 +614,8 @@ func TestLastAppliedValueIsAlwaysOneWayIncreasing(t *testing.T) {
 
 func TestProposalCanBeMadeWithMessageDrops(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		router.dropRate = 3
 		n := mustHasLeaderNode(nodes, t)
 		var ok bool
@@ -628,13 +641,14 @@ func TestProposalCanBeMadeWithMessageDrops(t *testing.T) {
 		}
 		closeProposalTestClient(n, nodes, smList, router, session)
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestLeaderIDCanBeQueried(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		v, _, ok := n.getLeaderID()
 		if !ok {
@@ -644,13 +658,14 @@ func TestLeaderIDCanBeQueried(t *testing.T) {
 			t.Errorf("unexpected leader id %d", v)
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestMembershipCanBeLocallyRead(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		m := n.sm.GetMembership()
 		v := m.Addresses
@@ -670,13 +685,14 @@ func TestMembershipCanBeLocallyRead(t *testing.T) {
 			t.Errorf("unexpected membership data %v", v)
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestConfigChangeOnWitnessWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.requestConfigChange(pb.AddNode, 100, "noidea:9090", 0, 10)
@@ -684,13 +700,14 @@ func TestConfigChangeOnWitnessWillBeRejected(t *testing.T) {
 			t.Errorf("config change not rejected")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestReadOnWitnessWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.read(10)
@@ -698,13 +715,14 @@ func TestReadOnWitnessWillBeRejected(t *testing.T) {
 			t.Errorf("read not rejected")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestMakingProposalOnWitnessNodeWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		n.config.IsWitness = true
 		cs := client.NewNoOPSession(n.shardID, random.NewLockedRand())
@@ -713,13 +731,14 @@ func TestMakingProposalOnWitnessNodeWillBeRejected(t *testing.T) {
 			t.Errorf("making proposal not rejected")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestProposingSessionOnWitnessNodeWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.proposeSession(nil, 10)
@@ -727,13 +746,14 @@ func TestProposingSessionOnWitnessNodeWillBeRejected(t *testing.T) {
 			t.Errorf("proposing session not rejected")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestRequestingSnapshotOnWitnessWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		n.config.IsWitness = true
 		_, err := n.requestSnapshot(SnapshotOption{}, 10)
@@ -741,13 +761,14 @@ func TestRequestingSnapshotOnWitnessWillBeRejected(t *testing.T) {
 			t.Errorf("requesting snapshot not rejected")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestProposalWithClientSessionCanBeMade(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -764,13 +785,14 @@ func TestProposalWithClientSessionCanBeMade(t *testing.T) {
 		}
 		closeProposalTestClient(n, nodes, smList, router, session)
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestProposalWithNotRegisteredClientWillBeRejected(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -786,13 +808,14 @@ func TestProposalWithNotRegisteredClientWillBeRejected(t *testing.T) {
 			t.Errorf("didn't move the last applied value in smList")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestDuplicatedProposalReturnsTheSameResult(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -815,13 +838,14 @@ func TestDuplicatedProposalReturnsTheSameResult(t *testing.T) {
 		}
 		closeProposalTestClient(n, nodes, smList, router, session)
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestReproposeRespondedDataWillTimeout(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -860,13 +884,14 @@ func TestReproposeRespondedDataWillTimeout(t *testing.T) {
 			t.Errorf("failed to complete the proposal")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestProposalsWithIllFormedSessionAreChecked(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		s1 := client.NewSession(n.shardID, random.NewLockedRand())
 		s1.SeriesID = client.SeriesIDForRegister
@@ -895,13 +920,14 @@ func TestProposalsWithIllFormedSessionAreChecked(t *testing.T) {
 			t.Errorf("not rejected")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestProposalsWithCorruptedSessionWillPanic(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		s1 := client.NewSession(n.shardID, random.NewLockedRand())
 		s1.SeriesID = 100
@@ -917,13 +943,14 @@ func TestProposalsWithCorruptedSessionWillPanic(t *testing.T) {
 			t.Fatalf("failed to make proposal %v", err)
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestLinearizableReadCanBeMade(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -947,13 +974,14 @@ func TestLinearizableReadCanBeMade(t *testing.T) {
 		stepNodes(nodes, smList, router, 10)
 		mustComplete(rs, t)
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
-func testNodeCanBeAdded(t *testing.T, fs vfs.IFS) {
+func testNodeCanBeAdded(t *testing.T, fs vfs.FS) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		router.dropRate = 3
 		n := mustHasLeaderNode(nodes, t)
 		rs, err := n.requestAddNodeWithOrderID(4, "a4:4", 0, 10)
@@ -972,7 +1000,7 @@ func testNodeCanBeAdded(t *testing.T, fs vfs.IFS) {
 }
 
 func TestNodeCanBeAddedWithMessageDrops(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	for i := 0; i < 10; i++ {
 		testNodeCanBeAdded(t, fs)
@@ -981,7 +1009,8 @@ func TestNodeCanBeAddedWithMessageDrops(t *testing.T) {
 
 func TestNodeCanBeDeleted(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		rs, err := n.requestDeleteNodeWithOrderID(2, 0, 10)
 		if err != nil {
@@ -999,7 +1028,7 @@ func TestNodeCanBeDeleted(t *testing.T) {
 			t.Errorf("node id 3 is not suppose to be in stopped state")
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
@@ -1019,8 +1048,9 @@ func sliceEqual(s1 []uint64, s2 []uint64) bool {
 
 func TestNodeCanBeAdded2(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
-		fs := vfs.GetTestFS()
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
+		fs := vfs.NewMem()
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -1066,14 +1096,15 @@ func TestNodeCanBeAdded2(t *testing.T) {
 				newSMList[0].GetLastApplied(), smList[0].GetLastApplied())
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestNodeCanBeAddedWhenOrderIsEnforced(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		rs, err := n.requestAddNodeWithOrderID(5, "a5:5", 0, 10)
 		if err != nil {
@@ -1110,9 +1141,10 @@ func TestNodeCanBeAddedWhenOrderIsEnforced(t *testing.T) {
 }
 
 func TestNodeCanBeDeletedWhenOrderIsEnforced(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		rs, err := n.requestDeleteNodeWithOrderID(2, 0, 10)
 		if err != nil {
@@ -1148,7 +1180,7 @@ func TestNodeCanBeDeletedWhenOrderIsEnforced(t *testing.T) {
 	runRaftNodeTest(t, true, tf, fs)
 }
 
-func getSnapshotFileCount(dir string, fs vfs.IFS) (int, error) {
+func getSnapshotFileCount(dir string, fs vfs.FS) (int, error) {
 	fiList, err := fs.List(dir)
 	if err != nil {
 		return 0, err
@@ -1170,9 +1202,10 @@ func getSnapshotFileCount(dir string, fs vfs.IFS) (int, error) {
 }
 
 func TestSnapshotCanBeMade(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -1213,7 +1246,8 @@ func TestSnapshotCanBeMade(t *testing.T) {
 
 func TestSnapshotCanBeMadeTwice(t *testing.T) {
 	tf := func(t *testing.T, nodes []*node,
-		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB) {
+		smList []*rsm.StateMachine, router *testRouter, ldb raftio.ILogDB,
+	) {
 		n := nodes[0]
 		session, ok := getProposalTestClient(n, nodes, smList, router)
 		if !ok {
@@ -1246,12 +1280,12 @@ func TestSnapshotCanBeMadeTwice(t *testing.T) {
 			}
 		}
 	}
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	runRaftNodeTest(t, false, tf, fs)
 }
 
 func TestNodesCanBeRestarted(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	defer cleanupTestDir(fs)
 	nodes, smList, router, ldb := getTestRaftNodes(3, false, fs)
@@ -1513,7 +1547,7 @@ func (np *testDummyNodeProxy) ShardID() uint64                                  
 func (np *testDummyNodeProxy) ShouldStop() <-chan struct{}                           { return nil }
 
 func TestNotReadyTakingSnapshotNodeIsSkippedWhenConcurrencyIsNotSupported(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	n := &node{ss: snapshotState{}, initializedC: make(chan struct{})}
 	config := config.Config{ShardID: 1, ReplicaID: 1}
 	n.sm = rsm.NewStateMachine(
@@ -1530,7 +1564,7 @@ func TestNotReadyTakingSnapshotNodeIsSkippedWhenConcurrencyIsNotSupported(t *tes
 }
 
 func TestNotReadyTakingSnapshotConcurrentNodeIsNotSkipped(t *testing.T) {
-	fs := vfs.GetTestFS()
+	fs := vfs.NewMem()
 	n := &node{ss: snapshotState{}, initializedC: make(chan struct{})}
 	config := config.Config{ShardID: 1, ReplicaID: 1}
 	n.sm = rsm.NewStateMachine(

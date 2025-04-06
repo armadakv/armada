@@ -25,6 +25,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/logutil"
 
@@ -32,15 +34,12 @@ import (
 	"github.com/armadakv/armada/raft/internal/raft"
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/utils"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/logger"
 	pb "github.com/armadakv/armada/raft/raftpb"
 	sm "github.com/armadakv/armada/raft/statemachine"
 )
 
-var (
-	plog = logger.GetLogger("rsm")
-)
+var plog = logger.GetLogger("rsm")
 
 var (
 	// ErrRestoreSnapshot indicates there is error when trying to restore
@@ -162,7 +161,7 @@ type ISnapshotter interface {
 // scheme.
 type StateMachine struct {
 	node        INode
-	fs          vfs.IFS
+	fs          vfs.FS
 	sm          IManagedStateMachine
 	snapshotter ISnapshotter
 	taskQ       *TaskQueue
@@ -194,9 +193,7 @@ type StateMachine struct {
 var firstError = utils.FirstError
 
 // NewStateMachine creates a new application state machine object.
-func NewStateMachine(sm IManagedStateMachine,
-	snapshotter ISnapshotter,
-	cfg config.Config, node INode, fs vfs.IFS) *StateMachine {
+func NewStateMachine(sm IManagedStateMachine, snapshotter ISnapshotter, cfg config.Config, node INode, fs vfs.FS) *StateMachine {
 	ordered := cfg.OrderedConfigChange
 	return &StateMachine{
 		snapshotter: snapshotter,
@@ -610,7 +607,8 @@ func (s *StateMachine) isDummySnapshot(r SSRequest) bool {
 }
 
 func (s *StateMachine) logMembership(name string,
-	index uint64, members map[uint64]string) {
+	index uint64, members map[uint64]string,
+) {
 	plog.Debugf("%d %s included in %s", len(members), name, s.ssid(index))
 	for nid, addr := range members {
 		plog.Debugf("\t%s : %s", logutil.ReplicaID(nid), addr)
@@ -930,7 +928,8 @@ func (s *StateMachine) handleEntry(e pb.Entry, last bool) error {
 }
 
 func (s *StateMachine) onApplied(e pb.Entry,
-	result sm.Result, ignored bool, rejected bool, last bool) {
+	result sm.Result, ignored bool, rejected bool, last bool,
+) {
 	if !ignored {
 		s.node.ApplyUpdate(e, result, rejected, ignored, last)
 	}

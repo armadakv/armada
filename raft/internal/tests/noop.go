@@ -61,7 +61,8 @@ func (n *NoOP) Update(e sm.Entry) (sm.Result, error) {
 // SaveSnapshot saves the state of the object to the provided io.Writer object.
 func (n *NoOP) SaveSnapshot(w io.Writer,
 	fileCollection sm.ISnapshotFileCollection,
-	done <-chan struct{}) error {
+	done <-chan struct{},
+) error {
 	data, err := json.Marshal(n)
 	if err != nil {
 		panic(err)
@@ -77,7 +78,8 @@ func (n *NoOP) SaveSnapshot(w io.Writer,
 // io.Reader object.
 func (n *NoOP) RecoverFromSnapshot(r io.Reader,
 	files []sm.SnapshotFile,
-	done <-chan struct{}) error {
+	done <-chan struct{},
+) error {
 	var sn NoOP
 	data, err := io.ReadAll(r)
 	if err != nil {

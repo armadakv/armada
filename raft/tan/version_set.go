@@ -23,8 +23,8 @@ import (
 	"io"
 	"sync"
 
+	"github.com/armadakv/armada/vfs"
 	"github.com/cockroachdb/errors"
-	"github.com/lni/vfs"
 )
 
 // versionSet manages a collection of immutable versions, and manages the
@@ -74,7 +74,8 @@ func (vs *versionSet) init(dirname string, opts *Options, mu *sync.Mutex) {
 
 // create creates a version set for a fresh DB.
 func (vs *versionSet) create(dirname string, opt *Options, dir vfs.File,
-	mu *sync.Mutex) error {
+	mu *sync.Mutex,
+) error {
 	vs.init(dirname, opt, mu)
 	newVersion := &version{}
 	vs.append(newVersion)
@@ -99,7 +100,8 @@ func (vs *versionSet) create(dirname string, opt *Options, dir vfs.File,
 
 // load loads the version set from the manifest file.
 func (vs *versionSet) load(dirname string,
-	opt *Options, mu *sync.Mutex) (err error) {
+	opt *Options, mu *sync.Mutex,
+) (err error) {
 	vs.init(dirname, opt, mu)
 	// Read the CURRENT file to find the current manifest file.
 	current, err := vs.fs.Open(makeFilename(vs.fs, dirname, fileTypeCurrent, 0))
@@ -351,7 +353,7 @@ func (vs *versionSet) createManifest(
 			err = firstError(err, vs.fs.Remove(filename))
 		}
 	}()
-	manifestFile, err = vs.fs.Create(filename)
+	manifestFile, err = vs.fs.Create(filename, "")
 	if err != nil {
 		return err
 	}

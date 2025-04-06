@@ -34,7 +34,8 @@ type transportMetrics struct {
 }
 
 func newTransportMetrics(useMetrics bool,
-	msgCount func() float64, ssCount func() float64) *transportMetrics {
+	msgCount func() float64, ssCount func() float64,
+) *transportMetrics {
 	tm := &transportMetrics{useMetrics: useMetrics}
 	if useMetrics {
 		name := "transport_message_connections"
@@ -76,7 +77,8 @@ func (tm *transportMetrics) snapshotCnnectionFailure() {
 }
 
 func (tm *transportMetrics) receivedMessages(ss uint64,
-	msg uint64, dropped uint64) {
+	msg uint64, dropped uint64,
+) {
 	if tm.useMetrics {
 		tm.messageReceived.Add(int(msg))
 		tm.messageRecvDropped.Add(int(dropped))

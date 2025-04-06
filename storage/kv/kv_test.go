@@ -11,7 +11,7 @@ import (
 
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
-	"github.com/lni/vfs"
+	"github.com/armadakv/armada/vfs"
 	"github.com/stretchr/testify/require"
 )
 

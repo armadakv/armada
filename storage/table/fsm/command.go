@@ -7,7 +7,7 @@ import (
 
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/regattapb"
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	pb "google.golang.org/protobuf/proto"
 )
 

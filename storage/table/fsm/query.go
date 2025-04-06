@@ -12,7 +12,7 @@ import (
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util/iterx"
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 const maxRangeSize uint64 = (4 * 1024 * 1024) - 1024 // 4MiB - 1KiB sentinel.

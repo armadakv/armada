@@ -22,9 +22,10 @@ import (
 	"io"
 	"time"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/armadakv/armada/raft/internal/fileutil"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
@@ -97,7 +98,8 @@ func mustGetVersionedWriter(w io.Writer, v SSVersion) IVWriter {
 }
 
 func getVersionedReader(r io.Reader,
-	v SSVersion, t pb.ChecksumType) (IVReader, bool) {
+	v SSVersion, t pb.ChecksumType,
+) (IVReader, bool) {
 	if v == V1 {
 		return newV1Reader(r), true
 	} else if v == V2 {
@@ -107,7 +109,8 @@ func getVersionedReader(r io.Reader,
 }
 
 func mustGetVersionedReader(r io.Reader,
-	v SSVersion, t pb.ChecksumType) IVReader {
+	v SSVersion, t pb.ChecksumType,
+) IVReader {
 	vr, ok := getVersionedReader(r, v, t)
 	if !ok {
 		plog.Panicf("failed to get version reader, v %d", v)
@@ -130,7 +133,7 @@ func getVersionedValidator(header pb.SnapshotHeader) (IVValidator, bool) {
 }
 
 // GetWitnessSnapshot returns the content of a witness snapshot.
-func GetWitnessSnapshot(fs vfs.IFS) (result []byte, err error) {
+func GetWitnessSnapshot(fs vfs.FS) (result []byte, err error) {
 	f, path, err := fileutil.TempFile("", "dragonboat-witness-snapshot", fs)
 	if err != nil {
 		return nil, err
@@ -163,29 +166,26 @@ func GetWitnessSnapshot(fs vfs.IFS) (result []byte, err error) {
 type SnapshotWriter struct {
 	vw     IVWriter
 	file   vfs.File
-	fs     vfs.IFS
+	fs     vfs.FS
 	fp     string
 	ct     pb.CompressionType
 	closed bool
 }
 
 // NewSnapshotWriter creates a new snapshot writer instance.
-func NewSnapshotWriter(fp string,
-	ct pb.CompressionType, fs vfs.IFS) (*SnapshotWriter, error) {
+func NewSnapshotWriter(fp string, ct pb.CompressionType, fs vfs.FS) (*SnapshotWriter, error) {
 	return newVersionedSnapshotWriter(fp, DefaultVersion, ct, fs)
 }
 
-func newVersionedSnapshotWriter(fp string,
-	v SSVersion, ct pb.CompressionType, fs vfs.IFS) (*SnapshotWriter, error) {
-	f, err := fs.Create(fp)
+func newVersionedSnapshotWriter(fp string, v SSVersion, ct pb.CompressionType, fs vfs.FS) (*SnapshotWriter, error) {
+	f, err := fs.Create(fp, "")
 	if err != nil {
 		return nil, err
 	}
 	return newSnapshotWriter(f, fp, v, ct, fs)
 }
 
-func newSnapshotWriter(f vfs.File, fp string,
-	v SSVersion, ct pb.CompressionType, fs vfs.IFS) (*SnapshotWriter, error) {
+func newSnapshotWriter(f vfs.File, fp string, v SSVersion, ct pb.CompressionType, fs vfs.FS) (*SnapshotWriter, error) {
 	dummy := make([]byte, HeaderSize)
 	if _, err := f.Write(dummy); err != nil {
 		return nil, err
@@ -274,8 +274,7 @@ type SnapshotReader struct {
 }
 
 // NewSnapshotReader creates a new snapshot reader instance.
-func NewSnapshotReader(fp string,
-	fs vfs.IFS) (*SnapshotReader, pb.SnapshotHeader, error) {
+func NewSnapshotReader(fp string, fs vfs.FS) (*SnapshotReader, pb.SnapshotHeader, error) {
 	f, err := fs.Open(fp)
 	if err != nil {
 		return nil, pb.SnapshotHeader{}, err
@@ -416,7 +415,7 @@ func (v *SnapshotValidator) Validate() bool {
 
 // IsShrunkSnapshotFile returns a boolean flag indicating whether the
 // specified snapshot file is already shrunk.
-func IsShrunkSnapshotFile(fp string, fs vfs.IFS) (shrunk bool, err error) {
+func IsShrunkSnapshotFile(fp string, fs vfs.FS) (shrunk bool, err error) {
 	reader, _, err := NewSnapshotReader(fp, fs)
 	if err != nil {
 		return false, err
@@ -444,7 +443,7 @@ func IsShrunkSnapshotFile(fp string, fs vfs.IFS) (shrunk bool, err error) {
 	return false, nil
 }
 
-func mustInSameDir(fp string, newFp string, fs vfs.IFS) {
+func mustInSameDir(fp string, newFp string, fs vfs.FS) {
 	if fs.PathDir(fp) != fs.PathDir(newFp) {
 		plog.Panicf("not in the same dir, dir 1: %s, dir 2: %s",
 			fs.PathDir(fp), fs.PathDir(newFp))
@@ -453,7 +452,7 @@ func mustInSameDir(fp string, newFp string, fs vfs.IFS) {
 
 // ShrinkSnapshot shrinks the specified snapshot file and save the generated
 // shrunk version to the path specified by newFp.
-func ShrinkSnapshot(fp string, newFp string, fs vfs.IFS) (err error) {
+func ShrinkSnapshot(fp string, newFp string, fs vfs.FS) (err error) {
 	mustInSameDir(fp, newFp, fs)
 	reader, _, err := NewSnapshotReader(fp, fs)
 	if err != nil {
@@ -477,7 +476,7 @@ func ShrinkSnapshot(fp string, newFp string, fs vfs.IFS) (err error) {
 
 // ReplaceSnapshot replace the specified snapshot file with the shrunk
 // version atomically.
-func ReplaceSnapshot(newFp string, fp string, fs vfs.IFS) error {
+func ReplaceSnapshot(newFp string, fp string, fs vfs.FS) error {
 	mustInSameDir(fp, newFp, fs)
 	if err := fs.Rename(newFp, fp); err != nil {
 		return err

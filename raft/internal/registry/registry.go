@@ -27,11 +27,9 @@ import (
 	"github.com/armadakv/armada/raft/raftio"
 )
 
-var (
-	// ErrUnknownTarget is the error returned when the target address of the node
-	// is unknown.
-	ErrUnknownTarget = errors.New("target address unknown")
-)
+// ErrUnknownTarget is the error returned when the target address of the node
+// is unknown.
+var ErrUnknownTarget = errors.New("target address unknown")
 
 // IResolver converts the (shard id, replica id) tuple to network address.
 type IResolver interface {
@@ -39,8 +37,10 @@ type IResolver interface {
 	Add(uint64, uint64, string)
 }
 
-var _ raftio.INodeRegistry = (*Registry)(nil)
-var _ IResolver = (*Registry)(nil)
+var (
+	_ raftio.INodeRegistry = (*Registry)(nil)
+	_ IResolver            = (*Registry)(nil)
+)
 
 // Registry is used to manage all known node addresses in the multi raft system.
 // The transport layer uses this address registry to locate nodes.

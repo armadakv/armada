@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 const (
@@ -83,7 +83,7 @@ func SaveCurrentDBDirName(fs vfs.FS, dir string, dbdir string) error {
 		return err
 	}
 	fp := filepath.Join(dir, updatingDBFilename)
-	f, err := fs.Create(fp)
+	f, err := fs.Create(fp, vfs.WriteCategoryUnspecified)
 	if err != nil {
 		return err
 	}

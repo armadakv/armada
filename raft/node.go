@@ -147,7 +147,8 @@ func newNode(peers map[uint64]string,
 	pool *sync.Pool,
 	ldb raftio.ILogDB,
 	metrics *logDBMetrics,
-	sysEvents *sysEventListener) (*node, error) {
+	sysEvents *sysEventListener,
+) (*node, error) {
 	notifyCommit := nhConfig.NotifyCommit
 	proposals := newEntryQueue(incomingProposalsMaxLen, lazyFreeCycle)
 	readIndexes := newReadIndexQueue(incomingReadIndexMaxLen)
@@ -233,7 +234,8 @@ func (n *node) commitReady() {
 }
 
 func (n *node) ApplyUpdate(e pb.Entry,
-	result sm.Result, rejected bool, ignored bool, notifyRead bool) {
+	result sm.Result, rejected bool, ignored bool, notifyRead bool,
+) {
 	if n.isWitness() {
 		return
 	}
@@ -249,7 +251,8 @@ func (n *node) ApplyUpdate(e pb.Entry,
 }
 
 func (n *node) ApplyConfigChange(cc pb.ConfigChange,
-	key uint64, rejected bool) error {
+	key uint64, rejected bool,
+) error {
 	n.raftMu.Lock()
 	defer n.raftMu.Unlock()
 	if !rejected {
@@ -355,7 +358,8 @@ func (n *node) RestoreRemotes(snapshot pb.Snapshot) error {
 }
 
 func (n *node) startRaft(cfg config.Config,
-	peers map[uint64]string, initial bool) (bool, error) {
+	peers map[uint64]string, initial bool,
+) (bool, error) {
 	newNode, err := n.replayLog(cfg.ShardID, cfg.ReplicaID)
 	if err != nil {
 		return false, err
@@ -412,7 +416,8 @@ func (n *node) OnDiskStateMachine() bool {
 }
 
 func (n *node) proposeSession(session *client.Session,
-	timeout uint64) (*RequestState, error) {
+	timeout uint64,
+) (*RequestState, error) {
 	if !n.initialized() {
 		return nil, ErrShardNotReady
 	}
@@ -433,7 +438,8 @@ func (n *node) payloadTooBig(sz int) bool {
 }
 
 func (n *node) propose(session *client.Session,
-	cmd []byte, timeout uint64) (*RequestState, error) {
+	cmd []byte, timeout uint64,
+) (*RequestState, error) {
 	if !n.initialized() {
 		return nil, ErrShardNotReady
 	}
@@ -474,7 +480,8 @@ func (n *node) requestLeaderTransfer(replicaID uint64) error {
 }
 
 func (n *node) requestSnapshot(opt SnapshotOption,
-	timeout uint64) (*RequestState, error) {
+	timeout uint64,
+) (*RequestState, error) {
 	if !n.initialized() {
 		return nil, ErrShardNotReady
 	}
@@ -507,7 +514,8 @@ func (n *node) requestSnapshot(opt SnapshotOption,
 }
 
 func (n *node) queryRaftLog(firstIndex uint64,
-	lastIndex uint64, maxSize uint64) (*RequestState, error) {
+	lastIndex uint64, maxSize uint64,
+) (*RequestState, error) {
 	if !n.initialized() {
 		return nil, ErrShardNotReady
 	}
@@ -523,7 +531,8 @@ func (n *node) reportIgnoredSnapshotRequest(key uint64) {
 
 func (n *node) requestConfigChange(cct pb.ConfigChangeType,
 	replicaID uint64, target string, orderID uint64,
-	timeout uint64) (*RequestState, error) {
+	timeout uint64,
+) (*RequestState, error) {
 	if !n.initialized() {
 		return nil, ErrShardNotReady
 	}
@@ -543,22 +552,26 @@ func (n *node) requestConfigChange(cct pb.ConfigChangeType,
 }
 
 func (n *node) requestDeleteNodeWithOrderID(replicaID uint64,
-	order uint64, timeout uint64) (*RequestState, error) {
+	order uint64, timeout uint64,
+) (*RequestState, error) {
 	return n.requestConfigChange(pb.RemoveNode, replicaID, "", order, timeout)
 }
 
 func (n *node) requestAddNodeWithOrderID(replicaID uint64,
-	target string, order uint64, timeout uint64) (*RequestState, error) {
+	target string, order uint64, timeout uint64,
+) (*RequestState, error) {
 	return n.requestConfigChange(pb.AddNode, replicaID, target, order, timeout)
 }
 
 func (n *node) requestAddNonVotingWithOrderID(replicaID uint64,
-	target string, order uint64, timeout uint64) (*RequestState, error) {
+	target string, order uint64, timeout uint64,
+) (*RequestState, error) {
 	return n.requestConfigChange(pb.AddNonVoting, replicaID, target, order, timeout)
 }
 
 func (n *node) requestAddWitnessWithOrderID(replicaID uint64,
-	target string, order uint64, timeout uint64) (*RequestState, error) {
+	target string, order uint64, timeout uint64,
+) (*RequestState, error) {
 	return n.requestConfigChange(pb.AddWitness, replicaID, target, order, timeout)
 }
 
@@ -1398,7 +1411,8 @@ func (n *node) handleSnapshotTask(task rsm.Task) {
 }
 
 func (n *node) reportSnapshotStatus(shardID uint64,
-	replicaID uint64, failed bool) {
+	replicaID uint64, failed bool,
+) {
 	n.handleSnapshotStatus(shardID, replicaID, failed)
 }
 

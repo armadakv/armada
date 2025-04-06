@@ -196,6 +196,7 @@ func (m *membership) isAddNodeAsNonVoting(cc pb.ConfigChange) bool {
 	}
 	return false
 }
+
 func (m *membership) isAddNodeAsWitness(cc pb.ConfigChange) bool {
 	if cc.Type == pb.AddWitness {
 		_, ok := m.members.Addresses[cc.ReplicaID]

@@ -17,9 +17,10 @@ package rsm
 import (
 	"io"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 
-	"github.com/armadakv/armada/raft/config"
 	pb "github.com/armadakv/armada/raft/raftpb"
 	sm "github.com/armadakv/armada/raft/statemachine"
 )
@@ -87,7 +88,8 @@ func (i *InMemStateMachine) Prepare() (interface{}, error) {
 
 // Save saves the snapshot.
 func (i *InMemStateMachine) Save(ctx interface{},
-	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{}) error {
+	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{},
+) error {
 	if ctx != nil {
 		panic("snapshot ctx is not nil")
 	}
@@ -96,7 +98,8 @@ func (i *InMemStateMachine) Save(ctx interface{},
 
 // Recover recovers the state machine from a snapshot.
 func (i *InMemStateMachine) Recover(r io.Reader,
-	fs []sm.SnapshotFile, stopc <-chan struct{}) error {
+	fs []sm.SnapshotFile, stopc <-chan struct{},
+) error {
 	return errors.WithStack(i.sm.RecoverFromSnapshot(r, fs, stopc))
 }
 
@@ -163,13 +166,15 @@ func (s *ConcurrentStateMachine) Prepare() (interface{}, error) {
 
 // Save saves the snapshot.
 func (s *ConcurrentStateMachine) Save(ctx interface{},
-	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{}) error {
+	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{},
+) error {
 	return errors.WithStack(s.sm.SaveSnapshot(ctx, w, fc, stopc))
 }
 
 // Recover recovers the state machine from a snapshot.
 func (s *ConcurrentStateMachine) Recover(r io.Reader,
-	fs []sm.SnapshotFile, stopc <-chan struct{}) error {
+	fs []sm.SnapshotFile, stopc <-chan struct{},
+) error {
 	return errors.WithStack(s.sm.RecoverFromSnapshot(r, fs, stopc))
 }
 
@@ -197,7 +202,7 @@ func (s *ConcurrentStateMachine) Type() pb.StateMachineType {
 
 // ITestFS is an interface implemented by test SMs.
 type ITestFS interface {
-	SetTestFS(fs config.IFS)
+	SetTestFS(fs vfs.FS)
 }
 
 // OnDiskStateMachine is the type to represent an on disk state machine.
@@ -213,7 +218,7 @@ func NewOnDiskStateMachine(s sm.IOnDiskStateMachine) *OnDiskStateMachine {
 }
 
 // SetTestFS injects the specified fs to the test SM.
-func (s *OnDiskStateMachine) SetTestFS(fs config.IFS) {
+func (s *OnDiskStateMachine) SetTestFS(fs vfs.FS) {
 	if tfs, ok := s.sm.(ITestFS); ok {
 		plog.Infof("the underlying SM support test fs injection")
 		tfs.SetTestFS(fs)
@@ -258,14 +263,16 @@ func (s *OnDiskStateMachine) Prepare() (interface{}, error) {
 
 // Save saves the snapshot.
 func (s *OnDiskStateMachine) Save(ctx interface{},
-	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{}) error {
+	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{},
+) error {
 	s.ensureOpened()
 	return errors.WithStack(s.sm.SaveSnapshot(ctx, w, stopc))
 }
 
 // Recover recovers the state machine from a snapshot.
 func (s *OnDiskStateMachine) Recover(r io.Reader,
-	fs []sm.SnapshotFile, stopc <-chan struct{}) error {
+	fs []sm.SnapshotFile, stopc <-chan struct{},
+) error {
 	s.ensureOpened()
 	return errors.WithStack(s.sm.RecoverFromSnapshot(r, stopc))
 }

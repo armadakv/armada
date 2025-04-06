@@ -15,12 +15,13 @@
 package raft
 
 import (
-	"github.com/armadakv/armada/raft/config"
-	"github.com/armadakv/armada/raft/internal/settings"
 	"math"
 	"reflect"
 	"sort"
 	"testing"
+
+	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/settings"
 
 	"github.com/stretchr/testify/assert"
 
@@ -3169,7 +3170,8 @@ func TestRateLimitMessageIsNeverSentByLeader(t *testing.T) {
 }
 
 func testRateLimitMessageIsSentByNonLeader(leaderID uint64,
-	rateLimitSent bool, t *testing.T) {
+	rateLimitSent bool, t *testing.T,
+) {
 	r := newRateLimitedTestRaft(1, []uint64{1, 2, 3}, 5, 1, NewTestLogDB())
 	r.becomeFollower(2, leaderID)
 	ents := []pb.Entry{

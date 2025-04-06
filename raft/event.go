@@ -53,7 +53,8 @@ type raftEventListener struct {
 var _ server.IRaftEventListener = (*raftEventListener)(nil)
 
 func newRaftEventListener(shardID uint64, replicaID uint64,
-	useMetrics bool, queue *leaderInfoQueue) *raftEventListener {
+	useMetrics bool, queue *leaderInfoQueue,
+) *raftEventListener {
 	el := &raftEventListener{
 		shardID:   shardID,
 		replicaID: replicaID,
@@ -154,7 +155,8 @@ type sysEventListener struct {
 }
 
 func newSysEventListener(l raftio.ISystemEventListener,
-	stopc chan struct{}) *sysEventListener {
+	stopc chan struct{},
+) *sysEventListener {
 	return &sysEventListener{
 		stopc:  stopc,
 		events: make(chan server.SystemEvent),

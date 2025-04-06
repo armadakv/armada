@@ -43,6 +43,7 @@ jobs:
       with:
         format: golang
         file: coverage.out
+        fail-on-error: false
   build:
     runs-on: ubuntu-latest
     steps:

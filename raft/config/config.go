@@ -23,21 +23,20 @@ import (
 	"path/filepath"
 	"reflect"
 
+	"github.com/armadakv/armada/vfs"
+
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/netutil"
 	"github.com/lni/goutils/stringutil"
 
 	"github.com/armadakv/armada/raft/internal/id"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/internal/vfs"
 	"github.com/armadakv/armada/raft/logger"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
 
-var (
-	plog = logger.GetLogger("config")
-)
+var plog = logger.GetLogger("config")
 
 const (
 	// don't change these, see the comments on ExpertConfig.
@@ -338,9 +337,6 @@ type NodeHostConfig struct {
 	Expert ExpertConfig
 }
 
-// IFS is the filesystem interface used by tests.
-type IFS = vfs.IFS
-
 // TargetValidator is the validtor used to validate user specified target values.
 type TargetValidator func(string) bool
 
@@ -441,7 +437,7 @@ func (c *NodeHostConfig) Prepare() error {
 		}
 	}
 	if c.Expert.FS == nil {
-		c.Expert.FS = vfs.DefaultFS
+		c.Expert.FS = vfs.Default
 	}
 	if c.Expert.Engine.IsEmpty() {
 		plog.Infof("using default EngineConfig")
@@ -716,7 +712,7 @@ type ExpertConfig struct {
 	// disk usages.
 	LogDB LogDBConfig
 	// FS is the filesystem instance used in tests.
-	FS IFS
+	FS vfs.FS
 	// NodeRegistryFactory defines a custom node registry function that can be used
 	// instead of a static registry.
 	NodeRegistryFactory NodeRegistryFactory

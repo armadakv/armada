@@ -42,9 +42,7 @@ var (
 	pendingProposalShards        = settings.PendingProposalShards
 )
 
-var (
-	plog = logger.GetLogger("dragonboat")
-)
+var plog = logger.GetLogger("dragonboat")
 
 var (
 	// ErrInvalidOption indicates that the specified option is invalid.
@@ -616,7 +614,8 @@ func (p *pendingSnapshot) close() {
 
 func (p *pendingSnapshot) request(st rsm.SSReqType,
 	path string, override bool, overhead uint64, index uint64,
-	timeoutTick uint64) (*RequestState, error) {
+	timeoutTick uint64,
+) (*RequestState, error) {
 	if timeoutTick == 0 {
 		return nil, ErrTimeoutTooSmall
 	}
@@ -673,7 +672,8 @@ func (p *pendingSnapshot) gc() {
 }
 
 func (p *pendingSnapshot) apply(key uint64,
-	ignored bool, aborted bool, index uint64) {
+	ignored bool, aborted bool, index uint64,
+) {
 	if ignored && aborted {
 		plog.Panicf("ignored && aborted")
 	}
@@ -698,7 +698,8 @@ func (p *pendingSnapshot) apply(key uint64,
 }
 
 func newPendingConfigChange(confChangeC chan<- configChangeRequest,
-	notifyCommit bool) pendingConfigChange {
+	notifyCommit bool,
+) pendingConfigChange {
 	return pendingConfigChange{
 		confChangeC:  confChangeC,
 		logicalClock: newLogicalClock(),
@@ -720,7 +721,8 @@ func (p *pendingConfigChange) close() {
 }
 
 func (p *pendingConfigChange) request(cc pb.ConfigChange,
-	timeoutTick uint64) (*RequestState, error) {
+	timeoutTick uint64,
+) (*RequestState, error) {
 	if timeoutTick == 0 {
 		return nil, ErrTimeoutTooSmall
 	}
@@ -999,7 +1001,8 @@ func getRng(shardID uint64, replicaID uint64, shard uint64) *keyGenerator {
 }
 
 func newPendingProposal(cfg config.Config,
-	notifyCommit bool, pool *sync.Pool, proposals *entryQueue) pendingProposal {
+	notifyCommit bool, pool *sync.Pool, proposals *entryQueue,
+) pendingProposal {
 	ps := pendingProposalShards
 	p := pendingProposal{
 		shards: make([]*proposalShard, ps),
@@ -1014,7 +1017,8 @@ func newPendingProposal(cfg config.Config,
 }
 
 func (p *pendingProposal) propose(session *client.Session,
-	cmd []byte, timeoutTick uint64) (*RequestState, error) {
+	cmd []byte, timeoutTick uint64,
+) (*RequestState, error) {
 	key := p.nextKey(session.ClientID)
 	pp := p.shards[key%p.ps]
 	return pp.propose(session, cmd, key, timeoutTick)
@@ -1027,19 +1031,22 @@ func (p *pendingProposal) close() {
 }
 
 func (p *pendingProposal) committed(clientID uint64,
-	seriesID uint64, key uint64) {
+	seriesID uint64, key uint64,
+) {
 	pp := p.shards[key%p.ps]
 	pp.committed(clientID, seriesID, key)
 }
 
 func (p *pendingProposal) dropped(clientID uint64,
-	seriesID uint64, key uint64) {
+	seriesID uint64, key uint64,
+) {
 	pp := p.shards[key%p.ps]
 	pp.dropped(clientID, seriesID, key)
 }
 
 func (p *pendingProposal) applied(clientID uint64,
-	seriesID uint64, key uint64, result sm.Result, rejected bool) {
+	seriesID uint64, key uint64, result sm.Result, rejected bool,
+) {
 	pp := p.shards[key%p.ps]
 	pp.applied(clientID, seriesID, key, result, rejected)
 }
@@ -1062,7 +1069,8 @@ func (p *pendingProposal) gc() {
 }
 
 func newPendingProposalShard(cfg config.Config,
-	notifyCommit bool, pool *sync.Pool, proposals *entryQueue) *proposalShard {
+	notifyCommit bool, pool *sync.Pool, proposals *entryQueue,
+) *proposalShard {
 	p := &proposalShard{
 		proposals:    proposals,
 		pending:      make(map[uint64]*RequestState),
@@ -1075,7 +1083,8 @@ func newPendingProposalShard(cfg config.Config,
 }
 
 func (p *proposalShard) propose(session *client.Session,
-	cmd []byte, key uint64, timeoutTick uint64) (*RequestState, error) {
+	cmd []byte, key uint64, timeoutTick uint64,
+) (*RequestState, error) {
 	if timeoutTick == 0 {
 		return nil, ErrTimeoutTooSmall
 	}
@@ -1139,17 +1148,20 @@ func (p *proposalShard) close() {
 }
 
 func (p *proposalShard) getProposal(clientID uint64,
-	seriesID uint64, key uint64, now uint64) *RequestState {
+	seriesID uint64, key uint64, now uint64,
+) *RequestState {
 	return p.takeProposal(clientID, seriesID, key, now, true)
 }
 
 func (p *proposalShard) borrowProposal(clientID uint64,
-	seriesID uint64, key uint64, now uint64) *RequestState {
+	seriesID uint64, key uint64, now uint64,
+) *RequestState {
 	return p.takeProposal(clientID, seriesID, key, now, false)
 }
 
 func (p *proposalShard) takeProposal(clientID uint64,
-	seriesID uint64, key uint64, now uint64, remove bool) *RequestState {
+	seriesID uint64, key uint64, now uint64, remove bool,
+) *RequestState {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.stopped {
@@ -1180,7 +1192,8 @@ func (p *proposalShard) dropped(clientID uint64, seriesID uint64, key uint64) {
 }
 
 func (p *proposalShard) applied(clientID uint64,
-	seriesID uint64, key uint64, result sm.Result, rejected bool) {
+	seriesID uint64, key uint64, result sm.Result, rejected bool,
+) {
 	now := p.getTick()
 	var code RequestResultCode
 	if rejected {
@@ -1244,7 +1257,8 @@ func (p *pendingRaftLogQuery) close() {
 }
 
 func (p *pendingRaftLogQuery) add(firstIndex uint64,
-	lastIndex uint64, maxSize uint64) (*RequestState, error) {
+	lastIndex uint64, maxSize uint64,
+) (*RequestState, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.mu.pending != nil {
@@ -1267,7 +1281,8 @@ func (p *pendingRaftLogQuery) get() *RequestState {
 }
 
 func (p *pendingRaftLogQuery) returned(outOfRange bool,
-	logRange LogRange, entries []pb.Entry) {
+	logRange LogRange, entries []pb.Entry,
+) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.mu.pending == nil {

@@ -183,7 +183,8 @@ func (rs *snapshotState) getStreamReq() (rsm.Task, getSink, bool) {
 }
 
 func (rs *snapshotState) notifySnapshotStatus(save bool,
-	recover bool, stream bool, initial bool, index uint64) {
+	recover bool, stream bool, initial bool, index uint64,
+) {
 	count := 0
 	if save {
 		count++

@@ -84,7 +84,8 @@ func (l *LogTestHelper) AllEntries() []pb.Entry {
 
 // Entries ...
 func (l *LogTestHelper) Entries(start uint64,
-	maxsize uint64) ([]pb.Entry, error) {
+	maxsize uint64,
+) ([]pb.Entry, error) {
 	return l.el.entries(start, maxsize)
 }
 
@@ -110,7 +111,8 @@ func (l *LogTestHelper) GetCommitted() uint64 {
 
 // TryAppend ...
 func (l *LogTestHelper) TryAppend(index uint64, logTerm uint64,
-	committed uint64, ents []pb.Entry) (uint64, bool, error) {
+	committed uint64, ents []pb.Entry,
+) (uint64, bool, error) {
 	match, err := l.el.matchTerm(index, logTerm)
 	if err != nil {
 		return 0, false, err
@@ -128,7 +130,8 @@ func (l *LogTestHelper) TryAppend(index uint64, logTerm uint64,
 
 // GetEntries ...
 func (l *LogTestHelper) GetEntries(low uint64, high uint64,
-	maxsize uint64) ([]pb.Entry, error) {
+	maxsize uint64,
+) ([]pb.Entry, error) {
 	return l.el.getEntries(low, high, maxsize)
 }
 
