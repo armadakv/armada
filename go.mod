@@ -13,7 +13,7 @@ require (
 	github.com/cockroachdb/datadriven v1.0.3-0.20240530155848-7682d40af056
 	github.com/cockroachdb/errors v1.11.3
 	github.com/cockroachdb/pebble/v2 v2.0.3
-	github.com/cockroachdb/redact v1.1.5
+	github.com/cockroachdb/redact v1.1.6
 	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.0.1
@@ -35,8 +35,8 @@ require (
 	go.uber.org/zap v1.27.0
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 	golang.org/x/net v0.38.0
-	golang.org/x/sync v0.12.0
-	golang.org/x/sys v0.31.0
+	golang.org/x/sync v0.13.0
+	golang.org/x/sys v0.32.0
 	golang.org/x/time v0.11.0
 	google.golang.org/grpc v1.71.1
 	google.golang.org/protobuf v1.36.6
