@@ -23,7 +23,7 @@ jobs:
   test:
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
     - name: Checkout code
@@ -36,6 +36,7 @@ jobs:
       with:
         go-version-file: go.mod
     - name: Test
+      shell: bash
       run: |
         set -o pipefail && go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./regattaserver/...,./replication/...,./storage/...,./security/...,./util/... | go tool tparse -all
     - name: Coverage track
