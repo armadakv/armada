@@ -5,19 +5,13 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"net/http"
-	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	rl "github.com/armadakv/armada/log"
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/regattaserver"
 	"github.com/armadakv/armada/replication"
 	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage"
-	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -81,79 +75,32 @@ func validateFollowerConfig() error {
 }
 
 func follower(_ *cobra.Command, _ []string) error {
-	logger := rl.NewLogger(viper.GetBool("dev-mode"), viper.GetString("log-level"))
+	logger, log, shutdown, err := setupCommonEnvironment()
+	if err != nil {
+		return err
+	}
 	defer func() {
 		_ = logger.Sync()
 	}()
-	zap.ReplaceGlobals(logger)
-	log := logger.Sugar().Named("root")
+
 	engineLog := logger.Named("engine")
-	setupDragonboatLogger(engineLog)
 
-	if err := autoSetMaxprocs(log); err != nil {
-		return err
-	}
-
-	// Check signals
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
-
-	initialMembers, err := parseInitialMembers(viper.GetStringMapString("raft.initial-members"))
-	if err != nil {
-		return fmt.Errorf("failed to parse raft.initial-members: %w", err)
-	}
-
+	// Create notification queue for follower mode
 	nQueue := storage.NewNotificationQueue()
 	go nQueue.Run()
 	defer func() {
 		_ = nQueue.Close()
 	}()
-	engine, err := storage.New(storage.Config{
-		Log:                 engineLog.Sugar(),
-		ClientAddress:       viper.GetString("api.advertise-address"),
-		NodeID:              viper.GetUint64("raft.node-id"),
-		InitialMembers:      initialMembers,
-		WALDir:              viper.GetString("raft.wal-dir"),
-		NodeHostDir:         viper.GetString("raft.node-host-dir"),
-		RTTMillisecond:      uint64(viper.GetDuration("raft.rtt").Milliseconds()),
-		RaftAddress:         viper.GetString("raft.address"),
-		ListenAddress:       viper.GetString("raft.listen-address"),
-		EnableMetrics:       true,
-		MaxReceiveQueueSize: viper.GetUint64("raft.max-recv-queue-size"),
-		MaxSendQueueSize:    viper.GetUint64("raft.max-send-queue-size"),
-		Gossip: storage.GossipConfig{
-			BindAddress:      viper.GetString("memberlist.address"),
-			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),
-			InitialMembers:   viper.GetStringSlice("memberlist.members"),
-			ClusterName:      viper.GetString("memberlist.cluster-name"),
-			NodeName:         viper.GetString("memberlist.node-name"),
-		},
-		Table: storage.TableConfig{
-			FS:                   vfs.Default,
-			ElectionRTT:          viper.GetUint64("raft.election-rtt"),
-			HeartbeatRTT:         viper.GetUint64("raft.heartbeat-rtt"),
-			SnapshotEntries:      viper.GetUint64("raft.snapshot-entries"),
-			CompactionOverhead:   viper.GetUint64("raft.compaction-overhead"),
-			MaxInMemLogSize:      viper.GetUint64("raft.max-in-mem-log-size"),
-			DataDir:              viper.GetString("raft.state-machine-dir"),
-			RecoveryType:         toRecoveryType(viper.GetString("raft.snapshot-recovery-type")),
-			BlockCacheSize:       viper.GetInt64("storage.block-cache-size"),
-			TableCacheSize:       viper.GetInt("storage.table-cache-size"),
-			AppliedIndexListener: nQueue.Notify,
-		},
-		Meta: storage.MetaConfig{
-			ElectionRTT:        viper.GetUint64("raft.election-rtt"),
-			HeartbeatRTT:       viper.GetUint64("raft.heartbeat-rtt"),
-			SnapshotEntries:    viper.GetUint64("raft.snapshot-entries"),
-			CompactionOverhead: viper.GetUint64("raft.compaction-overhead"),
-			MaxInMemLogSize:    viper.GetUint64("raft.max-in-mem-log-size"),
-		},
-	})
+
+	// Create and start the engine with notification queue
+	config, err := createEngineConfig(engineLog, nQueue.Notify)
 	if err != nil {
-		return fmt.Errorf("failed to create engine: %w", err)
+		return err
 	}
-	if err := engine.Start(); err != nil {
-		return fmt.Errorf("failed to start engine: %w", err)
+
+	engine, err := startEngine(config)
+	if err != nil {
+		return err
 	}
 	defer engine.Close()
 
@@ -199,6 +146,10 @@ func follower(_ *cobra.Command, _ []string) error {
 				if viper.GetBool("tables.enabled") {
 					regattapb.RegisterTablesServer(r, &regattaserver.ReadonlyTablesServer{TablesServer: regattaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))}})
 				}
+
+				// Register metrics server for Prometheus metrics via gRPC
+				metricsServer := regattaserver.NewMetricsServer(nil) // Using default registry
+				regattapb.RegisterMetricsServer(r, metricsServer)
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create API server: %w", err)
@@ -214,19 +165,12 @@ func follower(_ *cobra.Command, _ []string) error {
 		}
 
 		// Create REST server
-		addr, _, _ := resolveURL(viper.GetString("rest.address"))
-		hs := regattaserver.NewRESTServer(addr, viper.GetDuration("rest.read-timeout"))
-		go func() {
-			if err := hs.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-				log.Errorf("REST listenAndServe failed: %v", err)
-			}
-		}()
+		hs := setupRESTServer(log)
 		defer hs.Shutdown()
 	}
 
-	// Cleanup
-	<-shutdown
-	log.Info("shutting down...")
+	// Wait for shutdown signal
+	waitForShutdown(shutdown, log)
 	return nil
 }
 

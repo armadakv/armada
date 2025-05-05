@@ -5,8 +5,8 @@ package pebble
 import (
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -84,7 +84,7 @@ func TestOpenDB(t *testing.T) {
 				dbdir: "/tmp",
 				options: func() []Option {
 					cache := pebble.NewCache(1024)
-					return []Option{WithFS(vfs.NewMem()), WithCache(cache), WithTableCache(pebble.NewTableCache(cache, 16, 1024))}
+					return []Option{WithFS(vfs.NewMem()), WithCache(cache)}
 				}(),
 			},
 			wantErr: require.NoError,

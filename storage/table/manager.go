@@ -8,11 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 	"strconv"
 	"sync"
 	"time"
 
+	ap "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/regattapb"
@@ -20,7 +20,7 @@ import (
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/cenkalti/backoff/v4"
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 	"go.uber.org/zap"
 )
 
@@ -44,7 +44,7 @@ const (
 
 func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg Config) *Manager {
 	blockCache := pebble.NewCache(cfg.Table.BlockCacheSize)
-	tableCache := pebble.NewTableCache(blockCache, runtime.GOMAXPROCS(-1), cfg.Table.TableCacheSize)
+	scheduler := ap.NewConcurrencyLimitScheduler()
 	return &Manager{
 		nh:                 nh,
 		reconcileInterval:  30 * time.Second,
@@ -58,7 +58,7 @@ func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg C
 		closed:             make(chan struct{}),
 		log:                zap.S().Named("manager"),
 		blockCache:         blockCache,
-		tableCache:         tableCache,
+		scheduler:          scheduler,
 	}
 }
 
@@ -76,7 +76,7 @@ type Manager struct {
 	cleanupTimeout     time.Duration
 	log                *zap.SugaredLogger
 	blockCache         *pebble.Cache
-	tableCache         *pebble.TableCache
+	scheduler          pebble.CompactionScheduler
 }
 
 type Lease struct {
@@ -449,7 +449,7 @@ func (m *Manager) startTable(name string, id uint64) error {
 		return m.nh.StartOnDiskReplica(
 			map[uint64]raft.Target{},
 			false,
-			fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.tableCache, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
+			fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.scheduler, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
 				if m.cfg.Table.AppliedIndexListener != nil {
 					m.cfg.Table.AppliedIndexListener(name, applied)
 				}
@@ -460,7 +460,7 @@ func (m *Manager) startTable(name string, id uint64) error {
 	return m.nh.StartOnDiskReplica(
 		m.members,
 		false,
-		fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.tableCache, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
+		fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.scheduler, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
 			if m.cfg.Table.AppliedIndexListener != nil {
 				m.cfg.Table.AppliedIndexListener(name, applied)
 			}

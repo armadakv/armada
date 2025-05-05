@@ -8,7 +8,7 @@ import (
 
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/table/key"
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 )
 
 // iterate until the provided pebble.Iterator is no longer valid or the limit is reached.
