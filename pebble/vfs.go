@@ -8,7 +8,7 @@ import (
 	"reflect"
 
 	gvfs "github.com/armadakv/armada/vfs"
-	pvfs "github.com/cockroachdb/pebble/v2/vfs"
+	pvfs "github.com/cockroachdb/pebble/vfs"
 )
 
 type fileCompat struct {

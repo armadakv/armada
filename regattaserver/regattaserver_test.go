@@ -12,7 +12,7 @@ import (
 	"github.com/armadakv/armada/storage"
 	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/armada/vfs"
-	pvfs "github.com/cockroachdb/pebble/v2/vfs"
+	pvfs "github.com/cockroachdb/pebble/vfs"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"

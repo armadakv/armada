@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -187,10 +187,6 @@ func (p *metrics) Collect(ch chan<- prometheus.Metric) {
 	p.cacheMisses.With(prometheus.Labels{"type": "block"}).Set(float64(p.collected.BlockCache.Misses))
 	p.cacheSize.With(prometheus.Labels{"type": "block"}).Set(float64(p.collected.BlockCache.Size))
 	p.cacheCount.With(prometheus.Labels{"type": "block"}).Set(float64(p.collected.BlockCache.Count))
-	p.cacheHits.With(prometheus.Labels{"type": "table"}).Set(float64(p.collected.TableCache.Hits))
-	p.cacheMisses.With(prometheus.Labels{"type": "table"}).Set(float64(p.collected.TableCache.Misses))
-	p.cacheSize.With(prometheus.Labels{"type": "table"}).Set(float64(p.collected.TableCache.Size))
-	p.cacheCount.With(prometheus.Labels{"type": "table"}).Set(float64(p.collected.TableCache.Count))
 	p.cacheHits.Collect(ch)
 	p.cacheMisses.Collect(ch)
 	p.cacheSize.Collect(ch)

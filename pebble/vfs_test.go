@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	gvfs "github.com/armadakv/armada/vfs"
-	pvfs "github.com/cockroachdb/pebble/v2/vfs"
+	pvfs "github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 )
 

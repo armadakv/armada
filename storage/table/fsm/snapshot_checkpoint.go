@@ -14,7 +14,7 @@ import (
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/storage/errors"
-	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 type checkpointContext struct {

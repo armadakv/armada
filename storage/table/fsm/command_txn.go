@@ -7,7 +7,7 @@ import (
 	"errors"
 
 	"github.com/armadakv/armada/regattapb"
-	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble"
 )
 
 type commandTxn struct {
