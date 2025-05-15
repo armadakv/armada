@@ -37,10 +37,14 @@ type leaderStore interface {
 }
 
 const (
-	keyPrefix                 = "/tables/"
-	sequenceKey               = keyPrefix + "sys/idseq"
-	tableIDsRangeStart uint64 = 10000
+	keyPrefix                          = "/tables/"
+	sequenceKey                        = keyPrefix + "sys/idseq"
+	tableIDsRangeStart          uint64 = 10000
+	offsetShiftConcurrencyLevel uint64 = 20
+	offsetShiftTimeout                 = 30 * time.Second
 )
+
+var keyForShiftingOffset = []byte{214, 142} // short non-existing key
 
 func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg Config) *Manager {
 	blockCache := pebble.NewCache(cfg.Table.BlockCacheSize)
@@ -548,6 +552,8 @@ func (m *Manager) Restore(name string, reader io.Reader) error {
 	if err != nil {
 		return err
 	}
+
+	go m.shiftOffset(tbl.ClusterID)
 	return nil
 }
 
@@ -684,4 +690,42 @@ func tableRaftConfig(nodeID, clusterID uint64, cfg TableConfig) config.Config {
 		MaxInMemLogSize:         cfg.MaxInMemLogSize,
 		SnapshotCompressionType: config.Snappy,
 	}
+}
+
+/*
+Shifting the offset just after restoring the table on the leader cluster ensures that the followers will replicate the table from
+the scratch using the snapshot. This is important because the followers may have a different offset than the leader, and if we don't
+shift the offset over the CompactionOverhead, the followers may not be able to replicate the table correctly. This is especially
+important when the table is restored from a snapshot, as the followers may not have the same data as the leader.
+Adding enough no-operation commands, like the deletion of a non-existing key, will ensure that the index overreaches
+the CompactionOverhead and the followers will be able to replicate the table correctly using the snapshot.
+*/
+func (m *Manager) shiftOffset(id uint64) {
+	m.log.Info("shift table offset")
+	ctx, cancel := context.WithTimeout(context.Background(), offsetShiftTimeout)
+	defer cancel()
+	wg := sync.WaitGroup{}
+	for range offsetShiftConcurrencyLevel {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			tbl, err := m.GetTableByID(id)
+			if err != nil {
+				m.log.Warn("failed to get table by id for shifting offset")
+				return
+			}
+			req := &regattapb.DeleteRangeRequest{
+				Table: []byte(tbl.Name),
+				Key:   keyForShiftingOffset,
+			}
+			for range 2 * m.cfg.Meta.CompactionOverhead / offsetShiftConcurrencyLevel {
+				if _, err = tbl.Delete(ctx, req); err != nil {
+					m.log.Warnf("failed to delete special key %v", err)
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	m.log.Info("shift table offset finished")
 }
