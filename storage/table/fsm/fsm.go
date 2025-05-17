@@ -17,8 +17,8 @@ import (
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/key"
-	"github.com/cockroachdb/pebble/v2"
-	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/oxtoacart/bpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
@@ -86,7 +86,7 @@ func (s *snapshotHeader) snapshotType() SnapshotRecoveryType {
 	return SnapshotRecoveryType(s[6])
 }
 
-func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, tableCache *pebble.TableCache, srt SnapshotRecoveryType, af func(applied uint64)) sm.CreateOnDiskStateMachineFunc {
+func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, compactionScheduler pebble.CompactionScheduler, srt SnapshotRecoveryType, af func(applied uint64)) sm.CreateOnDiskStateMachineFunc {
 	if fs == nil {
 		fs = vfs.Default
 	}
@@ -98,36 +98,36 @@ func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache,
 		dbDirName := rp.GetNodeDBDirName(stateMachineDir, hostname, fmt.Sprintf("%s-%d", tableName, clusterID))
 
 		return &FSM{
-			tableName:    tableName,
-			clusterID:    clusterID,
-			nodeID:       nodeID,
-			dirname:      dbDirName,
-			fs:           fs,
-			blockCache:   blockCache,
-			tableCache:   tableCache,
-			log:          zap.S().Named("table").Named(tableName),
-			metrics:      newMetrics(tableName, clusterID),
-			recoveryType: srt,
-			appliedFunc:  af,
+			tableName:           tableName,
+			clusterID:           clusterID,
+			nodeID:              nodeID,
+			dirname:             dbDirName,
+			fs:                  fs,
+			blockCache:          blockCache,
+			compactionScheduler: compactionScheduler,
+			log:                 zap.S().Named("table").Named(tableName),
+			metrics:             newMetrics(tableName, clusterID),
+			recoveryType:        srt,
+			appliedFunc:         af,
 		}
 	}
 }
 
 // FSM is a statemachine.IOnDiskStateMachine impl.
 type FSM struct {
-	pebble       atomic.Pointer[pebble.DB]
-	fs           vfs.FS
-	clusterID    uint64
-	nodeID       uint64
-	tableName    string
-	dirname      string
-	closed       bool
-	log          *zap.SugaredLogger
-	blockCache   *pebble.Cache
-	tableCache   *pebble.TableCache
-	metrics      *metrics
-	recoveryType SnapshotRecoveryType
-	appliedFunc  func(applied uint64)
+	pebble              atomic.Pointer[pebble.DB]
+	fs                  vfs.FS
+	clusterID           uint64
+	nodeID              uint64
+	tableName           string
+	dirname             string
+	closed              bool
+	log                 *zap.SugaredLogger
+	blockCache          *pebble.Cache
+	compactionScheduler pebble.CompactionScheduler
+	metrics             *metrics
+	recoveryType        SnapshotRecoveryType
+	appliedFunc         func(applied uint64)
 }
 
 func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
@@ -196,7 +196,7 @@ func (p *FSM) openDB(dbdir string) (*pebble.DB, error) {
 		dbdir,
 		rp.WithFS(p.fs),
 		rp.WithCache(p.blockCache),
-		rp.WithTableCache(p.tableCache),
+		rp.WithCompactionScheduler(p.compactionScheduler),
 		rp.WithLogger(p.log),
 		rp.WithEventListener(makeLoggingEventListener(p.log)),
 	)
@@ -275,7 +275,7 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 	db := p.pebble.Load()
 
 	ctx := &updateContext{
-		batch: db.NewBatch(),
+		batch: db.NewBatch(pebble.WithInitialSizeBytes(updatesSize(updates))),
 		db:    db,
 	}
 
@@ -529,4 +529,12 @@ func makeLoggingEventListener(logger *zap.SugaredLogger) pebble.EventListener {
 			logger.Debugf("write stall ending")
 		},
 	}
+}
+
+func updatesSize(updates []sm.Entry) int {
+	size := 0
+	for _, update := range updates {
+		size += len(update.Cmd)
+	}
+	return size
 }

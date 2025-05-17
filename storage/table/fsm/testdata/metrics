@@ -4,19 +4,15 @@ regatta_applied_index{shard_id="1",table="test"} 0
 # HELP regatta_table_storage_cache_items Regatta table storage block/table cache items count
 # TYPE regatta_table_storage_cache_items gauge
 regatta_table_storage_cache_items{shard_id="1",table="test",type="block"} 0
-regatta_table_storage_cache_items{shard_id="1",table="test",type="table"} 0
 # HELP regatta_table_storage_cache_hits Regatta table storage block/table cache hits
 # TYPE regatta_table_storage_cache_hits gauge
 regatta_table_storage_cache_hits{shard_id="1",table="test",type="block"} 0
-regatta_table_storage_cache_hits{shard_id="1",table="test",type="table"} 0
 # HELP regatta_table_storage_cache_misses Regatta table storage block/table cache misses
 # TYPE regatta_table_storage_cache_misses gauge
 regatta_table_storage_cache_misses{shard_id="1",table="test",type="block"} 0
-regatta_table_storage_cache_misses{shard_id="1",table="test",type="table"} 0
 # HELP regatta_table_storage_cache_size_bytes Regatta table storage block/table cache size in bytes
 # TYPE regatta_table_storage_cache_size_bytes gauge
 regatta_table_storage_cache_size_bytes{shard_id="1",table="test",type="block"} 0
-regatta_table_storage_cache_size_bytes{shard_id="1",table="test",type="table"} 0
 # HELP regatta_table_storage_compaction Regatta table storage compaction count by kind
 # TYPE regatta_table_storage_compaction gauge
 regatta_table_storage_compaction{kind="default",shard_id="1",table="test"} 0
