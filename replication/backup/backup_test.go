@@ -18,7 +18,7 @@ import (
 	"github.com/armadakv/armada/storage"
 	lvfs "github.com/armadakv/armada/vfs"
 	"github.com/benbjohnson/clock"
-	pvfs "github.com/cockroachdb/pebble/v2/vfs"
+	pvfs "github.com/cockroachdb/pebble/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"

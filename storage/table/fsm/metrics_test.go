@@ -7,7 +7,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"

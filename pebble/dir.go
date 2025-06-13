@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/cockroachdb/pebble/vfs"
 )
 
 const (
@@ -118,7 +118,7 @@ func GetCurrentDBDirName(fs vfs.FS, dir string) (string, error) {
 		return "", err
 	}
 	if len(data) <= 8 {
-		return "", err
+		return "", errors.New("file too short")
 	}
 	crc := data[:8]
 	content := data[8:]
