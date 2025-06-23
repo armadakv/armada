@@ -8,7 +8,17 @@ syntax = "proto3";
 
 option go_package = "./regattapb";
 
+// Original package name kept for backward compatibility
 package regatta.v1;
+
+// Add alternative package name to be used as armada
+option java_package = "armada.v1";
+option java_multiple_files = true;
+option ruby_package = "Armada::V1";
+option php_namespace = "Armada\\V1";
+option php_metadata_namespace = "Armada\\V1";
+option csharp_namespace = "Armada.V1";
+option objc_class_prefix = "AXV1";
 
 import "mvcc.proto";
 import "google/protobuf/struct.proto";

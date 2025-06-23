@@ -8,6 +8,7 @@ import (
 	"github.com/armadakv/armada/regattapb"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/encoding"
+	"google.golang.org/grpc/mem"
 	"google.golang.org/grpc/reflection/grpc_reflection_v1"
 	pb "google.golang.org/protobuf/proto"
 )
@@ -92,7 +93,7 @@ func TestCodec_Unmarshal(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := require.New(t)
 			co := Codec{}
-			err := co.Unmarshal(tt.args.data, tt.args.v)
+			err := co.Unmarshal(mem.BufferSlice{mem.SliceBuffer(tt.args.data)}, tt.args.v)
 			if tt.wantErr {
 				r.Error(err)
 				return
@@ -110,32 +111,20 @@ func mustMarshall(v pb.Message) []byte {
 	return bb
 }
 
-type defaultCodec struct{}
-
-func (d defaultCodec) Marshal(v any) ([]byte, error) {
-	return pb.Marshal(v.(pb.Message))
-}
-
-func (d defaultCodec) Unmarshal(data []byte, v any) error {
-	return pb.Unmarshal(data, v.(pb.Message))
-}
-
-func (d defaultCodec) Name() string {
-	return Name
-}
+var defaultCodec = encoding.GetCodecV2("proto")
 
 func BenchmarkCodec_Unmarshal(b *testing.B) {
 	benchmarks := []struct {
 		name  string
-		codec encoding.Codec
+		codec encoding.CodecV2
 	}{
 		{
 			name:  "unmarshal - default codec",
-			codec: defaultCodec{},
+			codec: defaultCodec,
 		},
 		{
 			name:  "unmarshal - custom codec",
-			codec: Codec{},
+			codec: &Codec{fallback: defaultCodec},
 		},
 	}
 	for _, bm := range benchmarks {
@@ -168,9 +157,9 @@ func BenchmarkCodec_Unmarshal(b *testing.B) {
 		}})
 		b.Run(bm.name, func(b *testing.B) {
 			b.ReportAllocs()
-			for i := 0; i < b.N; i++ {
+			for b.Loop() {
 				m := regattapb.PutRequest{}
-				_ = bm.codec.Unmarshal(message, &m)
+				_ = bm.codec.Unmarshal(mem.BufferSlice{mem.SliceBuffer(message)}, &m)
 			}
 		})
 	}
@@ -179,15 +168,15 @@ func BenchmarkCodec_Unmarshal(b *testing.B) {
 func BenchmarkCodec_Marshal(b *testing.B) {
 	benchmarks := []struct {
 		name  string
-		codec encoding.Codec
+		codec encoding.CodecV2
 	}{
 		{
 			name:  "marshal - default codec",
-			codec: defaultCodec{},
+			codec: defaultCodec,
 		},
 		{
 			name:  "marshal - custom codec",
-			codec: Codec{},
+			codec: &Codec{fallback: defaultCodec},
 		},
 	}
 	for _, bm := range benchmarks {

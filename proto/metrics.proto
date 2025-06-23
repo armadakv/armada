@@ -1,0 +1,32 @@
+// Copyright JAMF Software, LLC
+
+//
+// Metrics protobuffer specification
+//
+
+syntax = "proto3";
+
+option go_package = "./regattapb";
+
+package regatta.v1;
+
+// Metrics service for retrieving Prometheus metrics data via gRPC
+service Metrics {
+  // GetMetrics returns all available Prometheus metrics data.
+  rpc GetMetrics(MetricsRequest) returns (MetricsResponse);
+}
+
+// MetricsRequest is used to request metrics data.
+message MetricsRequest {
+  // format can be used to specify the desired format of metrics (default: prometheus text format)
+  string format = 1;
+}
+
+// MetricsResponse contains the requested metrics data.
+message MetricsResponse {
+  // metrics_data contains the metrics data in the requested format (typically prometheus text format)
+  string metrics_data = 1;
+  
+  // timestamp represents when these metrics were collected
+  int64 timestamp = 2;
+}
