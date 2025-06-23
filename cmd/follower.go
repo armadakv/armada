@@ -146,6 +146,10 @@ func follower(_ *cobra.Command, _ []string) error {
 				if viper.GetBool("tables.enabled") {
 					regattapb.RegisterTablesServer(r, &regattaserver.ReadonlyTablesServer{TablesServer: regattaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))}})
 				}
+
+				// Register metrics server for Prometheus metrics via gRPC
+				metricsServer := regattaserver.NewMetricsServer(nil) // Using default registry
+				regattapb.RegisterMetricsServer(r, metricsServer)
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create API server: %w", err)

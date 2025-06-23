@@ -134,6 +134,10 @@ func leader(_ *cobra.Command, _ []string) error {
 				if viper.GetBool("maintenance.enabled") {
 					regattapb.RegisterMaintenanceServer(r, &regattaserver.BackupServer{Tables: engine, AuthFunc: authFunc(viper.GetString("maintenance.token"))})
 				}
+
+				// Register metrics server for Prometheus metrics via gRPC
+				metricsServer := regattaserver.NewMetricsServer(nil) // Using default registry
+				regattapb.RegisterMetricsServer(r, metricsServer)
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create API server: %w", err)
