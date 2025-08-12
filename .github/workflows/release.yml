@@ -24,7 +24,7 @@ jobs:
           cgo: 1
     steps:
     - name: Checkout the latest code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Install Go
       uses: actions/setup-go@v5
       with:
@@ -63,7 +63,7 @@ jobs:
         platform=${{ matrix.platform }}
         echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v5
     - name: Log in to the Container registry
       uses: docker/login-action@v3
       with:
