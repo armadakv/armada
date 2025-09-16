@@ -22,6 +22,8 @@ type GossipConfig struct {
 
 type Config struct {
 	// ClientAddress is the public address of the Regatta host used for client requests.
+	// This corresponds to the api.advertise-address configuration and is used by the cluster
+	// gossip protocol to advertise how other nodes can reach this node's API server.
 	ClientAddress string
 	// NodeID is a non-zero value used to identify a node within a Raft cluster.
 	NodeID uint64
