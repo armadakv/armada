@@ -13,7 +13,7 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 const (
