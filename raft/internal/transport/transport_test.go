@@ -30,7 +30,6 @@ import (
 
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/netutil"
-	"github.com/lni/goutils/syncutil"
 
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/raft/internal/registry"
@@ -52,9 +51,9 @@ const (
 )
 
 func getTestPort() int {
-	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	l, _ := net.ListenPacket("udp", "127.0.0.1:0")
 	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	return l.LocalAddr().(*net.UDPAddr).Port
 }
 
 type dummyTransportEvent struct{}
@@ -350,10 +349,8 @@ func newNOOPTestTransport(handler IMessageHandler, fs vfs.FS) (*Transport,
 }
 
 func newTestTransport(handler IMessageHandler,
-	mutualTLS bool, fs vfs.FS) (*Transport, *registry.Registry,
-	*syncutil.Stopper, *testSnapshotDir,
+	mutualTLS bool, fs vfs.FS) (*Transport, *registry.Registry, *testSnapshotDir,
 ) {
-	stopper := syncutil.NewStopper()
 	nodes := registry.NewNodeRegistry(nil)
 	t := newTestSnapshotDir(fs)
 	c := config.NodeHostConfig{
@@ -374,12 +371,12 @@ func newTestTransport(handler IMessageHandler,
 	if err != nil {
 		panic(err)
 	}
-	return transport, nodes, stopper, t
+	return transport, nodes, t
 }
 
 func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.FS) {
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, _ := newTestTransport(handler, mutualTLS, fs)
+	trans, nodes, _ := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -390,7 +387,6 @@ func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.FS) {
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	nodes.Add(100, 2, serverAddress)
 	for i := 0; i < 20; i++ {
 		msg := raftpb.Message{
@@ -478,7 +474,7 @@ func TestMessageCanBeSent(t *testing.T) {
 // net.ipv4.tcp_wmem = 4096 87380 25165824
 func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.FS) {
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, _ := newTestTransport(handler, mutualTLS, fs)
+	trans, nodes, _ := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -489,7 +485,6 @@ func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.F
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	nodes.Add(100, 2, serverAddress)
 	for i := 0; i < 128; i++ {
 		msg := raftpb.Message{
@@ -528,7 +523,7 @@ func testMessageBatchWithNotMatchedDBVAreDropped(t *testing.T,
 	f SendMessageBatchFunc, mutualTLS bool, fs vfs.FS,
 ) {
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, _ := newTestTransport(handler, mutualTLS, fs)
+	trans, nodes, _ := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -539,7 +534,6 @@ func testMessageBatchWithNotMatchedDBVAreDropped(t *testing.T,
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	nodes.Add(100, 2, serverAddress)
 	trans.SetPreSendBatchHook(f)
 	for i := 0; i < 100; i++ {
@@ -601,7 +595,7 @@ func TestCircuitBreakerKicksInOnConnectivityIssue(t *testing.T) {
 	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, _ := newTestTransport(handler, false, fs)
+	trans, nodes, _ := newTestTransport(handler, false, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -612,7 +606,6 @@ func TestCircuitBreakerKicksInOnConnectivityIssue(t *testing.T) {
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	nodes.Add(100, 2, "nosuchhost:39001")
 	msg := raftpb.Message{
 		Type:    raftpb.Heartbeat,
@@ -801,7 +794,7 @@ func testSnapshotCanBeSent(t *testing.T,
 	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.FS,
 ) {
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
+	trans, nodes, tt := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
 		if err := fs.RemoveAll(snapshotDir); err != nil {
 			t.Fatalf("%v", err)
@@ -818,7 +811,6 @@ func testSnapshotCanBeSent(t *testing.T,
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	nodes.Add(100, 2, serverAddress)
 	plog.Infof("going to generate snapshot file")
 	tt.generateSnapshotFile(100, 12, testSnapshotIndex, "testsnapshot.gbsnap", sz, fs)
@@ -828,6 +820,7 @@ func testSnapshotCanBeSent(t *testing.T,
 	dir := tt.GetSnapshotDir(100, 12, testSnapshotIndex)
 	chunks := NewChunk(trans.handleRequest,
 		trans.snapshotReceived, trans.dir, trans.nhConfig.GetDeploymentID(), fs)
+	defer chunks.Close()
 	snapDir := chunks.dir(100, 2)
 	if err := fs.MkdirAll(snapDir, 0o755); err != nil {
 		t.Fatalf("%v", err)
@@ -879,7 +872,7 @@ func testSnapshotWithNotMatchedDBVWillBeDropped(t *testing.T,
 	f StreamChunkSendFunc, mutualTLS bool, fs vfs.FS,
 ) {
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
+	trans, nodes, tt := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -891,7 +884,6 @@ func testSnapshotWithNotMatchedDBVWillBeDropped(t *testing.T,
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	nodes.Add(100, 2, serverAddress)
 	tt.generateSnapshotFile(100, 12, testSnapshotIndex, "testsnapshot.gbsnap", 1024, fs)
 	m := getTestSnapshotMessage(2)
@@ -943,7 +935,7 @@ func TestSnapshotWithNotMatchedBinVerWillBeDropped(t *testing.T) {
 func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 	fs := vfs.NewMem()
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, tt := newTestTransport(handler, false, fs)
+	trans, nodes, tt := newTestTransport(handler, false, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -955,7 +947,6 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	nodes.Add(100, 2, serverAddress)
 	conns := make([]*Sink, 0)
 	for i := uint64(0); i < maxConnectionCount; i++ {
@@ -995,7 +986,7 @@ func testFailedConnectionReportsSnapshotFailure(t *testing.T,
 ) {
 	snapshotSize := snapshotChunkSize * 10
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
+	trans, nodes, tt := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -1007,7 +998,6 @@ func testFailedConnectionReportsSnapshotFailure(t *testing.T,
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	// invalid address
 	nodes.Add(100, 2, "localhost:12345")
 	tt.generateSnapshotFile(100, 12, testSnapshotIndex, "testsnapshot.gbsnap", snapshotSize, fs)
@@ -1040,7 +1030,7 @@ func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
 	sz uint64, maxWait uint64, mutualTLS bool, fs vfs.FS,
 ) {
 	handler := newTestMessageHandler()
-	trans, nodes, stopper, tt := newTestTransport(handler, mutualTLS, fs)
+	trans, nodes, tt := newTestTransport(handler, mutualTLS, fs)
 	defer func() {
 		if err := fs.RemoveAll(snapshotDir); err != nil {
 			t.Fatalf("%v", err)
@@ -1057,9 +1047,9 @@ func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
 	chunks := NewChunk(trans.handleRequest,
 		trans.snapshotReceived, trans.dir, trans.nhConfig.GetDeploymentID(), fs)
+	defer chunks.Close()
 	ts := getTestChunk()
 	snapDir := chunks.dir(ts[0].ShardID, ts[0].ReplicaID)
 	if err := fs.MkdirAll(snapDir, 0o755); err != nil {
