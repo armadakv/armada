@@ -85,10 +85,12 @@ func (t *Transport) getStreamSink(shardID uint64, replicaID uint64) *Sink {
 		shutdown := func() {
 			atomic.AddUint64(&t.jobs, ^uint64(0))
 		}
-		t.stopper.RunWorker(func() {
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
 			t.processSnapshot(job, addr)
 			shutdown()
-		})
+		}()
 		return &Sink{j: job}
 	}
 	return nil
@@ -134,10 +136,12 @@ func (t *Transport) doSendSnapshot(m pb.Message) bool {
 			panic(err)
 		}
 	}
-	t.stopper.RunWorker(func() {
+	t.wg.Add(1)
+	go func() {
+		defer t.wg.Done()
 		t.processSnapshot(job, addr)
 		shutdown()
-	})
+	}()
 	job.addSnapshot(chunks)
 	return true
 }
@@ -151,7 +155,7 @@ func (t *Transport) createJob(key raftio.NodeInfo,
 		return nil
 	}
 	job := newJob(t.ctx, key.ShardID, key.ReplicaID, t.nhConfig.GetDeploymentID(),
-		streaming, sz, t.trans, t.stopper.ShouldStop(), t.fs)
+		streaming, sz, t.trans, t.stopCh, t.fs)
 	job.postSend = t.postSend
 	job.preSend = t.preSend
 	return job

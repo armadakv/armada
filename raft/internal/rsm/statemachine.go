@@ -708,7 +708,7 @@ func (s *StateMachine) setLastApplied(entries []pb.Entry) {
 		s.lastApplied.Lock()
 		defer s.lastApplied.Unlock()
 		if s.lastApplied.index+1 != entries[0].Index {
-			plog.Panicf("%s, gap between batches, %d, %d", s.id())
+			plog.Panicf("%s, gap between batches, %d, %d", s.id(), s.lastApplied.index, entries[0].Index)
 		}
 		if s.lastApplied.term > entries[0].Term {
 			plog.Panicf("%s, invalid term", s.id())

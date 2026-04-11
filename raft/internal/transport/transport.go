@@ -52,7 +52,6 @@ import (
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/netutil"
 	circuit "github.com/lni/goutils/netutil/rubyist/circuitbreaker"
-	"github.com/lni/goutils/syncutil"
 
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/raft/internal/registry"
@@ -158,7 +157,7 @@ func (dtm *DefaultTransportFactory) Create(nhConfig config.NodeHostConfig,
 	handler raftio.MessageHandler,
 	chunkHandler raftio.ChunkHandler,
 ) raftio.ITransport {
-	return NewTCPTransport(nhConfig, handler, chunkHandler)
+	return NewQUICTransport(nhConfig, handler, chunkHandler)
 }
 
 // Validate returns a boolean value indicating whether the specified address is
@@ -183,7 +182,8 @@ type Transport struct {
 	resolver     registry.IResolver
 	trans        raftio.ITransport
 	fs           vfs.FS
-	stopper      *syncutil.Stopper
+	stopCh       chan struct{}
+	wg           sync.WaitGroup
 	dir          server.SnapshotDirFunc
 	env          *server.Env
 	metrics      *transportMetrics
@@ -211,7 +211,7 @@ func NewTransport(nhConfig config.NodeHostConfig,
 		env:        env,
 		sourceID:   sourceID,
 		resolver:   resolver,
-		stopper:    syncutil.NewStopper(),
+		stopCh:     make(chan struct{}),
 		dir:        dir,
 		sysEvents:  sysEvents,
 		fs:         fs,
@@ -240,20 +240,10 @@ func NewTransport(nhConfig config.NodeHostConfig,
 		if cerr := t.trans.Close(); cerr != nil {
 			plog.Errorf("failed to close the transport module %v", cerr)
 		}
+		t.chunks.Close()
 		return nil, err
 	}
-	t.stopper.RunWorker(func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				chunks.Tick()
-			case <-t.stopper.ShouldStop():
-				return
-			}
-		}
-	})
+
 	return t, nil
 }
 
@@ -282,7 +272,8 @@ func (t *Transport) SetPreStreamChunkSendHook(h StreamChunkSendFunc) {
 // Close closes the Transport object.
 func (t *Transport) Close() error {
 	t.cancel()
-	t.stopper.Stop()
+	close(t.stopCh)
+	t.wg.Wait()
 	t.chunks.Close()
 	return t.trans.Close()
 }
@@ -384,13 +375,15 @@ func (t *Transport) send(req pb.Message) (bool, failedSend) {
 			delete(t.mu.queues, key)
 			t.mu.Unlock()
 		}
-		t.stopper.RunWorker(func() {
+		t.wg.Add(1)
+		go func() {
+			defer t.wg.Done()
 			affected := make(nodeMap)
 			if !t.connectAndProcess(addr, sq, from, affected) {
 				t.notifyUnreachable(addr, affected)
 			}
 			shutdownQueue()
-		})
+		}()
 	}
 	if sq.rateLimited() {
 		return false, rateLimited
@@ -456,7 +449,7 @@ func (t *Transport) processMessages(remoteHost string,
 	for {
 		idleTimer.Reset(idleTimeout)
 		select {
-		case <-t.stopper.ShouldStop():
+		case <-t.stopCh:
 			return nil
 		case <-idleTimer.C:
 			return nil
@@ -475,7 +468,7 @@ func (t *Transport) processMessages(remoteHost string,
 					sq.decrease(req)
 					sz += uint64(req.SizeUpperLimit())
 					requests = append(requests, req)
-				case <-t.stopper.ShouldStop():
+				case <-t.stopCh:
 					return nil
 				default:
 					done = true
