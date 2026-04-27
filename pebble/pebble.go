@@ -3,9 +3,11 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
+	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/bloom"
 	"github.com/cockroachdb/pebble/v2/sstable"
@@ -28,6 +30,13 @@ const (
 )
 
 func split(b []byte) int {
+	// For V2 keys, the seqno suffix (last V2SeqLen bytes) is the MVCC version.
+	// The split point is everything before the seqno (the null separator remains
+	// in the prefix), enabling SeekPrefixGE to find the latest version of a user key.
+	// Minimum meaningful V2 key: 4 (header) + 1 (keyType) + 0 (userKey) + 1 (sep) + 8 (seqno) = 14 bytes.
+	if len(b) > key.V2SeqLen+key.V2SepLen+5 && b[0] == key.V2 {
+		return len(b) - key.V2SeqLen
+	}
 	return len(b)
 }
 
@@ -41,16 +50,21 @@ func DefaultOptions() *pebble.Options {
 		MemTableStopWritesThreshold: maxWriteBufferNumber,
 		MaxOpenFiles:                maxOpenFiles,
 		Comparer: &pebble.Comparer{
-			Compare:            pebble.DefaultComparer.Compare,
-			Equal:              pebble.DefaultComparer.Equal,
-			AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
-			FormatKey:          pebble.DefaultComparer.FormatKey,
-			FormatValue:        pebble.DefaultComparer.FormatValue,
-			Separator:          pebble.DefaultComparer.Separator,
-			Split:              split,
-			Successor:          pebble.DefaultComparer.Successor,
-			ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
-			Name:               pebble.DefaultComparer.Name,
+			// ComparePointSuffixes and CompareRangeSuffixes: suffixes are
+			// 8-byte inverted big-endian seqnos, so plain bytes.Compare
+			// provides correct ordering (higher seqno → smaller bytes → sorts first).
+			ComparePointSuffixes: bytes.Compare,
+			CompareRangeSuffixes: bytes.Compare,
+			Compare:              pebble.DefaultComparer.Compare,
+			Equal:                pebble.DefaultComparer.Equal,
+			AbbreviatedKey:       pebble.DefaultComparer.AbbreviatedKey,
+			FormatKey:            pebble.DefaultComparer.FormatKey,
+			FormatValue:          pebble.DefaultComparer.FormatValue,
+			Separator:            pebble.DefaultComparer.Separator,
+			Split:                split,
+			Successor:            pebble.DefaultComparer.Successor,
+			ImmediateSuccessor:   pebble.DefaultComparer.ImmediateSuccessor,
+			Name:                 "armada.v2",
 		},
 	}
 	opts.Levels[0] = pebble.LevelOptions{
