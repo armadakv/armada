@@ -11,9 +11,54 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 )
 
+// iterNextUserKey advances piter past all MVCC versions of the current user key,
+// positioning it on the first entry of the next distinct user key (or exhausting it).
+// This is equivalent to NextPrefix but works even when NextPrefix is disallowed
+// (e.g. when an upper bound is a versioned MVCC key).
+//
+// The strategy: build a seek key that is the current user-key prefix with the
+// maximum possible seqno suffix (all 0xFF bytes), then call Next() once.  That
+// positions piter on the very first key whose prefix is strictly greater than
+// the current one.
+func iterNextUserKey(piter *pebble.Iterator, currentPebbleKey []byte) bool {
+	// The split point separates user-key prefix from the seqno suffix.
+	// For V2 keys split = len(key) - V2SeqLen; for others split = len(key).
+	split := key.V2SeqLen + key.V2SepLen + 1 // header(4) + keyType(1) accounted for below
+	_ = split
+
+	if len(currentPebbleKey) <= key.V2SeqLen || currentPebbleKey[0] != key.V2 {
+		// Not a V2 key – plain Next() is sufficient (no MVCC versions).
+		return piter.Next()
+	}
+
+	// For a V2 key the prefix (everything except the last V2SeqLen bytes) is
+	// header + keyType + userKey + separator.  Build a seek target that is
+	// identical to that prefix but with the seqno bytes set to 0xFF…FF, which
+	// is the encoded form of seqno=0 and sorts last within the prefix.
+	prefixLen := len(currentPebbleKey) - key.V2SeqLen
+	seekKey := make([]byte, len(currentPebbleKey))
+	copy(seekKey, currentPebbleKey[:prefixLen])
+	for i := prefixLen; i < len(seekKey); i++ {
+		seekKey[i] = 0xFF
+	}
+
+	// SeekGE on seekKey lands on seekKey itself (last version of current key)
+	// or already past it.  One more Next() moves us to the first key of the
+	// next user-key prefix.
+	if !piter.SeekGE(seekKey) {
+		return false
+	}
+	// If we landed exactly on seekKey (the last-version sentinel), advance once.
+	if bytes.Equal(piter.Key(), seekKey) {
+		return piter.Next()
+	}
+	// We already moved past all versions of the current user key.
+	return true
+}
+
 // iterate until the provided pebble.Iterator is no longer valid or the limit is reached.
 // Apply a function on the key/value pair in every iteration filling proto.RangeResponse.
-func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*regattapb.ResponseOp_Range], error) {
+func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*regattapb.ResponseOp_Range], error) { //nolint:gocognit
 	opts, err := iterOptionsForBounds(req.Key, req.RangeEnd)
 	if err != nil {
 		return nil, err
@@ -41,6 +86,17 @@ func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*re
 			if err != nil {
 				panic(err)
 			}
+			currentKey := make([]byte, len(piter.Key()))
+			copy(currentKey, piter.Key())
+			// Skip tombstoned keys — they represent MVCC deletes and must not
+			// appear in range query results.
+			if isTombstone(piter.Value()) {
+				if !iterNextUserKey(piter, currentKey) {
+					yield(response)
+					return
+				}
+				continue
+			}
 			if i == limit && limit != 0 {
 				response.More = piter.Next()
 				yield(response)
@@ -55,7 +111,11 @@ func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*re
 			}
 			i++
 			fill(k.Key, piter.ValueAndErr, response)
-			if !piter.Next() {
+			// iterNextUserKey skips all older MVCC versions of the same user key,
+			// positioning the iterator on the first entry of the next distinct
+			// user key prefix.  This works even when NextPrefix is disallowed
+			// by pebble (e.g. when the upper bound is a versioned MVCC key).
+			if !iterNextUserKey(piter, currentKey) {
 				yield(response)
 				return
 			}
@@ -63,10 +123,12 @@ func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*re
 	}, nil
 }
 
-func iterOptionsForBounds(low, high []byte) (*pebble.IterOptions, error) {
+func iterOptionsForBounds(low, high []byte) (*pebble.IterOptions, error) { //nolint:unparam
 	lowBuf := bufferPool.Get()
 	defer bufferPool.Put(lowBuf)
-	if err := encodeUserKey(lowBuf, low); err != nil {
+	// Use MaxUint64 seqno so the lower bound starts at the latest version of the low key
+	// (MaxUint64 encodes as all-zeros after bit-inversion, which sorts first within a prefix).
+	if err := encodeUserKey(lowBuf, low, ^uint64(0)); err != nil {
 		return nil, err
 	}
 	iterOptions := &pebble.IterOptions{
@@ -83,7 +145,9 @@ func iterOptionsForBounds(low, high []byte) (*pebble.IterOptions, error) {
 		highBuf := bufferPool.Get()
 		defer bufferPool.Put(highBuf)
 
-		if err := encodeUserKey(highBuf, high); err != nil {
+		// Use MaxUint64 seqno so the upper bound starts at the latest version of the high key,
+		// making the range exclusive of the high key's latest version and all older versions.
+		if err := encodeUserKey(highBuf, high, ^uint64(0)); err != nil {
 			return nil, err
 		}
 		iterOptions.UpperBound = make([]byte, highBuf.Len())

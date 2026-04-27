@@ -30,7 +30,7 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 	}
 
 	var buffer []byte
-	for iter.First(); iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); {
 		select {
 		case <-stopc:
 			return 0, sm.ErrSnapshotStopped
@@ -40,6 +40,13 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 				return 0, err
 			}
 			if k.KeyType == key.TypeUser {
+				// Skip tombstoned keys — they have been deleted and must not appear in snapshots.
+				currentKey := make([]byte, len(iter.Key()))
+				copy(currentKey, iter.Key())
+				if isTombstone(iter.Value()) {
+					iterNextUserKey(iter, currentKey)
+					continue
+				}
 				buffer, err = writeCommand(tableName, k.Key, iter.Value(), buffer)
 				if err != nil {
 					return 0, err
@@ -47,6 +54,12 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 				if _, err := w.Write(buffer); err != nil {
 					return 0, err
 				}
+				// Skip older MVCC versions of this user key (latest version first).
+				// iterNextUserKey is used instead of NextPrefix because NextPrefix
+				// is disallowed when the iterator has a versioned MVCC upper bound.
+				iterNextUserKey(iter, currentKey)
+			} else {
+				iter.Next()
 			}
 		}
 	}
@@ -109,7 +122,7 @@ func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatt
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
 
-	err := encodeUserKey(keyBuf, req.Key)
+	err := encodeUserKey(keyBuf, req.Key, ^uint64(0))
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +135,14 @@ func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatt
 		_ = iter.Close()
 	}()
 	found := iter.SeekPrefixGE(keyBuf.Bytes())
+	// SeekPrefixGE with the V2 split function lands on the latest version of the key
+	// (highest seqno sorts first due to bit-inversion encoding).
 	if !found {
+		return &regattapb.ResponseOp_Range{}, nil
+	}
+
+	// If the latest version is a tombstone the key has been deleted.
+	if isTombstone(iter.Value()) {
 		return &regattapb.ResponseOp_Range{}, nil
 	}
 
@@ -188,4 +208,12 @@ type PathRequest struct{}
 // PathResponse returns SM data paths.
 type PathResponse struct {
 	Path string
+}
+
+// GCCompactionRequest triggers an explicit MVCC garbage collection sweep up
+// to the given raft index. Any key version with seqno < Index that is either
+// a tombstone or shadowed by a newer version will be physically deleted, and
+// the user keyspace will be compacted to reclaim disk space.
+type GCCompactionRequest struct {
+	Index uint64
 }

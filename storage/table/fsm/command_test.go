@@ -115,6 +115,53 @@ func allUserKeysOpts() *pebble.IterOptions {
 	}
 }
 
+// liveUserKey holds a decoded live (non-tombstoned) user key and its value.
+type liveUserKey struct {
+	key   []byte
+	value []byte
+}
+
+// liveUserKeys returns all logically live user keys from db, visiting only the
+// latest MVCC version of each distinct user key and skipping any that are
+// tombstoned (i.e. have been deleted via a tombstone write).
+// It is the MVCC-aware analogue of iterating with allUserKeysOpts for tests
+// that validate logical state rather than raw pebble layout.
+func liveUserKeys(t *testing.T, db pebble.Reader) []liveUserKey {
+	t.Helper()
+	iter, err := db.NewIter(allUserKeysOpts())
+	if err != nil {
+		t.Fatalf("liveUserKeys: could not open iterator: %v", err)
+	}
+	defer func() { _ = iter.Close() }()
+
+	var result []liveUserKey
+	for iter.First(); iter.Valid(); {
+		rawKey := make([]byte, len(iter.Key()))
+		copy(rawKey, iter.Key())
+
+		val := iter.Value()
+		if isTombstone(val) {
+			// This key is logically deleted — skip the entire user-key prefix.
+			iterNextUserKey(iter, rawKey)
+			continue
+		}
+
+		k, decErr := key.DecodeBytes(rawKey)
+		if decErr != nil {
+			t.Fatalf("liveUserKeys: could not decode key: %v", decErr)
+		}
+		userKey := make([]byte, len(k.Key))
+		copy(userKey, k.Key)
+		v := make([]byte, len(val))
+		copy(v, val)
+		result = append(result, liveUserKey{key: userKey, value: v})
+
+		// Advance past all older MVCC versions of this user key.
+		iterNextUserKey(iter, rawKey)
+	}
+	return result
+}
+
 // decodeKey into *key.Key as pointed by the supplied *pebble.Iterator.
 func decodeKey(t *testing.T, iter *pebble.Iterator, k *key.Key) {
 	dec := key.NewDecoder(bytes.NewReader(iter.Key()))

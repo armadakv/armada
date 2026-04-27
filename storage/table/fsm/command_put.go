@@ -29,7 +29,7 @@ func handlePut(ctx *updateContext, put *regattapb.RequestOp_Put) (*regattapb.Res
 	resp := &regattapb.ResponseOp_Put{}
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
-	if err := encodeUserKey(keyBuf, put.Key); err != nil {
+	if err := encodeUserKey(keyBuf, put.Key, ctx.index); err != nil {
 		return nil, err
 	}
 	if put.PrevKv {

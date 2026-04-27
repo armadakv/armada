@@ -7,7 +7,6 @@ import (
 
 	rp "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/regattapb"
-	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -46,12 +45,8 @@ func Test_handleDelete(t *testing.T) {
 	r.Equal(&regattapb.ResponseOp_DeleteRange{Deleted: 1, PrevKvs: []*regattapb.KeyValue{{Key: []byte("key_1"), Value: []byte("value_1")}}}, res)
 	r.NoError(c.Commit())
 
-	// Assert that there are no more user keys left.
-	iter, err := db.NewIter(allUserKeysOpts())
-	r.NoError(err)
-	iter.First()
-	r.False(iter.Valid())
-	r.NoError(iter.Close())
+	// Assert that there are no more live user keys left.
+	r.Empty(liveUserKeys(t, db))
 
 	// Assert deleting non-existent key returns count 0.
 	c.batch = db.NewBatch()
@@ -106,13 +101,8 @@ func Test_handleDeleteBatch(t *testing.T) {
 	r.NoError(err)
 	r.NoError(c.Commit())
 
-	iter, err := db.NewIter(allUserKeysOpts())
-	r.NoError(err)
-
-	// Skip the local index first and assert that there are no more keys in state machine.
-	iter.First()
-	r.False(iter.Valid())
-	r.NoError(iter.Close())
+	// Assert that there are no more live user keys left.
+	r.Empty(liveUserKeys(t, db))
 
 	// Check the system keys.
 	index, err := readLocalIndex(db, sysLocalIndex)
@@ -152,21 +142,11 @@ func Test_handleDeleteRange(t *testing.T) {
 	r.NoError(err)
 	r.NoError(c.Commit())
 
-	// Assert that there left expected user keys.
-	iter, err := db.NewIter(allUserKeysOpts())
-	r.NoError(err)
-	iter.First()
-	k := &key.Key{}
-	decodeKey(t, iter, k)
-	r.Equal([]byte("key_3"), k.Key)
-	iter.Next()
-	decodeKey(t, iter, k)
-	r.Equal([]byte("key_4"), k.Key)
-
-	// Skip the local index first and assert that there are no more keys in state machine.
-	iter.Next()
-	r.False(iter.Valid())
-	r.NoError(iter.Close())
+	// Assert that only key_3 and key_4 remain as live user keys.
+	live := liveUserKeys(t, db)
+	r.Len(live, 2)
+	r.Equal([]byte("key_3"), live[0].key)
+	r.Equal([]byte("key_4"), live[1].key)
 
 	c.batch = db.NewBatch()
 
@@ -175,12 +155,8 @@ func Test_handleDeleteRange(t *testing.T) {
 	r.NoError(err)
 	r.NoError(c.Commit())
 
-	// Skip the local index first and assert that there are no more keys in state machine.
-	iter, err = db.NewIter(allUserKeysOpts())
-	r.NoError(err)
-	iter.First()
-	r.False(iter.Valid())
-	r.NoError(iter.Close())
+	// Assert that there are no more live user keys left.
+	r.Empty(liveUserKeys(t, db))
 
 	// Check the system keys.
 	index, err := readLocalIndex(db, sysLocalIndex)

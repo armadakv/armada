@@ -237,8 +237,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 			name: "empty args",
 			args: args{},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser}),
-				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser}),
+				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
+				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
 			},
 			wantErr: require.NoError,
 		},
@@ -248,8 +248,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				low: []byte("foo"),
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: []byte("foo")}),
-				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser}),
+				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: []byte("foo"), Seqno: ^uint64(0)}),
+				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
 			},
 			wantErr: require.NoError,
 		},
@@ -259,8 +259,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				high: []byte("foo"),
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser}),
-				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: []byte("foo")}),
+				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
+				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: []byte("foo"), Seqno: ^uint64(0)}),
 			},
 			wantErr: require.NoError,
 		},
@@ -270,7 +270,7 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				high: wildcard,
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser}),
+				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
 				UpperBound: incrementRightmostByte(append([]byte{}, maxUserKey...)),
 			},
 			wantErr: require.NoError,
@@ -282,7 +282,7 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				high: wildcard,
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: wildcard}),
+				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: wildcard, Seqno: ^uint64(0)}),
 				UpperBound: incrementRightmostByte(append([]byte{}, maxUserKey...)),
 			},
 			wantErr: require.NoError,

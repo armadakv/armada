@@ -4,7 +4,6 @@ package fsm
 
 import (
 	"bytes"
-	"errors"
 
 	"github.com/armadakv/armada/regattapb"
 	"github.com/cockroachdb/pebble/v2"
@@ -94,33 +93,51 @@ func txnCompare(reader pebble.Reader, compare []*regattapb.Compare) (bool, error
 				if !iter.First() {
 					return false, nil
 				}
-				for iter.First(); iter.Valid(); iter.Next() {
+				for iter.First(); iter.Valid(); {
+					if isTombstone(iter.Value()) {
+						currentKey := make([]byte, len(iter.Key()))
+						copy(currentKey, iter.Key())
+						if !iterNextUserKey(iter, currentKey) {
+							break
+						}
+						continue
+					}
 					if !txnCompareSingle(cmp, iter.Value()) {
 						return false, nil
 					}
+					iter.Next()
 				}
 				return true, nil
 			}()
 		} else {
 			res, err = func() (bool, error) {
-				if err := encodeUserKey(keyBuf, cmp.Key); err != nil {
+				// Use SeekPrefixGE to find the latest MVCC version of the key.
+				// Encoding with ^uint64(0) (MaxUint64, stored as all-zeros) ensures
+				// SeekPrefixGE lands on the first (latest) version within the prefix.
+				if err := encodeUserKey(keyBuf, cmp.Key, ^uint64(0)); err != nil {
 					return false, err
 				}
-				value, closer, err := reader.Get(keyBuf.Bytes())
+				iter, err := reader.NewIter(nil)
+				if err != nil {
+					return false, err
+				}
 				defer func() {
-					if closer != nil {
-						_ = closer.Close()
-					}
+					_ = iter.Close()
 				}()
 
-				if err != nil {
-					if errors.Is(err, pebble.ErrNotFound) {
-						return false, nil
-					}
-					return false, err
+				if !iter.SeekPrefixGE(keyBuf.Bytes()) {
+					keyBuf.Reset()
+					return false, nil
 				}
 
+				if isTombstone(iter.Value()) {
+					keyBuf.Reset()
+					return false, nil
+				}
+
+				value := iter.Value()
 				if !txnCompareSingle(cmp, value) {
+					keyBuf.Reset()
 					return false, nil
 				}
 

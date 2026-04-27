@@ -4,6 +4,7 @@ package fsm
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"hash/fnv"
@@ -199,7 +200,140 @@ func (p *FSM) openDB(dbdir string) (*pebble.DB, error) {
 		rp.WithCompactionScheduler(p.compactionScheduler),
 		rp.WithLogger(p.log),
 		rp.WithEventListener(makeLoggingEventListener(p.log)),
+		rp.WithMVCCBlockPropertyCollector(),
 	)
+}
+
+// runGC performs an explicit MVCC garbage collection sweep up to the given
+// raft index. It iterates every physical key in the user keyspace and deletes:
+//   - any version with seqno < gcIndex that is shadowed by a newer version
+//     of the same logical user key (i.e. the same key prefix), and
+//   - any tombstone version with seqno < gcIndex that has no newer live
+//     version above gcIndex.
+//
+// Deletions are batched; when the batch reaches maxBatchSize it is committed
+// and a new one is opened. After all obsolete versions are removed, pebble's
+// Compact is called over the full user keyspace so the deleted entries are
+// physically reclaimed from disk.
+func (p *FSM) runGC(gcIndex uint64) error {
+	if gcIndex == 0 {
+		return nil
+	}
+	db := p.pebble.Load()
+
+	// Scan the entire user keyspace using a snapshot so the view is stable
+	// for the duration of the sweep.
+	snap := db.NewSnapshot()
+	defer snap.Close()
+
+	// The MVCC seqno block property filter lets pebble skip entire SST blocks
+	// whose recorded seqno interval does not intersect [0, gcIndex). Blocks
+	// where every key has seqno >= gcIndex contain nothing the GC can touch and
+	// are skipped without even being opened, dramatically reducing I/O for
+	// databases with mostly-recent data.
+	seqnoFilter := rp.NewMVCCSeqnoFilter(gcIndex)
+	iter, err := snap.NewIter(&pebble.IterOptions{
+		LowerBound:      mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: key.LatestMinKey}),
+		UpperBound:      incrementRightmostByte(append([]byte(nil), maxUserKey...)),
+		PointKeyFilters: []pebble.BlockPropertyFilter{seqnoFilter},
+	})
+	if err != nil {
+		return err
+	}
+	defer iter.Close()
+
+	batch := db.NewBatch(pebble.WithInitialSizeBytes(maxBatchSize))
+
+	// lastPrefix holds the user-key prefix (physical key minus the seqno
+	// suffix) of the most recently visited entry. Because pebble iterates in
+	// ascending key order and within the same prefix in descending seqno
+	// order (latest first), the first time we see a prefix is the newest
+	// version — all subsequent visits to the same prefix are older versions
+	// and are therefore shadowed.
+	var lastPrefix []byte
+	var lastPrefixIsTombstone bool
+
+	commitBatch := func() error {
+		if batch.Count() == 0 {
+			return nil
+		}
+		if err := batch.Commit(pebble.NoSync); err != nil {
+			return err
+		}
+		batch = db.NewBatch(pebble.WithInitialSizeBytes(maxBatchSize))
+		return nil
+	}
+
+	for iter.First(); iter.Valid(); iter.Next() {
+		physKey := iter.Key()
+
+		// Decode the logical key to get keyType and seqno.
+		k, err := key.DecodeBytes(physKey)
+		if err != nil {
+			return err
+		}
+		// Only GC user keys; system keys have no MVCC versions.
+		if k.KeyType != key.TypeUser {
+			continue
+		}
+
+		// Prefix = everything except the trailing seqno bytes.
+		prefixLen := len(physKey) - key.V2SeqLen
+		prefix := physKey[:prefixLen]
+
+		sameAsLast := bytes.Equal(lastPrefix, prefix)
+
+		if k.Seqno >= gcIndex {
+			// This version is at or above the safe horizon — always keep it.
+			// Update prefix tracking.
+			if !sameAsLast {
+				lastPrefix = append(lastPrefix[:0], prefix...)
+				lastPrefixIsTombstone = isTombstone(iter.Value())
+			}
+			continue
+		}
+
+		// Version is below gcIndex.
+		if sameAsLast {
+			// Shadowed by the newer version we already decided to keep (or
+			// already GC'd). Discard regardless.
+			physKeyCopy := make([]byte, len(physKey))
+			copy(physKeyCopy, physKey)
+			if err := batch.Delete(physKeyCopy, nil); err != nil {
+				return err
+			}
+		} else {
+			// First (newest) version of this prefix below gcIndex.
+			lastPrefix = append(lastPrefix[:0], prefix...)
+			lastPrefixIsTombstone = isTombstone(iter.Value())
+
+			if lastPrefixIsTombstone {
+				// Tombstone with no live version above gcIndex — discard.
+				physKeyCopy := make([]byte, len(physKey))
+				copy(physKeyCopy, physKey)
+				if err := batch.Delete(physKeyCopy, nil); err != nil {
+					return err
+				}
+			}
+			// Live value below gcIndex with no newer version — keep it.
+		}
+
+		if uint64(batch.Len()) >= maxBatchSize {
+			if err := commitBatch(); err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := commitBatch(); err != nil {
+		return err
+	}
+
+	// Tell pebble to compact the user keyspace so the deleted entries are
+	// physically removed from SSTs.
+	start := mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: key.LatestMinKey})
+	end := incrementRightmostByte(append([]byte(nil), maxUserKey...))
+	return db.Compact(context.Background(), start, end, true /* parallelize */)
 }
 
 // Lookup locally looks up the data.
@@ -263,6 +397,12 @@ func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 		return &IndexResponse{Index: idx}, nil
 	case PathRequest:
 		return &PathResponse{Path: p.dirname}, nil
+	case GCCompactionRequest:
+		if err := p.runGC(req.Index); err != nil {
+			p.log.Errorf("GC compaction at index %d failed: %v", req.Index, err)
+			return nil, err
+		}
+		return nil, nil
 	default:
 		p.log.Warnf("received unknown lookup request of type %T", req)
 	}
@@ -430,11 +570,12 @@ func (p *FSM) getRecoverer(recoveryType SnapshotRecoveryType) snapshotRecoverer 
 }
 
 // encodeUserKey into provided writer.
-func encodeUserKey(dst io.Writer, keyBytes []byte) error {
+func encodeUserKey(dst io.Writer, keyBytes []byte, seqno uint64) error {
 	enc := key.NewEncoder(dst)
 	k := &key.Key{
 		KeyType: key.TypeUser,
 		Key:     keyBytes,
+		Seqno:   seqno,
 	}
 
 	if _, err := enc.Encode(k); err != nil {
