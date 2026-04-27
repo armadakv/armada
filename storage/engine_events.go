@@ -24,6 +24,8 @@ func (e *events) dispatchEvents() {
 		case nodeDeleted:
 			e.engine.Cluster.Notify()
 		case logCompacted:
+			lc := evt.(logCompacted)
+			e.engine.NotifyLogCompacted(lc.ShardID, lc.Index)
 		}
 	}
 }
@@ -279,6 +281,7 @@ func (e *events) SnapshotCompacted(info raftio.SnapshotInfo) {
 type logCompacted struct {
 	ShardID   uint64
 	ReplicaID uint64
+	Index     uint64
 }
 
 func (e *events) LogCompacted(info raftio.EntryInfo) {
@@ -288,6 +291,7 @@ func (e *events) LogCompacted(info raftio.EntryInfo) {
 	case e.eventsCh <- logCompacted{
 		ShardID:   info.ShardID,
 		ReplicaID: info.ReplicaID,
+		Index:     info.Index,
 	}:
 	}
 }

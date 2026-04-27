@@ -105,6 +105,9 @@ type TableConfig struct {
 	// RecoveryType the in-cluster snapshot recovery type.
 	RecoveryType         SnapshotRecoveryType
 	AppliedIndexListener func(table string, rev uint64)
+	// GCHorizonListener is called when the Raft log for the given shard is
+	// compacted up to index. The FSM should advance its GC horizon to this index.
+	GCHorizonListener func(shardID uint64, index uint64)
 }
 
 type MetaConfig struct {

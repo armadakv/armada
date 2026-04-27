@@ -671,6 +671,18 @@ func (m *Manager) waitForLeader(clusterID uint64) error {
 	}
 }
 
+// NotifyLogCompacted triggers an MVCC GC compaction sweep for the given shard
+// up to index. It uses StaleRead to deliver the GCCompactionRequest directly
+// to the local FSM without going through the Raft log.
+func (m *Manager) NotifyLogCompacted(shardID uint64, index uint64) {
+	if _, err := m.nh.StaleRead(shardID, fsm.GCCompactionRequest{Index: index}); err != nil {
+		m.log.Warnf("GC compaction for shard %d index %d failed: %v", shardID, index, err)
+	}
+	if m.cfg.Table.GCHorizonListener != nil {
+		m.cfg.Table.GCHorizonListener(shardID, index)
+	}
+}
+
 func tableRaftConfig(nodeID, clusterID uint64, cfg TableConfig) config.Config {
 	return config.Config{
 		ReplicaID:               nodeID,
