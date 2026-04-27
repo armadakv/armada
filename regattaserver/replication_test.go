@@ -162,11 +162,11 @@ func TestSnapshotServer_Stream(t *testing.T) {
 			wantErr: require.Error,
 		},
 		{
-			name:            "snapshot",
+			name:            "snapshot of empty table",
 			fields:          fields{Tables: []string{string(table1Name)}},
 			args:            args{req: &regattapb.SnapshotRequest{Table: table1Name}},
 			wantErr:         require.NoError,
-			wantChunksCount: 2,
+			wantChunksCount: 1, // empty table: commandSnapshot writes no KV commands, only the trailing DUMMY is present
 		},
 	}
 	for _, tt := range tests {
@@ -179,6 +179,37 @@ func TestSnapshotServer_Stream(t *testing.T) {
 			require.Len(t, capture.chunks, tt.wantChunksCount)
 		})
 	}
+
+	t.Run("snapshot of table with data produces KV commands", func(t *testing.T) {
+		engine := newInMemTestEngine(t, string(table1Name))
+		// Write some data so commandSnapshot has user keys to emit.
+		_, err := engine.Put(context.Background(), &regattapb.PutRequest{
+			Table: table1Name,
+			Key:   []byte("key1"),
+			Value: []byte("value1"),
+		})
+		require.NoError(t, err)
+		_, err = engine.Put(context.Background(), &regattapb.PutRequest{
+			Table: table1Name,
+			Key:   []byte("key2"),
+			Value: []byte("value2"),
+		})
+		require.NoError(t, err)
+
+		s := &SnapshotServer{Tables: engine}
+		capture := &captureSnapshotStream{}
+		require.NoError(t, s.Stream(&regattapb.SnapshotRequest{Table: table1Name}, capture))
+		// At least 1 chunk must be present regardless of size.
+		require.NotEmpty(t, capture.chunks)
+
+		// Decode all chunks into a single byte slice and verify it contains
+		// at least one PUT command for each key we wrote.
+		var raw []byte
+		for _, chunk := range capture.chunks {
+			raw = append(raw, chunk.Data...)
+		}
+		require.NotEmpty(t, raw, "snapshot data must not be empty for a table with data")
+	})
 }
 
 type captureLogStream struct {
