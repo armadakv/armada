@@ -22,7 +22,7 @@ func (c commandDelete) handle(ctx *updateContext) (UpdateResult, *regattapb.Comm
 		return ResultFailure, nil, err
 	}
 	return ResultSuccess, &regattapb.CommandResult{
-		Revision:  ctx.index,
+		Revision:  ctx.seqno(),
 		Responses: []*regattapb.ResponseOp{wrapResponseOp(resp)},
 	}, nil
 }
@@ -95,7 +95,7 @@ func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*re
 		// Write one tombstone per live user key at the current raft index.
 		for _, userKey := range toTombstone {
 			keyBuf := bufferPool.Get()
-			if err := encodeUserKey(keyBuf, userKey, ctx.index); err != nil {
+			if err := encodeUserKey(keyBuf, userKey, ctx.seqno()); err != nil {
 				bufferPool.Put(keyBuf)
 				return nil, err
 			}
@@ -158,7 +158,7 @@ func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*re
 
 		keyBuf := bufferPool.Get()
 		defer bufferPool.Put(keyBuf)
-		if err := encodeUserKey(keyBuf, del.Key, ctx.index); err != nil {
+		if err := encodeUserKey(keyBuf, del.Key, ctx.seqno()); err != nil {
 			return nil, err
 		}
 		if err := ctx.batch.Set(keyBuf.Bytes(), tombstoneValue, nil); err != nil {
@@ -188,7 +188,7 @@ func (c commandDeleteBatch) handle(ctx *updateContext) (UpdateResult, *regattapb
 		res = append(res, wrapResponseOp(put))
 	}
 	return ResultSuccess, &regattapb.CommandResult{
-		Revision:  ctx.index,
+		Revision:  ctx.seqno(),
 		Responses: res,
 	}, nil
 }

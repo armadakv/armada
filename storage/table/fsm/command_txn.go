@@ -22,7 +22,7 @@ func (c commandTxn) handle(ctx *updateContext) (UpdateResult, *regattapb.Command
 	if !succ {
 		result = ResultFailure
 	}
-	return result, &regattapb.CommandResult{Revision: ctx.index, Responses: rop}, nil
+	return result, &regattapb.CommandResult{Revision: ctx.seqno(), Responses: rop}, nil
 }
 
 // handleTxn handle transaction operation, returns if the operation succeeded (if success, or fail was applied) list or respective results and error.

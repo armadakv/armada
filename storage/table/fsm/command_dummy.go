@@ -9,5 +9,5 @@ import (
 type commandDummy struct{}
 
 func (c commandDummy) handle(ctx *updateContext) (UpdateResult, *regattapb.CommandResult, error) {
-	return ResultSuccess, &regattapb.CommandResult{Revision: ctx.index}, nil
+	return ResultSuccess, &regattapb.CommandResult{Revision: ctx.seqno()}, nil
 }

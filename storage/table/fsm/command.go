@@ -18,6 +18,17 @@ type updateContext struct {
 	leaderIndex *uint64
 }
 
+// seqno returns the sequence number to use when encoding MVCC keys.
+// On the leader, leaderIndex and index are identical. On followers, the
+// leaderIndex is used so that every region stamps the same seqno into the
+// same logical write, giving a consistent MVCC version across the cluster.
+func (c *updateContext) seqno() uint64 {
+	if c.leaderIndex != nil {
+		return *c.leaderIndex
+	}
+	return c.index
+}
+
 func (c *updateContext) EnsureIndexed() error {
 	if c.batch.Indexed() {
 		return nil
