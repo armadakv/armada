@@ -95,7 +95,7 @@ func DefaultOptions() *pebble.Options {
 			MinimumSize:           256,
 			MaxBlobReferenceDepth: 10,
 			RewriteMinimumAge:     5 * time.Minute,
-			TargetGarbageRatio:    10 / 100,
+			TargetGarbageRatio:    0.2,
 		}
 	}
 	return opts

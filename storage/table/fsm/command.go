@@ -96,6 +96,8 @@ func wrapCommand(cmd *regattapb.Command) command {
 		return commandSequence{cmd}
 	case regattapb.Command_DUMMY:
 		return commandDummy{}
+	case regattapb.Command_GC:
+		return commandGC{cmd}
 	}
 	panic("unknown command type")
 }

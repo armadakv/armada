@@ -178,6 +178,7 @@ func (c *checkpoint) recover(r io.Reader, stopc <-chan struct{}) error {
 	old := c.fsm.pebble.Swap(db)
 	c.fsm.metrics.applied.Store(idx)
 	c.fsm.log.Info("snapshot recovery finished")
+	c.fsm.notifyRecovered()
 
 	if old != nil {
 		_ = old.Close()

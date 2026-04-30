@@ -6,9 +6,9 @@
 
 syntax = "proto3";
 
-option go_package = "./regattapb";
-
 package mvcc.v1;
+
+option go_package = "./regattapb";
 
 message Command {
   enum CommandType {
@@ -19,6 +19,7 @@ message Command {
     DELETE_BATCH = 4;
     TXN = 5;
     SEQUENCE = 6;
+    GC = 7;
   }
 
   // table name of the table
@@ -216,7 +217,6 @@ message Compare {
     // lease is the lease id of the given key.
     // int64 lease = 8;
     // leave room for more target_union field tags, jump to 64
-
   }
 
   // range_end compares the given target to all keys in the range [key, range_end).

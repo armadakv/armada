@@ -82,6 +82,21 @@ func (k *keyV2) Decode(reader io.Reader) error {
 	return nil
 }
 
+// DecodeV2Seqno recovers the uint64 seqno (= leaderIndex at write time) from
+// the last V2SeqLen bytes of a physical V2 Pebble key. Returns 0 for non-V2
+// keys or keys that are too short.
+func DecodeV2Seqno(physicalKey []byte) uint64 {
+	if len(physicalKey) <= V2SeqLen || physicalKey[0] != V2 {
+		return 0
+	}
+	var buf [V2SeqLen]byte
+	copy(buf[:], physicalKey[len(physicalKey)-V2SeqLen:])
+	for i := range buf {
+		buf[i] = ^buf[i]
+	}
+	return binary.BigEndian.Uint64(buf[:])
+}
+
 func v2DecodeRaw(raw []byte) keyV2 {
 	// Layout: [keyType 1B] [userKey bytes] [0x00 separator 1B] [seqno 8B]
 	k := keyV2{}

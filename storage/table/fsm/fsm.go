@@ -4,14 +4,15 @@ package fsm
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
+	stderrors "errors"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
+	"time"
 
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
@@ -36,6 +37,10 @@ var (
 		KeyType: key.TypeSystem,
 		Key:     []byte("leader_index"),
 	})
+	sysGCHorizon = mustEncodeKey(key.Key{
+		KeyType: key.TypeSystem,
+		Key:     []byte("gc_horizon"),
+	})
 	maxUserKey = mustEncodeKey(key.Key{
 		KeyType: key.TypeUser,
 		Key:     key.LatestMaxKey,
@@ -56,6 +61,8 @@ const (
 	ResultFailure UpdateResult = iota
 	// ResultSuccess applied update.
 	ResultSuccess
+	// ResultGC applied a GC horizon advance.
+	ResultGC
 )
 
 type SnapshotRecoveryType uint8
@@ -129,9 +136,21 @@ type FSM struct {
 	metrics             *metrics
 	recoveryType        SnapshotRecoveryType
 	appliedFunc         func(applied uint64)
+
+	// gcHorizon is the highest leaderIndex up to which MVCC GC is safe.
+	// It is persisted as sysGCHorizon and kept in sync via this atomic.
+	gcHorizon atomic.Uint64
+	// gcCh is a buffered(1) channel used to signal the GC worker to run a sweep immediately.
+	gcCh   chan struct{}
+	gcStop chan struct{}
+	gcDone chan struct{}
 }
 
 func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
+	p.gcCh = make(chan struct{}, 1)
+	p.gcStop = make(chan struct{})
+	p.gcDone = make(chan struct{})
+
 	if p.clusterID < 1 {
 		return 0, errors.ErrInvalidClusterID
 	}
@@ -189,6 +208,14 @@ func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
 	if lx != 0 {
 		p.appliedFunc(lx)
 	}
+
+	// Restore GC horizon from durable storage.
+	gcH, _ := readLocalIndex(db, sysGCHorizon)
+	p.gcHorizon.Store(gcH)
+
+	// Start background GC worker.
+	p.startGCWorker()
+
 	return idx, nil
 }
 
@@ -215,11 +242,10 @@ func (p *FSM) openDB(dbdir string) (*pebble.DB, error) {
 // and a new one is opened. After all obsolete versions are removed, pebble's
 // Compact is called over the full user keyspace so the deleted entries are
 // physically reclaimed from disk.
-func (p *FSM) runGC(gcIndex uint64) error {
+func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 	if gcIndex == 0 {
 		return nil
 	}
-	db := p.pebble.Load()
 
 	// Scan the entire user keyspace using a snapshot so the view is stable
 	// for the duration of the sweep.
@@ -322,6 +348,7 @@ func (p *FSM) runGC(gcIndex uint64) error {
 			if err := commitBatch(); err != nil {
 				return err
 			}
+			time.Sleep(gcThrottleSleep)
 		}
 	}
 
@@ -329,11 +356,7 @@ func (p *FSM) runGC(gcIndex uint64) error {
 		return err
 	}
 
-	// Tell pebble to compact the user keyspace so the deleted entries are
-	// physically removed from SSTs.
-	start := mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: key.LatestMinKey})
-	end := incrementRightmostByte(append([]byte(nil), maxUserKey...))
-	return db.Compact(context.Background(), start, end, true /* parallelize */)
+	return nil
 }
 
 // Lookup locally looks up the data.
@@ -383,6 +406,15 @@ func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 			return nil, err
 		}
 		return &SnapshotResponse{Index: idx}, nil
+	case IncrementalSnapshotRequest:
+		snapshot := p.pebble.Load().NewSnapshot()
+		defer snapshot.Close()
+
+		idx, err := commandIncrementalSnapshot(snapshot, p.tableName, req.SinceIndex, req.Writer, req.Stopper)
+		if err != nil {
+			return nil, err
+		}
+		return &SnapshotResponse{Index: idx}, nil
 	case LocalIndexRequest:
 		idx, err := readLocalIndex(p.pebble.Load(), sysLocalIndex)
 		if err != nil {
@@ -397,12 +429,8 @@ func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 		return &IndexResponse{Index: idx}, nil
 	case PathRequest:
 		return &PathResponse{Path: p.dirname}, nil
-	case GCCompactionRequest:
-		if err := p.runGC(req.Index); err != nil {
-			p.log.Errorf("GC compaction at index %d failed: %v", req.Index, err)
-			return nil, err
-		}
-		return nil, nil
+	case GCHorizonRequest:
+		return &IndexResponse{Index: p.gcHorizon.Load()}, nil
 	default:
 		p.log.Warnf("received unknown lookup request of type %T", req)
 	}
@@ -424,6 +452,7 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 	}()
 
 	var idx uint64
+	var gcHorizonApplied uint64
 	for i := 0; i < len(updates); i++ {
 		cmd, err := parseCommand(ctx, updates[i])
 		if err != nil {
@@ -433,6 +462,10 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 		updateResult, res, err := cmd.handle(ctx)
 		if err != nil {
 			return nil, err
+		}
+
+		if updateResult == ResultGC {
+			gcHorizonApplied = res.Revision
 		}
 
 		bts, err := res.MarshalVT()
@@ -446,6 +479,12 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 
 	if err := ctx.Commit(); err != nil {
 		return nil, err
+	}
+
+	// Advance in-memory GC horizon and wake the sweep worker if a GC command was applied.
+	if gcHorizonApplied > 0 {
+		p.gcHorizon.Store(gcHorizonApplied)
+		p.signalGCWorker()
 	}
 
 	p.metrics.applied.Store(idx)
@@ -468,6 +507,14 @@ func (p *FSM) Sync() error {
 func (p *FSM) Close() error {
 	p.closed = true
 	prometheus.Unregister(p)
+
+	// Stop GC worker before closing pebble so any in-progress sweep can
+	// observe the closed DB and exit cleanly.
+	if p.gcStop != nil {
+		close(p.gcStop)
+		<-p.gcDone
+	}
+
 	db := p.pebble.Load()
 	if db == nil {
 		return nil
@@ -476,6 +523,66 @@ func (p *FSM) Close() error {
 		return err
 	}
 	return db.Close()
+}
+
+// notifyRecovered is called by snapshot recoverers after atomically swapping
+// the pebble DB. It updates the in-memory GC horizon from the new DB and
+// kicks the GC worker to sweep the freshly recovered state.
+func (p *FSM) notifyRecovered() {
+	gcH, _ := readLocalIndex(p.pebble.Load(), sysGCHorizon)
+	p.gcHorizon.Store(gcH)
+	p.signalGCWorker()
+}
+
+// signalGCWorker sends a non-blocking signal to the GC worker to start a sweep.
+func (p *FSM) signalGCWorker() {
+	select {
+	case p.gcCh <- struct{}{}:
+	default:
+	}
+}
+
+const (
+	gcWorkerPeriod  = 10 * time.Minute
+	gcThrottleSleep = 5 * time.Millisecond // pause between batch commits
+	gcThrottleBatch = 512                  // keys processed per batch before sleeping
+)
+
+// startGCWorker launches the background goroutine that performs throttled
+// MVCC GC sweeps. It is started by Open() and stopped by Close().
+func (p *FSM) startGCWorker() {
+	go func() {
+		defer close(p.gcDone)
+		ticker := time.NewTicker(gcWorkerPeriod)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-p.gcStop:
+				return
+			case <-p.gcCh:
+				p.runGCSweep()
+			case <-ticker.C:
+				p.runGCSweep()
+			}
+		}
+	}()
+}
+
+// runGCSweep runs a single throttled MVCC GC sweep using the current gcHorizon.
+func (p *FSM) runGCSweep() {
+	horizon := p.gcHorizon.Load()
+	if horizon == 0 {
+		return
+	}
+	db := p.pebble.Load()
+	if db == nil {
+		return
+	}
+	if err := p.runGC(db, horizon); err != nil {
+		if !stderrors.Is(err, pebble.ErrClosed) {
+			p.log.Warnf("GC sweep at horizon %d failed: %v", horizon, err)
+		}
+	}
 }
 
 // GetHash gets the DB hash for test comparison.

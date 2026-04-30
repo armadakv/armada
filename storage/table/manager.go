@@ -671,16 +671,37 @@ func (m *Manager) waitForLeader(clusterID uint64) error {
 	}
 }
 
-// NotifyLogCompacted triggers an MVCC GC compaction sweep for the given shard
-// up to index. It uses StaleRead to deliver the GCCompactionRequest directly
-// to the local FSM without going through the Raft log.
+// NotifyLogCompacted is called by the Raft event listener when the log for a
+// shard has been compacted up to index. Only the leader proposes a Command_GC
+// so that the GC horizon is replicated through the Raft log to all members of
+// the group (and via the replication worker to follower regions). Followers
+// ignore this call — they will apply the Command_GC when it arrives from the
+// leader via normal replication.
 func (m *Manager) NotifyLogCompacted(shardID uint64, index uint64) {
-	if _, err := m.nh.StaleRead(shardID, fsm.GCCompactionRequest{Index: index}); err != nil {
-		m.log.Warnf("GC compaction for shard %d index %d failed: %v", shardID, index, err)
+	_, _, isLeader, err := m.nh.GetLeaderID(shardID)
+	if err != nil || !isLeader {
+		return
 	}
-	if m.cfg.Table.GCHorizonListener != nil {
-		m.cfg.Table.GCHorizonListener(shardID, index)
-	}
+
+	// For the leader, localIndex == leaderIndex, so index is the correct
+	// leaderIndex value to embed in the GC command.
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := &regattapb.Command{
+			Type:        regattapb.Command_GC,
+			LeaderIndex: &index,
+		}
+		bts, err := cmd.MarshalVT()
+		if err != nil {
+			m.log.Warnf("GC command marshal failed for shard %d index %d: %v", shardID, index, err)
+			return
+		}
+		session := m.nh.GetNoOPSession(shardID)
+		if _, err := m.nh.SyncPropose(ctx, session, bts); err != nil {
+			m.log.Warnf("GC command proposal failed for shard %d index %d: %v", shardID, index, err)
+		}
+	}()
 }
 
 func tableRaftConfig(nodeID, clusterID uint64, cfg TableConfig) config.Config {
@@ -689,6 +710,7 @@ func tableRaftConfig(nodeID, clusterID uint64, cfg TableConfig) config.Config {
 		ShardID:                 clusterID,
 		CheckQuorum:             true,
 		OrderedConfigChange:     true,
+		PreVote:                 true,
 		ElectionRTT:             cfg.ElectionRTT,
 		HeartbeatRTT:            cfg.HeartbeatRTT,
 		SnapshotEntries:         cfg.SnapshotEntries,

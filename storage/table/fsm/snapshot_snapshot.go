@@ -175,6 +175,7 @@ read:
 	old := s.fsm.pebble.Swap(db)
 	s.fsm.metrics.applied.Store(idx)
 	s.fsm.log.Info("snapshot recovery finished")
+	s.fsm.notifyRecovered()
 
 	if old != nil {
 		_ = old.Close()

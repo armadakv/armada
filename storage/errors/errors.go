@@ -45,4 +45,6 @@ var (
 	ErrLogBehind = errors.New("queried log is behind")
 	// ErrLogAhead the queried log is ahead and contains only newer indices.
 	ErrLogAhead = errors.New("queried log is ahead")
+	// ErrCompacted returned when a read is requested at a revision that has been compacted away.
+	ErrCompacted = errors.New("requested revision has been compacted")
 )
