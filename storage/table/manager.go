@@ -710,7 +710,6 @@ func tableRaftConfig(nodeID, clusterID uint64, cfg TableConfig) config.Config {
 		ShardID:                 clusterID,
 		CheckQuorum:             true,
 		OrderedConfigChange:     true,
-		PreVote:                 true,
 		ElectionRTT:             cfg.ElectionRTT,
 		HeartbeatRTT:            cfg.HeartbeatRTT,
 		SnapshotEntries:         cfg.SnapshotEntries,

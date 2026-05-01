@@ -5,10 +5,10 @@ package proto
 import (
 	"errors"
 
-	"google.golang.org/grpc/mem"
-
 	"google.golang.org/grpc/encoding"
-	_ "google.golang.org/grpc/encoding/proto" // Blank import to ensure proper replacement of the default codec.
+	"google.golang.org/grpc/mem"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/protoadapt"
 )
 
 // Name is the name registered for the proto compressor.
@@ -17,9 +17,7 @@ const Name = "proto"
 var defaultBufferPool = mem.DefaultBufferPool()
 
 func init() {
-	encoding.RegisterCodecV2(&Codec{
-		fallback: encoding.GetCodecV2("proto"),
-	})
+	encoding.RegisterCodecV2(&Codec{})
 }
 
 type vtprotoMessage interface {
@@ -28,13 +26,14 @@ type vtprotoMessage interface {
 	SizeVT() int
 }
 
-type Codec struct {
-	fallback encoding.CodecV2
-}
+// Codec is a gRPC CodecV2 implementation that marshals vtprotobuf messages
+// using the fast vtproto path and falls back to the standard proto library
+// for regular proto.Message types.
+type Codec struct{}
 
 func (*Codec) Name() string { return Name }
 
-func (c *Codec) Marshal(v any) (mem.BufferSlice, error) {
+func (*Codec) Marshal(v any) (mem.BufferSlice, error) {
 	if m, ok := v.(vtprotoMessage); ok {
 		size := m.SizeVT()
 		if mem.IsBelowBufferPoolingThreshold(size) {
@@ -52,21 +51,50 @@ func (c *Codec) Marshal(v any) (mem.BufferSlice, error) {
 		return mem.BufferSlice{mem.NewBuffer(buf, defaultBufferPool)}, nil
 	}
 
-	if c.fallback == nil {
-		return nil, errors.New("proto: unsupported message type")
+	if pm := protoMessageOf(v); pm != nil {
+		size := proto.Size(pm)
+		if mem.IsBelowBufferPoolingThreshold(size) {
+			buf, err := proto.Marshal(pm)
+			if err != nil {
+				return nil, err
+			}
+			return mem.BufferSlice{mem.SliceBuffer(buf)}, nil
+		}
+		pool := defaultBufferPool
+		buf := pool.Get(size)
+		opts := proto.MarshalOptions{}
+		if _, err := opts.MarshalAppend((*buf)[:0], pm); err != nil {
+			pool.Put(buf)
+			return nil, err
+		}
+		return mem.BufferSlice{mem.NewBuffer(buf, pool)}, nil
 	}
-	return c.fallback.Marshal(v)
+
+	return nil, errors.New("proto: unsupported message type")
 }
 
-func (c *Codec) Unmarshal(data mem.BufferSlice, v any) error {
+func (*Codec) Unmarshal(data mem.BufferSlice, v any) error {
 	if m, ok := v.(vtprotoMessage); ok {
 		buf := data.MaterializeToBuffer(defaultBufferPool)
 		defer buf.Free()
 		return m.UnmarshalVT(buf.ReadOnlyData())
 	}
 
-	if c.fallback == nil {
-		return errors.New("proto: unsupported message type")
+	if pm := protoMessageOf(v); pm != nil {
+		buf := data.MaterializeToBuffer(defaultBufferPool)
+		defer buf.Free()
+		return proto.Unmarshal(buf.ReadOnlyData(), pm)
 	}
-	return c.fallback.Unmarshal(data, v)
+
+	return errors.New("proto: unsupported message type")
+}
+
+func protoMessageOf(v any) proto.Message {
+	switch v := v.(type) {
+	case protoadapt.MessageV1:
+		return protoadapt.MessageV2Of(v)
+	case protoadapt.MessageV2:
+		return v
+	}
+	return nil
 }

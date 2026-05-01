@@ -124,7 +124,7 @@ func BenchmarkCodec_Unmarshal(b *testing.B) {
 		},
 		{
 			name:  "unmarshal - custom codec",
-			codec: &Codec{fallback: defaultCodec},
+			codec: &Codec{},
 		},
 	}
 	for _, bm := range benchmarks {
@@ -176,7 +176,7 @@ func BenchmarkCodec_Marshal(b *testing.B) {
 		},
 		{
 			name:  "marshal - custom codec",
-			codec: &Codec{fallback: defaultCodec},
+			codec: &Codec{},
 		},
 	}
 	for _, bm := range benchmarks {
