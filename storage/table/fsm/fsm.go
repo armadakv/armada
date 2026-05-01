@@ -311,10 +311,12 @@ func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 
 		if k.Seqno >= gcIndex {
 			// This version is at or above the safe horizon — always keep it.
-			// Update prefix tracking.
+			// Update prefix tracking. lastPrefixIsTombstone is intentionally
+			// not set here — it is only meaningful for the first version below
+			// gcIndex (the else branch below), where it decides whether to keep
+			// or discard a live-but-old value.
 			if !sameAsLast {
 				lastPrefix = append(lastPrefix[:0], prefix...)
-				lastPrefixIsTombstone = isTombstone(iter.Value())
 			}
 			continue
 		}

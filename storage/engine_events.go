@@ -15,7 +15,7 @@ type events struct {
 func (e *events) dispatchEvents() {
 	for evt := range e.eventsCh {
 		e.engine.log.Infof("raft: %T %+v", evt, evt)
-		switch evt.(type) {
+		switch evt := evt.(type) {
 		case nodeHostShuttingDown:
 			close(e.stopc)
 			return
@@ -24,8 +24,7 @@ func (e *events) dispatchEvents() {
 		case nodeDeleted:
 			e.engine.Cluster.Notify()
 		case logCompacted:
-			lc := evt.(logCompacted)
-			e.engine.NotifyLogCompacted(lc.ShardID, lc.Index)
+			e.engine.NotifyLogCompacted(evt.ShardID, evt.Index)
 		}
 	}
 }
