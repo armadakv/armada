@@ -3,6 +3,8 @@
 package proto
 
 import (
+	"errors"
+
 	"google.golang.org/grpc/mem"
 
 	"google.golang.org/grpc/encoding"
@@ -50,6 +52,9 @@ func (c *Codec) Marshal(v any) (mem.BufferSlice, error) {
 		return mem.BufferSlice{mem.NewBuffer(buf, defaultBufferPool)}, nil
 	}
 
+	if c.fallback == nil {
+		return nil, errors.New("proto: unsupported message type")
+	}
 	return c.fallback.Marshal(v)
 }
 
@@ -60,5 +65,8 @@ func (c *Codec) Unmarshal(data mem.BufferSlice, v any) error {
 		return m.UnmarshalVT(buf.ReadOnlyData())
 	}
 
+	if c.fallback == nil {
+		return errors.New("proto: unsupported message type")
+	}
 	return c.fallback.Unmarshal(data, v)
 }
