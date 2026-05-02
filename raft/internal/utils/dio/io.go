@@ -20,7 +20,7 @@ import (
 	"sync/atomic"
 
 	pb "github.com/armadakv/armada/raft/raftpb"
-	gs "github.com/klauspost/compress/s2"
+	"github.com/golang/snappy"
 )
 
 // CompressionType is the type of the compression.
@@ -85,7 +85,7 @@ func NewCompressor(ct CompressionType, wc io.WriteCloser) io.WriteCloser {
 	} else if ct == Snappy {
 		c := &Compressor{
 			uw: wc,
-			wc: gs.NewWriter(wc),
+			wc: snappy.NewBufferedWriter(wc),
 			ct: ct,
 		}
 		return c
@@ -128,7 +128,7 @@ func NewDecompressor(ct CompressionType, r io.ReadCloser) io.ReadCloser {
 	} else if ct == Snappy {
 		d := &Decompressor{
 			ur: r,
-			rc: gs.NewReader(r),
+			rc: snappy.NewReader(r),
 			ct: ct,
 		}
 		return d
@@ -160,7 +160,7 @@ func MaxEncodedLen(ct CompressionType, srcLen uint64) (uint64, bool) {
 		if srcLen > MaxBlockLen(ct) {
 			return 0, false
 		}
-		sz := gs.MaxEncodedLen(int(srcLen))
+		sz := snappy.MaxEncodedLen(int(srcLen))
 		if sz == -1 {
 			return 0, false
 		}
@@ -183,7 +183,7 @@ func MaxBlockLen(ct CompressionType) uint64 {
 // compressed block into dst. The length of the compressed block is returned.
 func CompressSnappyBlock(src []byte, dst []byte) int {
 	dstLen := len(dst)
-	result := gs.Encode(dst, src)
+	result := snappy.Encode(dst, src)
 	if len(result) > dstLen {
 		panic("dst length is too small")
 	}
@@ -195,7 +195,7 @@ func CompressSnappyBlock(src []byte, dst []byte) int {
 // data.
 func DecompressSnappyBlock(src []byte, dst []byte) error {
 	dstLen := len(dst)
-	result, err := gs.Decode(dst, src)
+	result, err := snappy.Decode(dst, src)
 	if len(result) != dstLen {
 		panic("corrupted decodedLen in header")
 	}

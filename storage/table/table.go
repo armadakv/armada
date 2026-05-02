@@ -6,7 +6,9 @@ import (
 	"context"
 	"io"
 	"iter"
+	"time"
 
+	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/client"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/regattapb"
@@ -65,9 +67,20 @@ func proposeTable[S any](t *ActiveTable, ctx context.Context, cmd *regattapb.Com
 	if err != nil {
 		return *new(S), 0, err
 	}
-	res, err := t.nh.SyncPropose(ctx, t.session, bytes)
-	if err != nil {
-		return *new(S), 0, err
+	var res sm.Result
+	for {
+		res, err = t.nh.SyncPropose(ctx, t.session, bytes)
+		if err == nil {
+			break
+		}
+		if !raft.IsTempError(err) {
+			return *new(S), 0, err
+		}
+		select {
+		case <-ctx.Done():
+			return *new(S), 0, err
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 	pr := &regattapb.CommandResult{}
 	if err := pr.UnmarshalVTUnsafe(res.Data); err != nil {

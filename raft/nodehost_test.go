@@ -659,14 +659,14 @@ func runNodeHostTestDC(t *testing.T, f func(), removeDir bool, fs vfs.FS) {
 	reportLeakedFD(fs, t)
 }
 
-func TestTCPTransportIsUsedByDefault(t *testing.T) {
+func TestQUICTransportIsUsedByDefault(t *testing.T) {
 	fs := vfs.Default
 	to := &testOption{
 		tf: func(nh *NodeHost) {
 			tt := nh.transport.(*transport.Transport)
-			if tt.GetTrans().Name() != transport.TCPTransportName {
+			if tt.GetTrans().Name() != transport.QUICTransportName {
 				t.Errorf("transport type name %s, expect %s",
-					tt.GetTrans().Name(), transport.TCPTransportName)
+					tt.GetTrans().Name(), transport.QUICTransportName)
 			}
 		},
 		noElection: true,
