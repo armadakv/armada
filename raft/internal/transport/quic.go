@@ -59,6 +59,11 @@ const (
 var (
 	quicMaxIdleTimeout  = 30 * time.Second
 	quicKeepAlivePeriod = 10 * time.Second
+	// quicHandshakeTimeout caps QUIC handshake attempts at the same duration
+	// as TCP's dial timeout (dialTimeoutSecond = 5 s).  Without this, a dial
+	// to an unreachable server blocks for the full MaxIdleTimeout (30 s)
+	// because UDP has no equivalent of TCP's immediate "connection refused".
+	quicHandshakeTimeout = time.Duration(dialTimeoutSecond) * time.Second
 )
 
 // Compile-time interface assertions.
@@ -353,14 +358,27 @@ func (t *QUIC) GetSnapshotConnection(ctx context.Context, target string) (raftio
 }
 
 // dial establishes a QUIC connection to target and opens a bidirectional stream.
+//
+// It reuses the shared quic.Transport (and therefore the same UDP socket as the
+// listener) for outbound connections.  This avoids creating a new OS UDP socket
+// per outgoing connection, and ensures that failed handshakes are reported
+// promptly: quicHandshakeTimeout matches TCP's dial timeout so that a dial to an
+// unreachable server fails in ~5 s rather than blocking for the full
+// MaxIdleTimeout (30 s), which would otherwise cause leader-election failures
+// when a peer address changes briefly before its new listener is ready.
 func (t *QUIC) dial(ctx context.Context, target string) (*quic.Conn, *quic.Stream, error) {
 	tlsConfig, err := t.clientTLSConfig(target)
 	if err != nil {
 		return nil, nil, err
 	}
-	conn, err := quic.DialAddr(ctx, target, tlsConfig, &quic.Config{
-		MaxIdleTimeout:  quicMaxIdleTimeout,
-		KeepAlivePeriod: quicKeepAlivePeriod,
+	addr, err := net.ResolveUDPAddr("udp", target)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "quic: resolve address")
+	}
+	conn, err := t.quicTransport.Dial(ctx, addr, tlsConfig, &quic.Config{
+		MaxIdleTimeout:       quicMaxIdleTimeout,
+		KeepAlivePeriod:      quicKeepAlivePeriod,
+		HandshakeIdleTimeout: quicHandshakeTimeout,
 	})
 	if err != nil {
 		return nil, nil, err
