@@ -59,11 +59,14 @@ const (
 var (
 	quicMaxIdleTimeout  = 30 * time.Second
 	quicKeepAlivePeriod = 10 * time.Second
-	// quicHandshakeTimeout caps QUIC handshake attempts at the same duration
-	// as TCP's dial timeout (dialTimeoutSecond = 5 s).  Without this, a dial
-	// to an unreachable server blocks for the full MaxIdleTimeout (30 s)
-	// because UDP has no equivalent of TCP's immediate "connection refused".
-	quicHandshakeTimeout = time.Duration(dialTimeoutSecond) * time.Second
+	// quicDialTimeout is a context deadline applied to every outbound QUIC dial.
+	// Unlike HandshakeIdleTimeout (which only ticks down once the remote sends
+	// its first crypto packet), a context deadline aborts the dial after the
+	// specified wall-clock duration regardless of whether the remote responded
+	// at all.  This matches the behaviour of TCP's net.DialTimeout and ensures
+	// that dialling a port where nothing is listening (UDP void) fails in ~5 s
+	// rather than blocking for the full MaxIdleTimeout (30 s).
+	quicDialTimeout = time.Duration(dialTimeoutSecond) * time.Second
 )
 
 // Compile-time interface assertions.
@@ -215,6 +218,14 @@ type QUIC struct {
 	udpConn       net.PacketConn
 	listener      *quic.Listener
 	cancelCtx     context.CancelFunc
+	// activeConns tracks all connections accepted by the server-side listener.
+	// We explicitly call CloseWithError on every entry during Close() — before
+	// quicTransport.Close() — so that a graceful CONNECTION_CLOSE frame is
+	// transmitted to each connected peer.  Without this, quicTransport.Close()
+	// tears down connections abortively and the remote peer's send goroutine
+	// never detects the failure, leaving it blocked writing into a dead
+	// connection indefinitely.
+	activeConns sync.Map // *quic.Conn → struct{}
 }
 
 // NewQUICTransport creates and returns a new QUIC transport module.
@@ -292,7 +303,20 @@ func (t *QUIC) Close() error {
 		t.cancelCtx()
 	}
 
-	// 2. Close the listener and the quic.Transport immediately after cancelling
+	// 2. Send a graceful CONNECTION_CLOSE to every peer we have accepted a
+	//    connection from.  This must happen before quicTransport.Close()
+	//    because Transport.Close() tears down connections abortively —
+	//    without sending CONNECTION_CLOSE — which leaves the remote peer's
+	//    send goroutine blocked writing into a dead connection until its
+	//    MaxIdleTimeout expires (up to 30 s).  By sending CloseWithError
+	//    here, while the UDP socket is still open, the remote receives a
+	//    proper CONNECTION_CLOSE frame and immediately unblocks.
+	t.activeConns.Range(func(k, _ any) bool {
+		_ = k.(*quic.Conn).CloseWithError(0, "")
+		return true
+	})
+
+	// 3. Close the listener and the quic.Transport immediately after cancelling
 	//    the context. This is the critical step that unblocks any goroutine
 	//    stuck in a blocking stream read (e.g. io.ReadFull inside readFrame /
 	//    serveRaftStream). quic-go does not propagate a context cancellation to
@@ -361,11 +385,14 @@ func (t *QUIC) GetSnapshotConnection(ctx context.Context, target string) (raftio
 //
 // It reuses the shared quic.Transport (and therefore the same UDP socket as the
 // listener) for outbound connections.  This avoids creating a new OS UDP socket
-// per outgoing connection, and ensures that failed handshakes are reported
-// promptly: quicHandshakeTimeout matches TCP's dial timeout so that a dial to an
-// unreachable server fails in ~5 s rather than blocking for the full
-// MaxIdleTimeout (30 s), which would otherwise cause leader-election failures
-// when a peer address changes briefly before its new listener is ready.
+// per outgoing connection.
+//
+// A context deadline of quicDialTimeout is applied so that dialling a port
+// where nothing is listening fails promptly.  HandshakeIdleTimeout alone is
+// insufficient because quic-go only starts that timer once the remote has sent
+// its first crypto packet; against a UDP void it would block for the full
+// MaxIdleTimeout (30 s).  A context cancellation, by contrast, aborts the dial
+// immediately regardless of handshake progress.
 func (t *QUIC) dial(ctx context.Context, target string) (*quic.Conn, *quic.Stream, error) {
 	tlsConfig, err := t.clientTLSConfig(target)
 	if err != nil {
@@ -375,10 +402,11 @@ func (t *QUIC) dial(ctx context.Context, target string) (*quic.Conn, *quic.Strea
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "quic: resolve address")
 	}
-	conn, err := t.quicTransport.Dial(ctx, addr, tlsConfig, &quic.Config{
-		MaxIdleTimeout:       quicMaxIdleTimeout,
-		KeepAlivePeriod:      quicKeepAlivePeriod,
-		HandshakeIdleTimeout: quicHandshakeTimeout,
+	dialCtx, cancel := context.WithTimeout(ctx, quicDialTimeout)
+	defer cancel()
+	conn, err := t.quicTransport.Dial(dialCtx, addr, tlsConfig, &quic.Config{
+		MaxIdleTimeout:  quicMaxIdleTimeout,
+		KeepAlivePeriod: quicKeepAlivePeriod,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -395,9 +423,11 @@ func (t *QUIC) dial(ctx context.Context, target string) (*quic.Conn, *quic.Strea
 // It uses an inline WaitGroup so that all stream goroutines finish before the
 // connection is torn down.
 func (t *QUIC) serveConn(conn *quic.Conn, ctx context.Context) {
+	t.activeConns.Store(conn, struct{}{})
 	var wg sync.WaitGroup
 	defer func() {
 		wg.Wait()
+		t.activeConns.Delete(conn)
 		_ = conn.CloseWithError(0, "")
 	}()
 	for {
