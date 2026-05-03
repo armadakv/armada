@@ -946,7 +946,7 @@ func newTestConfig() Config {
 func newTestEngine(t *testing.T, cfg Config) *Engine {
 	t.Helper()
 	e := &Engine{cfg: cfg, stop: make(chan struct{}), log: zaptest.NewLogger(t).Sugar()}
-	e.events = &events{eventsCh: make(chan any, 1), stopc: make(chan struct{}), engine: e}
+	e.events = &events{eventsCh: make(chan any, 1), stopc: make(chan struct{}), donec: make(chan struct{}), engine: e}
 	nh, err := createNodeHost(e)
 	require.NoError(t, err)
 	e.NodeHost = nh

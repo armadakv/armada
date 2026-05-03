@@ -9,10 +9,12 @@ import (
 type events struct {
 	eventsCh chan any
 	stopc    chan struct{}
+	donec    chan struct{}
 	engine   *Engine
 }
 
 func (e *events) dispatchEvents() {
+	defer close(e.donec)
 	for evt := range e.eventsCh {
 		e.engine.log.Infof("raft: %T %+v", evt, evt)
 		switch evt := evt.(type) {
