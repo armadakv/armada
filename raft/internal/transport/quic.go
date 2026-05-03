@@ -546,8 +546,9 @@ func (t *QUIC) clientTLSConfig(target string) (*tls.Config, error) {
 	}
 	// When MutualTLS is not configured the server uses a self-signed certificate.
 	// We accept it unconditionally here; the channel is still encrypted.
+	// lgtm[go/disabled-certificate-check]
 	return &tls.Config{ //nolint:gosec
-		InsecureSkipVerify: true,
+		InsecureSkipVerify: true, // lgtm[go/disabled-certificate-check]
 		NextProtos:         []string{quicALPN},
 	}, nil
 }
