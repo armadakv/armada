@@ -5,8 +5,8 @@ package fsm
 import (
 	"testing"
 
+	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
-	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
@@ -28,18 +28,18 @@ func Test_handlePut(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	// Make the PUT.
-	req := &regattapb.RequestOp_Put{
+	req := &armadapb.RequestOp_Put{
 		Key:    []byte("key_1"),
 		Value:  []byte("value_1"),
 		PrevKv: true,
 	}
 	res, err := handlePut(c, req)
 	r.NoError(err)
-	r.Equal(&regattapb.ResponseOp_Put{}, res)
+	r.Equal(&armadapb.ResponseOp_Put{}, res)
 	r.NoError(c.Commit())
 
 	// Make the PUT update.
-	req = &regattapb.RequestOp_Put{
+	req = &armadapb.RequestOp_Put{
 		Key:    []byte("key_1"),
 		Value:  []byte("value_2"),
 		PrevKv: true,
@@ -48,7 +48,7 @@ func Test_handlePut(t *testing.T) {
 	c.batch = db.NewBatch()
 	res, err = handlePut(c, req)
 	r.NoError(err)
-	r.Equal(&regattapb.ResponseOp_Put{PrevKv: &regattapb.KeyValue{Key: []byte("key_1"), Value: []byte("value_1")}}, res)
+	r.Equal(&armadapb.ResponseOp_Put{PrevKv: &armadapb.KeyValue{Key: []byte("key_1"), Value: []byte("value_1")}}, res)
 	r.NoError(c.Commit())
 
 	iter, err := db.NewIter(allUserKeysOpts())
@@ -88,7 +88,7 @@ func Test_handlePutBatch(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	// Make the PUT_BATCH.
-	ops := []*regattapb.RequestOp_Put{
+	ops := []*armadapb.RequestOp_Put{
 		{Key: []byte("key_1"), Value: []byte("value")},
 		{Key: []byte("key_2"), Value: []byte("value")},
 		{Key: []byte("key_3"), Value: []byte("value")},

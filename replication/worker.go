@@ -15,8 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft/client"
-	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/replication/snapshot"
 	"github.com/armadakv/armada/storage"
 	serrors "github.com/armadakv/armada/storage/errors"
@@ -62,8 +62,8 @@ type workerFactory struct {
 	store             replicationManagerStore
 	engine            *storage.Engine
 	queue             *storage.IndexNotificationQueue
-	logClient         regattapb.LogClient
-	snapshotClient    regattapb.SnapshotClient
+	logClient         armadapb.LogClient
+	snapshotClient    armadapb.SnapshotClient
 	metrics           struct {
 		replicationIndex  *prometheus.GaugeVec
 		replicationLeased *prometheus.GaugeVec
@@ -389,7 +389,7 @@ func (w *worker) Close() {
 }
 
 func (w *worker) do(leaderIndex uint64, session *client.Session) (replicateResult, error) {
-	replicateRequest := &regattapb.ReplicateRequest{
+	replicateRequest := &armadapb.ReplicateRequest{
 		LeaderIndex: leaderIndex + 1,
 		Table:       []byte(w.table),
 	}
@@ -423,16 +423,16 @@ func (w *worker) do(leaderIndex uint64, session *client.Session) (replicateResul
 		}
 
 		switch res := replicateRes.Response.(type) {
-		case *regattapb.ReplicateResponse_CommandsResponse:
+		case *armadapb.ReplicateResponse_CommandsResponse:
 			applied, err = w.proposeBatch(ctx, res.CommandsResponse.GetCommands(), session)
 			if err != nil {
 				return resultUnknown, fmt.Errorf("could not propose: %w", err)
 			}
-		case *regattapb.ReplicateResponse_ErrorResponse:
+		case *armadapb.ReplicateResponse_ErrorResponse:
 			switch res.ErrorResponse.Error {
-			case regattapb.ReplicateError_LEADER_BEHIND:
+			case armadapb.ReplicateError_LEADER_BEHIND:
 				return resultLeaderBehind, nil
-			case regattapb.ReplicateError_USE_SNAPSHOT:
+			case armadapb.ReplicateError_USE_SNAPSHOT:
 				return resultLeaderAhead, nil
 			default:
 				return resultUnknown, fmt.Errorf(
@@ -465,8 +465,8 @@ func (w *worker) tableState() (uint64, uint64, error) {
 	return idxRes.Index, t.ClusterID, nil
 }
 
-func (w *worker) proposeBatch(ctx context.Context, commands []*regattapb.ReplicateCommand, session *client.Session) (uint64, error) {
-	seq := regattapb.CommandFromVTPool()
+func (w *worker) proposeBatch(ctx context.Context, commands []*armadapb.ReplicateCommand, session *client.Session) (uint64, error) {
+	seq := armadapb.CommandFromVTPool()
 	defer seq.ReturnToVTPool()
 	var buff []byte
 	propose := func() error {
@@ -491,7 +491,7 @@ func (w *worker) proposeBatch(ctx context.Context, commands []*regattapb.Replica
 	}
 
 	var lastApplied uint64
-	seq.Type = regattapb.Command_SEQUENCE
+	seq.Type = armadapb.Command_SEQUENCE
 	for i, c := range commands {
 		seq.Sequence = append(seq.Sequence, c.Command)
 		seq.LeaderIndex = &c.LeaderIndex
@@ -510,7 +510,7 @@ func (w *worker) recover() error {
 	w.log.Info("recovering from snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), w.snapshotTimeout)
 	defer cancel()
-	stream, err := w.snapshotClient.Stream(ctx, &regattapb.SnapshotRequest{Table: []byte(w.table)})
+	stream, err := w.snapshotClient.Stream(ctx, &armadapb.SnapshotRequest{Table: []byte(w.table)})
 	if err != nil {
 		return err
 	}

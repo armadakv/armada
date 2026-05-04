@@ -3,15 +3,15 @@
 package fsm
 
 import (
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 )
 
 type commandSequence struct {
-	*regattapb.Command
+	*armadapb.Command
 }
 
-func (c commandSequence) handle(ctx *updateContext) (UpdateResult, *regattapb.CommandResult, error) {
-	res := &regattapb.CommandResult{Revision: ctx.seqno()}
+func (c commandSequence) handle(ctx *updateContext) (UpdateResult, *armadapb.CommandResult, error) {
+	res := &armadapb.CommandResult{Revision: ctx.seqno()}
 	for _, cmd := range c.Sequence {
 		_, cmdRes, err := wrapCommand(cmd).handle(ctx)
 		if err != nil {

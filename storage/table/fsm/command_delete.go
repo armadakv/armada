@@ -3,16 +3,16 @@
 package fsm
 
 import (
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
 )
 
 type commandDelete struct {
-	*regattapb.Command
+	*armadapb.Command
 }
 
-func (c commandDelete) handle(ctx *updateContext) (UpdateResult, *regattapb.CommandResult, error) {
-	resp, err := handleDelete(ctx, &regattapb.RequestOp_DeleteRange{
+func (c commandDelete) handle(ctx *updateContext) (UpdateResult, *armadapb.CommandResult, error) {
+	resp, err := handleDelete(ctx, &armadapb.RequestOp_DeleteRange{
 		Key:      c.Kv.Key,
 		RangeEnd: c.RangeEnd,
 		PrevKv:   c.PrevKvs,
@@ -21,14 +21,14 @@ func (c commandDelete) handle(ctx *updateContext) (UpdateResult, *regattapb.Comm
 	if err != nil {
 		return ResultFailure, nil, err
 	}
-	return ResultSuccess, &regattapb.CommandResult{
+	return ResultSuccess, &armadapb.CommandResult{
 		Revision:  ctx.seqno(),
-		Responses: []*regattapb.ResponseOp{wrapResponseOp(resp)},
+		Responses: []*armadapb.ResponseOp{wrapResponseOp(resp)},
 	}, nil
 }
 
-func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*regattapb.ResponseOp_DeleteRange, error) {
-	resp := &regattapb.ResponseOp_DeleteRange{}
+func handleDelete(ctx *updateContext, del *armadapb.RequestOp_DeleteRange) (*armadapb.ResponseOp_DeleteRange, error) {
+	resp := &armadapb.ResponseOp_DeleteRange{}
 
 	if del.RangeEnd != nil {
 		// Range delete: iterate the latest version of every distinct user key in
@@ -54,7 +54,7 @@ func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*re
 		// after closing the iterator (pebble disallows mutating a batch while
 		// an iterator over it is open).
 		var toTombstone [][]byte
-		var prevKvs []*regattapb.KeyValue
+		var prevKvs []*armadapb.KeyValue
 
 		for iter.First(); iter.Valid(); {
 			k, decErr := key.DecodeBytes(iter.Key())
@@ -73,7 +73,7 @@ func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*re
 					if del.PrevKv {
 						v := make([]byte, len(val))
 						copy(v, val)
-						prevKvs = append(prevKvs, &regattapb.KeyValue{
+						prevKvs = append(prevKvs, &armadapb.KeyValue{
 							Key:   userKey,
 							Value: v,
 						})
@@ -123,7 +123,7 @@ func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*re
 			if err := ctx.EnsureIndexed(); err != nil {
 				return nil, err
 			}
-			rng, err := singleLookup(ctx.batch, &regattapb.RequestOp_Range{
+			rng, err := singleLookup(ctx.batch, &armadapb.RequestOp_Range{
 				Key:       del.Key,
 				CountOnly: del.Count && !del.PrevKv,
 			})
@@ -142,7 +142,7 @@ func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*re
 			if err := ctx.EnsureIndexed(); err != nil {
 				return nil, err
 			}
-			existing, err := singleLookup(ctx.batch, &regattapb.RequestOp_Range{
+			existing, err := singleLookup(ctx.batch, &armadapb.RequestOp_Range{
 				Key:       del.Key,
 				CountOnly: true,
 			})
@@ -169,13 +169,13 @@ func handleDelete(ctx *updateContext, del *regattapb.RequestOp_DeleteRange) (*re
 }
 
 type commandDeleteBatch struct {
-	*regattapb.Command
+	*armadapb.Command
 }
 
-func (c commandDeleteBatch) handle(ctx *updateContext) (UpdateResult, *regattapb.CommandResult, error) {
-	req := make([]*regattapb.RequestOp_DeleteRange, len(c.Batch))
+func (c commandDeleteBatch) handle(ctx *updateContext) (UpdateResult, *armadapb.CommandResult, error) {
+	req := make([]*armadapb.RequestOp_DeleteRange, len(c.Batch))
 	for i, kv := range c.Batch {
-		req[i] = &regattapb.RequestOp_DeleteRange{
+		req[i] = &armadapb.RequestOp_DeleteRange{
 			Key: kv.Key,
 		}
 	}
@@ -183,18 +183,18 @@ func (c commandDeleteBatch) handle(ctx *updateContext) (UpdateResult, *regattapb
 	if err != nil {
 		return ResultFailure, nil, err
 	}
-	res := make([]*regattapb.ResponseOp, 0, len(c.Batch))
+	res := make([]*armadapb.ResponseOp, 0, len(c.Batch))
 	for _, put := range rop {
 		res = append(res, wrapResponseOp(put))
 	}
-	return ResultSuccess, &regattapb.CommandResult{
+	return ResultSuccess, &armadapb.CommandResult{
 		Revision:  ctx.seqno(),
 		Responses: res,
 	}, nil
 }
 
-func handleDeleteBatch(ctx *updateContext, ops []*regattapb.RequestOp_DeleteRange) ([]*regattapb.ResponseOp_DeleteRange, error) {
-	results := make([]*regattapb.ResponseOp_DeleteRange, len(ops))
+func handleDeleteBatch(ctx *updateContext, ops []*armadapb.RequestOp_DeleteRange) ([]*armadapb.ResponseOp_DeleteRange, error) {
+	results := make([]*armadapb.ResponseOp_DeleteRange, len(ops))
 	for i, op := range ops {
 		res, err := handleDelete(ctx, op)
 		if err != nil {

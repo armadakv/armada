@@ -43,15 +43,15 @@ armada:
 	test $(VERSION) || (echo "version not set"; exit 1)
 	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o armada
 
-PROTO_GO_OUTS=regattapb/mvcc.pb.go regattapb/mvcc_vtproto.pb.go \
- regattapb/regatta.pb.go regattapb/regatta_grpc.pb.go regattapb/regatta_vtproto.pb.go \
- regattapb/replication.pb.go regattapb/replication_grpc.pb.go regattapb/replication_vtproto.pb.go \
- regattapb/maintenance.pb.go regattapb/maintenance_grpc.pb.go regattapb/maintenance_vtproto.pb.go
+PROTO_GO_OUTS=armadapb/mvcc.pb.go armadapb/mvcc_vtproto.pb.go \
+ armadapb/armada.pb.go armadapb/armada_grpc.pb.go armadapb/armada_vtproto.pb.go \
+ armadapb/replication.pb.go armadapb/replication_grpc.pb.go armadapb/replication_vtproto.pb.go \
+ armadapb/maintenance.pb.go armadapb/maintenance_grpc.pb.go armadapb/maintenance_vtproto.pb.go
 
 proto: $(PROTO_GO_OUTS)
 
 $(PROTO_GO_OUTS): proto/*.proto
-	protoc -I proto/ --go_out=. --go-grpc_out=. --go-vtproto_out=. --go-vtproto_opt=features=marshal+unmarshal+unmarshal_unsafe+size+pool --go-vtproto_opt=pool=./regattapb.Command --go-vtproto_opt=pool=./regattapb.SnapshotChunk proto/*.proto
+	protoc -I proto/ --go_out=. --go-grpc_out=. --go-vtproto_out=. --go-vtproto_opt=features=marshal+unmarshal+unmarshal_unsafe+size+pool --go-vtproto_opt=pool=./armadapb.Command --go-vtproto_opt=pool=./armadapb.SnapshotChunk proto/*.proto
 
 # Build the docker image
 .PHONY: docker-build

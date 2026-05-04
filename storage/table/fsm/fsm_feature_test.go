@@ -9,9 +9,9 @@ import (
 	"path"
 	"testing"
 
+	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
@@ -43,60 +43,60 @@ type outputRecord struct {
 }
 
 // input in form of version: commands to apply.
-var input = map[int][]*regattapb.Command{
+var input = map[int][]*armadapb.Command{
 	0: {
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_1"),
 				Value: []byte("value_1"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_2"),
 				Value: []byte("value_2"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_2"),
 				Value: []byte("value_2_new"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_3"),
 				Value: []byte("value_3"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_DELETE,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_DELETE,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_3"),
 				Value: []byte("value_3"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_DELETE,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_DELETE,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_3"),
 				Value: []byte("value_3"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT_BATCH,
-			Batch: []*regattapb.KeyValue{
+			Type:  armadapb.Command_PUT_BATCH,
+			Batch: []*armadapb.KeyValue{
 				{
 					Key:   []byte("key_10"),
 					Value: []byte("value"),
@@ -117,8 +117,8 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_DELETE_BATCH,
-			Batch: []*regattapb.KeyValue{
+			Type:  armadapb.Command_DELETE_BATCH,
+			Batch: []*armadapb.KeyValue{
 				{
 					Key:   []byte("key_10"),
 					Value: []byte("value"),
@@ -137,56 +137,56 @@ var input = map[int][]*regattapb.Command{
 	1: {
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_1"),
 				Value: []byte("value_1"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_2"),
 				Value: []byte("value_2"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("not_match"),
 				Value: []byte("value"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_DELETE,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_DELETE,
+			Kv: &armadapb.KeyValue{
 				Key: []byte("key"),
 			},
 			RangeEnd: incrementRightmostByte([]byte("key")),
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   []byte("key_3"),
 				Value: []byte("value_3"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_PUT,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_PUT,
+			Kv: &armadapb.KeyValue{
 				Key:   key.LatestMaxKey,
 				Value: []byte("value_3"),
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_DELETE,
-			Kv: &regattapb.KeyValue{
+			Type:  armadapb.Command_DELETE,
+			Kv: &armadapb.KeyValue{
 				Key: []byte{0},
 			},
 			RangeEnd: []byte{0},
@@ -195,23 +195,23 @@ var input = map[int][]*regattapb.Command{
 	2: {
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Success: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Success: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_2"),
 							Value: []byte("value"),
 						}},
 					},
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_3"),
 							Value: []byte("value"),
 						}},
 					},
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_4"),
 							Value: []byte("value"),
 						}},
@@ -221,12 +221,12 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Compare: []*regattapb.Compare{{Key: []byte("key_1")}},
-				Failure: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Compare: []*armadapb.Compare{{Key: []byte("key_1")}},
+				Failure: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_1"),
 							Value: []byte("value"),
 						}},
@@ -236,12 +236,12 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Compare: []*regattapb.Compare{{Key: []byte("key_1")}},
-				Success: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Compare: []*armadapb.Compare{{Key: []byte("key_1")}},
+				Success: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_1"),
 							Value: []byte("valuevaluevalue"),
 						}},
@@ -251,12 +251,12 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Compare: []*regattapb.Compare{{Key: []byte("key_1"), Result: regattapb.Compare_EQUAL, Target: regattapb.Compare_VALUE, TargetUnion: &regattapb.Compare_Value{Value: []byte("valuevaluevalue")}}},
-				Success: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Compare: []*armadapb.Compare{{Key: []byte("key_1"), Result: armadapb.Compare_EQUAL, Target: armadapb.Compare_VALUE, TargetUnion: &armadapb.Compare_Value{Value: []byte("valuevaluevalue")}}},
+				Success: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_1"),
 							Value: []byte("value1"),
 						}},
@@ -266,12 +266,12 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Compare: []*regattapb.Compare{{Key: []byte("key_1"), Result: regattapb.Compare_LESS, Target: regattapb.Compare_VALUE, TargetUnion: &regattapb.Compare_Value{Value: []byte("value")}}},
-				Success: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Compare: []*armadapb.Compare{{Key: []byte("key_1"), Result: armadapb.Compare_LESS, Target: armadapb.Compare_VALUE, TargetUnion: &armadapb.Compare_Value{Value: []byte("value")}}},
+				Success: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_1"),
 							Value: []byte("value2"),
 						}},
@@ -281,20 +281,20 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Compare: []*regattapb.Compare{{Key: []byte("key_1"), Result: regattapb.Compare_GREATER, Target: regattapb.Compare_VALUE, TargetUnion: &regattapb.Compare_Value{Value: []byte("value")}}},
-				Success: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Compare: []*armadapb.Compare{{Key: []byte("key_1"), Result: armadapb.Compare_GREATER, Target: armadapb.Compare_VALUE, TargetUnion: &armadapb.Compare_Value{Value: []byte("value")}}},
+				Success: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_1"),
 							Value: []byte("value"),
 						}},
 					},
 				},
-				Failure: []*regattapb.RequestOp{
+				Failure: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_1"),
 							Value: []byte("value2"),
 						}},
@@ -304,11 +304,11 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Success: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Success: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestRange{RequestRange: &regattapb.RequestOp_Range{
+						Request: &armadapb.RequestOp_RequestRange{RequestRange: &armadapb.RequestOp_Range{
 							Key: []byte("key_1"),
 						}},
 					},
@@ -317,12 +317,12 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Compare: []*regattapb.Compare{{Key: []byte("key"), RangeEnd: wildcard, Result: regattapb.Compare_GREATER, Target: regattapb.Compare_VALUE, TargetUnion: &regattapb.Compare_Value{Value: []byte("val")}}},
-				Success: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Compare: []*armadapb.Compare{{Key: []byte("key"), RangeEnd: wildcard, Result: armadapb.Compare_GREATER, Target: armadapb.Compare_VALUE, TargetUnion: &armadapb.Compare_Value{Value: []byte("val")}}},
+				Success: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_5"),
 							Value: []byte("value"),
 						}},
@@ -332,12 +332,12 @@ var input = map[int][]*regattapb.Command{
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_TXN,
-			Txn: &regattapb.Txn{
-				Compare: []*regattapb.Compare{{Key: []byte("nonsense"), RangeEnd: []byte("nonsense2")}},
-				Failure: []*regattapb.RequestOp{
+			Type:  armadapb.Command_TXN,
+			Txn: &armadapb.Txn{
+				Compare: []*armadapb.Compare{{Key: []byte("nonsense"), RangeEnd: []byte("nonsense2")}},
+				Failure: []*armadapb.RequestOp{
 					{
-						Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+						Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key_6"),
 							Value: []byte("value"),
 						}},
@@ -349,27 +349,27 @@ var input = map[int][]*regattapb.Command{
 	3: {
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_SEQUENCE,
-			Sequence: []*regattapb.Command{
+			Type:  armadapb.Command_SEQUENCE,
+			Sequence: []*armadapb.Command{
 				{
 					Table: []byte("test"),
-					Type:  regattapb.Command_TXN,
-					Txn: &regattapb.Txn{
-						Success: []*regattapb.RequestOp{
+					Type:  armadapb.Command_TXN,
+					Txn: &armadapb.Txn{
+						Success: []*armadapb.RequestOp{
 							{
-								Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+								Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 									Key:   []byte("key_1"),
 									Value: []byte("value"),
 								}},
 							},
 							{
-								Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+								Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 									Key:   []byte("key_2"),
 									Value: []byte("value"),
 								}},
 							},
 							{
-								Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{
+								Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
 									Key:   []byte("key_3"),
 									Value: []byte("value"),
 								}},
@@ -379,34 +379,34 @@ var input = map[int][]*regattapb.Command{
 				},
 				{
 					Table: []byte("test"),
-					Type:  regattapb.Command_DELETE,
-					Kv:    &regattapb.KeyValue{Key: []byte("key_2")},
+					Type:  armadapb.Command_DELETE,
+					Kv:    &armadapb.KeyValue{Key: []byte("key_2")},
 				},
 				{
 					Table: []byte("test"),
-					Type:  regattapb.Command_DELETE,
-					Kv:    &regattapb.KeyValue{Key: []byte("key_3")},
+					Type:  armadapb.Command_DELETE,
+					Kv:    &armadapb.KeyValue{Key: []byte("key_3")},
 				},
 				{
 					Table: []byte("test"),
-					Type:  regattapb.Command_PUT,
-					Kv:    &regattapb.KeyValue{Key: []byte("key_1"), Value: []byte("value_1")},
+					Type:  armadapb.Command_PUT,
+					Kv:    &armadapb.KeyValue{Key: []byte("key_1"), Value: []byte("value_1")},
 				},
 			},
 		},
 		{
 			Table: []byte("test"),
-			Type:  regattapb.Command_SEQUENCE,
-			Sequence: []*regattapb.Command{
+			Type:  armadapb.Command_SEQUENCE,
+			Sequence: []*armadapb.Command{
 				{
 					Table: []byte("test"),
-					Type:  regattapb.Command_PUT,
-					Kv:    &regattapb.KeyValue{Key: []byte("key_2"), Value: []byte("value_2")},
+					Type:  armadapb.Command_PUT,
+					Kv:    &armadapb.KeyValue{Key: []byte("key_2"), Value: []byte("value_2")},
 				},
 				{
 					Table: []byte("test"),
-					Type:  regattapb.Command_PUT,
-					Kv:    &regattapb.KeyValue{Key: []byte("key_3"), Value: []byte("value_3")},
+					Type:  armadapb.Command_PUT,
+					Kv:    &armadapb.KeyValue{Key: []byte("key_3"), Value: []byte("value_3")},
 				},
 			},
 		},
@@ -422,7 +422,7 @@ func TestGenerateData(t *testing.T) {
 }
 
 //nolint:unused
-func generateFiles(t *testing.T, version int, inputCommands []*regattapb.Command) {
+func generateFiles(t *testing.T, version int, inputCommands []*armadapb.Command) {
 	inFile, err := os.Create(path.Join("testdata", fmt.Sprintf("v%d-input.json", version)))
 	if err != nil {
 		t.Fatal(err)

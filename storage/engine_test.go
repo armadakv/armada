@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/pebble"
-	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"
@@ -97,13 +97,13 @@ func TestEngine_Start(t *testing.T) {
 func TestEngine_Range(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.RangeRequest
+		req *armadapb.RangeRequest
 	}
 	tests := []struct {
 		name    string
 		args    args
 		prepare func(t *testing.T, e *Engine)
-		want    *regattapb.RangeResponse
+		want    *armadapb.RangeResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
@@ -111,7 +111,7 @@ func TestEngine_Range(t *testing.T) {
 			prepare: func(t *testing.T, e *Engine) {},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
@@ -125,13 +125,13 @@ func TestEngine_Range(t *testing.T) {
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
@@ -145,14 +145,14 @@ func TestEngine_Range(t *testing.T) {
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table:        []byte(testTableName),
 					Key:          []byte("key"),
 					Linearizable: true,
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
@@ -163,22 +163,22 @@ func TestEngine_Range(t *testing.T) {
 			name: "key found serializable request",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{Key: []byte("key"), Value: []byte("value")},
 				},
 				Count: 1,
@@ -189,22 +189,22 @@ func TestEngine_Range(t *testing.T) {
 			name: "key found linearizable request",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{Key: []byte("key"), Value: []byte("value")},
 				},
 				Count: 1,
@@ -231,13 +231,13 @@ func TestEngine_Range(t *testing.T) {
 func TestEngine_IterateRange(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.RangeRequest
+		req *armadapb.RangeRequest
 	}
 	tests := []struct {
 		name    string
 		args    args
 		prepare func(t *testing.T, e *Engine)
-		want    *regattapb.RangeResponse
+		want    *armadapb.RangeResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
@@ -245,7 +245,7 @@ func TestEngine_IterateRange(t *testing.T) {
 			prepare: func(t *testing.T, e *Engine) {},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
@@ -259,13 +259,13 @@ func TestEngine_IterateRange(t *testing.T) {
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
@@ -279,14 +279,14 @@ func TestEngine_IterateRange(t *testing.T) {
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table:        []byte(testTableName),
 					Key:          []byte("key"),
 					Linearizable: true,
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
@@ -297,22 +297,22 @@ func TestEngine_IterateRange(t *testing.T) {
 			name: "key found serializable request",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{Key: []byte("key"), Value: []byte("value")},
 				},
 				Count: 1,
@@ -323,23 +323,23 @@ func TestEngine_IterateRange(t *testing.T) {
 			name: "key found range request",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table:    []byte(testTableName),
 					Key:      []byte("key"),
 					RangeEnd: []byte("key_"),
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{Key: []byte("key"), Value: []byte("value")},
 				},
 				Count: 1,
@@ -350,22 +350,22 @@ func TestEngine_IterateRange(t *testing.T) {
 			name: "key found linearizable request",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.RangeRequest{
+				req: &armadapb.RangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
 			},
-			want: &regattapb.RangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.RangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ReplicaId: 1,
 					ShardId:   10001,
 				},
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{Key: []byte("key"), Value: []byte("value")},
 				},
 				Count: 1,
@@ -392,13 +392,13 @@ func TestEngine_IterateRange(t *testing.T) {
 func TestEngine_Put(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.PutRequest
+		req *armadapb.PutRequest
 	}
 	tests := []struct {
 		name    string
 		args    args
 		prepare func(t *testing.T, e *Engine)
-		want    *regattapb.PutResponse
+		want    *armadapb.PutResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
@@ -406,7 +406,7 @@ func TestEngine_Put(t *testing.T) {
 			prepare: func(t *testing.T, e *Engine) {},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
@@ -420,14 +420,14 @@ func TestEngine_Put(t *testing.T) {
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 					Value: []byte("value"),
 				},
 			},
-			want: &regattapb.PutResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.PutResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  3,
@@ -439,19 +439,19 @@ func TestEngine_Put(t *testing.T) {
 			name: "overwrite key",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 					Value: []byte("value2"),
 				},
 			},
-			want: &regattapb.PutResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.PutResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  4,
@@ -463,25 +463,25 @@ func TestEngine_Put(t *testing.T) {
 			name: "overwrite key and get prev",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Table:  []byte(testTableName),
 					Key:    []byte("key"),
 					Value:  []byte("value2"),
 					PrevKv: true,
 				},
 			},
-			want: &regattapb.PutResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.PutResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  4,
 				},
-				PrevKv: &regattapb.KeyValue{
+				PrevKv: &armadapb.KeyValue{
 					Key:   []byte("key"),
 					Value: []byte("value"),
 				},
@@ -508,13 +508,13 @@ func TestEngine_Put(t *testing.T) {
 func TestEngine_Delete(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.DeleteRangeRequest
+		req *armadapb.DeleteRangeRequest
 	}
 	tests := []struct {
 		name    string
 		args    args
 		prepare func(t *testing.T, e *Engine)
-		want    *regattapb.DeleteRangeResponse
+		want    *armadapb.DeleteRangeResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
@@ -522,7 +522,7 @@ func TestEngine_Delete(t *testing.T) {
 			prepare: func(t *testing.T, e *Engine) {},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.DeleteRangeRequest{
+				req: &armadapb.DeleteRangeRequest{
 					Table: []byte(testTableName),
 					Key:   []byte("key"),
 				},
@@ -536,14 +536,14 @@ func TestEngine_Delete(t *testing.T) {
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.DeleteRangeRequest{
+				req: &armadapb.DeleteRangeRequest{
 					Table:    []byte(testTableName),
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 				},
 			},
-			want: &regattapb.DeleteRangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.DeleteRangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  3,
@@ -555,20 +555,20 @@ func TestEngine_Delete(t *testing.T) {
 			name: "delete all and count",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.DeleteRangeRequest{
+				req: &armadapb.DeleteRangeRequest{
 					Table:    []byte(testTableName),
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 					Count:    true,
 				},
 			},
-			want: &regattapb.DeleteRangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.DeleteRangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  4,
@@ -581,26 +581,26 @@ func TestEngine_Delete(t *testing.T) {
 			name: "delete all and get prev",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.DeleteRangeRequest{
+				req: &armadapb.DeleteRangeRequest{
 					Table:    []byte(testTableName),
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 					PrevKv:   true,
 				},
 			},
-			want: &regattapb.DeleteRangeResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.DeleteRangeResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  4,
 				},
 				Deleted: 1,
-				PrevKvs: []*regattapb.KeyValue{
+				PrevKvs: []*armadapb.KeyValue{
 					{Key: []byte("key"), Value: []byte("value")},
 				},
 			},
@@ -626,13 +626,13 @@ func TestEngine_Delete(t *testing.T) {
 func TestEngine_Txn(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.TxnRequest
+		req *armadapb.TxnRequest
 	}
 	tests := []struct {
 		name    string
 		args    args
 		prepare func(t *testing.T, e *Engine)
-		want    *regattapb.TxnResponse
+		want    *armadapb.TxnResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
@@ -640,7 +640,7 @@ func TestEngine_Txn(t *testing.T) {
 			prepare: func(t *testing.T, e *Engine) {},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.TxnRequest{
+				req: &armadapb.TxnRequest{
 					Table: []byte(testTableName),
 				},
 			},
@@ -650,30 +650,30 @@ func TestEngine_Txn(t *testing.T) {
 			name: "put new key no comp",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.TxnRequest{
+				req: &armadapb.TxnRequest{
 					Table: []byte(testTableName),
-					Success: []*regattapb.RequestOp{{Request: &regattapb.RequestOp_RequestPut{
-						RequestPut: &regattapb.RequestOp_Put{
+					Success: []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestPut{
+						RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key2"),
 							Value: []byte("value2"),
 						},
 					}}},
 				},
 			},
-			want: &regattapb.TxnResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.TxnResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  4,
 				},
 				Succeeded: true,
-				Responses: []*regattapb.ResponseOp{{Response: &regattapb.ResponseOp_ResponsePut{
-					ResponsePut: &regattapb.ResponseOp_Put{},
+				Responses: []*armadapb.ResponseOp{{Response: &armadapb.ResponseOp_ResponsePut{
+					ResponsePut: &armadapb.ResponseOp_Put{},
 				}}},
 			},
 			wantErr: require.NoError,
@@ -682,36 +682,36 @@ func TestEngine_Txn(t *testing.T) {
 			name: "put new key success comp",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.TxnRequest{
+				req: &armadapb.TxnRequest{
 					Table: []byte(testTableName),
-					Compare: []*regattapb.Compare{{
-						Result:      regattapb.Compare_EQUAL,
-						Target:      regattapb.Compare_VALUE,
+					Compare: []*armadapb.Compare{{
+						Result:      armadapb.Compare_EQUAL,
+						Target:      armadapb.Compare_VALUE,
 						Key:         []byte("key"),
-						TargetUnion: &regattapb.Compare_Value{Value: []byte("value")},
+						TargetUnion: &armadapb.Compare_Value{Value: []byte("value")},
 					}},
-					Success: []*regattapb.RequestOp{{Request: &regattapb.RequestOp_RequestPut{
-						RequestPut: &regattapb.RequestOp_Put{
+					Success: []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestPut{
+						RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key2"),
 							Value: []byte("value2"),
 						},
 					}}},
 				},
 			},
-			want: &regattapb.TxnResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.TxnResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  4,
 				},
 				Succeeded: true,
-				Responses: []*regattapb.ResponseOp{{Response: &regattapb.ResponseOp_ResponsePut{
-					ResponsePut: &regattapb.ResponseOp_Put{},
+				Responses: []*armadapb.ResponseOp{{Response: &armadapb.ResponseOp_ResponsePut{
+					ResponsePut: &armadapb.ResponseOp_Put{},
 				}}},
 			},
 			wantErr: require.NoError,
@@ -720,27 +720,27 @@ func TestEngine_Txn(t *testing.T) {
 			name: "put new key failed cond",
 			prepare: func(t *testing.T, e *Engine) {
 				createTable(t, e)
-				_, err := e.Put(context.Background(), &regattapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
+				_, err := e.Put(context.Background(), &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("key"), Value: []byte("value")})
 				require.NoError(t, err)
 			},
 			args: args{
 				ctx: context.Background(),
-				req: &regattapb.TxnRequest{
+				req: &armadapb.TxnRequest{
 					Table: []byte(testTableName),
-					Compare: []*regattapb.Compare{{
-						Result:      regattapb.Compare_EQUAL,
-						Target:      regattapb.Compare_VALUE,
+					Compare: []*armadapb.Compare{{
+						Result:      armadapb.Compare_EQUAL,
+						Target:      armadapb.Compare_VALUE,
 						Key:         []byte("key"),
-						TargetUnion: &regattapb.Compare_Value{Value: []byte("foo")},
+						TargetUnion: &armadapb.Compare_Value{Value: []byte("foo")},
 					}},
-					Success: []*regattapb.RequestOp{{Request: &regattapb.RequestOp_RequestPut{
-						RequestPut: &regattapb.RequestOp_Put{
+					Success: []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestPut{
+						RequestPut: &armadapb.RequestOp_Put{
 							Key:   []byte("key2"),
 							Value: []byte("value2"),
 						},
 					}}},
-					Failure: []*regattapb.RequestOp{{Request: &regattapb.RequestOp_RequestPut{
-						RequestPut: &regattapb.RequestOp_Put{
+					Failure: []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestPut{
+						RequestPut: &armadapb.RequestOp_Put{
 							Key:    []byte("key"),
 							Value:  []byte("value2"),
 							PrevKv: true,
@@ -748,16 +748,16 @@ func TestEngine_Txn(t *testing.T) {
 					}}},
 				},
 			},
-			want: &regattapb.TxnResponse{
-				Header: &regattapb.ResponseHeader{
+			want: &armadapb.TxnResponse{
+				Header: &armadapb.ResponseHeader{
 					ShardId:   10001,
 					ReplicaId: 1,
 					Revision:  4,
 				},
 				Succeeded: false,
-				Responses: []*regattapb.ResponseOp{{Response: &regattapb.ResponseOp_ResponsePut{
-					ResponsePut: &regattapb.ResponseOp_Put{
-						PrevKv: &regattapb.KeyValue{Key: []byte("key"), Value: []byte("value")},
+				Responses: []*armadapb.ResponseOp{{Response: &armadapb.ResponseOp_ResponsePut{
+					ResponsePut: &armadapb.ResponseOp_Put{
+						PrevKv: &armadapb.KeyValue{Key: []byte("key"), Value: []byte("value")},
 					},
 				}}},
 			},
@@ -784,17 +784,17 @@ func TestEngine_Status(t *testing.T) {
 	tests := []struct {
 		name    string
 		prepare func(t *testing.T, e *Engine)
-		want    *regattapb.StatusResponse
+		want    *armadapb.StatusResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name:    "no tables",
 			prepare: func(t *testing.T, e *Engine) {},
 			wantErr: require.NoError,
-			want: &regattapb.StatusResponse{
+			want: &armadapb.StatusResponse{
 				Id:      "1",
 				Version: version.Version,
-				Tables:  make(map[string]*regattapb.TableStatus),
+				Tables:  make(map[string]*armadapb.TableStatus),
 			},
 		},
 		{
@@ -803,10 +803,10 @@ func TestEngine_Status(t *testing.T) {
 				createTable(t, e)
 			},
 			wantErr: require.NoError,
-			want: &regattapb.StatusResponse{
+			want: &armadapb.StatusResponse{
 				Id:      "1",
 				Version: version.Version,
-				Tables: map[string]*regattapb.TableStatus{
+				Tables: map[string]*armadapb.TableStatus{
 					testTableName: {
 						Leader:   "1",
 						RaftTerm: 2,
@@ -820,10 +820,10 @@ func TestEngine_Status(t *testing.T) {
 				e.Close()
 			},
 			wantErr: require.NoError,
-			want: &regattapb.StatusResponse{
+			want: &armadapb.StatusResponse{
 				Id:      "1",
 				Version: version.Version,
-				Tables:  make(map[string]*regattapb.TableStatus),
+				Tables:  make(map[string]*armadapb.TableStatus),
 				Errors: []string{
 					"dragonboat: closed",
 				},
@@ -839,7 +839,7 @@ func TestEngine_Status(t *testing.T) {
 			require.NoError(t, e.Start())
 			require.NoError(t, e.WaitUntilReady(ctx))
 			tt.prepare(t, e)
-			got, err := e.Status(context.Background(), &regattapb.StatusRequest{})
+			got, err := e.Status(context.Background(), &armadapb.StatusRequest{})
 			tt.wantErr(t, err)
 			require.Equal(t, tt.want, got)
 		})
@@ -850,14 +850,14 @@ func TestEngine_MemberList(t *testing.T) {
 	tests := []struct {
 		name    string
 		prepare func(t *testing.T, e *Engine)
-		assert  func(t *testing.T, resp *regattapb.MemberListResponse)
+		assert  func(t *testing.T, resp *armadapb.MemberListResponse)
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name:    "no tables",
 			prepare: func(t *testing.T, e *Engine) {},
 			wantErr: require.NoError,
-			assert: func(t *testing.T, resp *regattapb.MemberListResponse) {
+			assert: func(t *testing.T, resp *armadapb.MemberListResponse) {
 				require.Len(t, resp.Members, 1)
 			},
 		},
@@ -871,7 +871,7 @@ func TestEngine_MemberList(t *testing.T) {
 			require.NoError(t, e.Start())
 			require.NoError(t, e.WaitUntilReady(ctx))
 			tt.prepare(t, e)
-			got, err := e.MemberList(context.Background(), &regattapb.MemberListRequest{})
+			got, err := e.MemberList(context.Background(), &armadapb.MemberListRequest{})
 			tt.wantErr(t, err)
 			tt.assert(t, got)
 		})

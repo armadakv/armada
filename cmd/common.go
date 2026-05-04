@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/armadaserver"
 	rl "github.com/armadakv/armada/log"
 	dbl "github.com/armadakv/armada/raft/logger"
-	"github.com/armadakv/armada/regattaserver"
 	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage/table"
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
@@ -41,7 +41,7 @@ func init() {
 	prometheus.DefaultRegisterer.MustRegister(grpcmetrics)
 }
 
-func createAPIServer(log *zap.Logger, reg func(grpc.ServiceRegistrar)) (*regattaserver.RegattaServer, error) {
+func createAPIServer(log *zap.Logger, reg func(grpc.ServiceRegistrar)) (*armadaserver.Server, error) {
 	addr, secure, nw := resolveURL(viper.GetString("api.address"))
 	opts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionAge: 60 * time.Second}),
@@ -84,7 +84,7 @@ func createAPIServer(log *zap.Logger, reg func(grpc.ServiceRegistrar)) (*regatta
 	if limit := viper.GetUint32("api.max-concurrent-connections"); limit > 0 {
 		l = netutil.LimitListener(l, int(limit))
 	}
-	server := regattaserver.NewServer(l, log.Sugar(), opts...)
+	server := armadaserver.NewServer(l, log.Sugar(), opts...)
 	reg(server)
 	grpcmetrics.InitializeMetrics(server.Server)
 	return server, nil

@@ -8,10 +8,10 @@ import (
 	"iter"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/client"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/regattapb"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/armadakv/armada/storage/table/key"
@@ -62,7 +62,7 @@ func readTable[S any](t *ActiveTable, ctx context.Context, linearizable bool, re
 	return val.(S), nil
 }
 
-func proposeTable[S any](t *ActiveTable, ctx context.Context, cmd *regattapb.Command) (S, uint64, error) {
+func proposeTable[S any](t *ActiveTable, ctx context.Context, cmd *armadapb.Command) (S, uint64, error) {
 	bytes, err := cmd.MarshalVT()
 	if err != nil {
 		return *new(S), 0, err
@@ -82,7 +82,7 @@ func proposeTable[S any](t *ActiveTable, ctx context.Context, cmd *regattapb.Com
 		case <-time.After(50 * time.Millisecond):
 		}
 	}
-	pr := &regattapb.CommandResult{}
+	pr := &armadapb.CommandResult{}
 	if err := pr.UnmarshalVTUnsafe(res.Data); err != nil {
 		return *new(S), 0, err
 	}
@@ -98,7 +98,7 @@ func proposeTable[S any](t *ActiveTable, ctx context.Context, cmd *regattapb.Com
 }
 
 // Range performs a Range query in the Raft data, supplied context must have a deadline set.
-func (t *ActiveTable) Range(ctx context.Context, req *regattapb.RangeRequest) (*regattapb.RangeResponse, error) {
+func (t *ActiveTable) Range(ctx context.Context, req *armadapb.RangeRequest) (*armadapb.RangeResponse, error) {
 	if len(req.Key) > key.LatestVersionLen {
 		return nil, serrors.ErrKeyLengthExceeded
 	}
@@ -106,7 +106,7 @@ func (t *ActiveTable) Range(ctx context.Context, req *regattapb.RangeRequest) (*
 		return nil, serrors.ErrKeyLengthExceeded
 	}
 
-	response, err := readTable[*regattapb.ResponseOp_Range](t, ctx, req.Linearizable, &regattapb.RequestOp_Range{
+	response, err := readTable[*armadapb.ResponseOp_Range](t, ctx, req.Linearizable, &armadapb.RequestOp_Range{
 		Key:       req.Key,
 		RangeEnd:  req.RangeEnd,
 		Limit:     req.Limit,
@@ -116,7 +116,7 @@ func (t *ActiveTable) Range(ctx context.Context, req *regattapb.RangeRequest) (*
 	if err != nil {
 		return nil, err
 	}
-	return &regattapb.RangeResponse{
+	return &armadapb.RangeResponse{
 		Kvs:   response.Kvs,
 		Count: response.Count,
 		More:  response.More,
@@ -124,7 +124,7 @@ func (t *ActiveTable) Range(ctx context.Context, req *regattapb.RangeRequest) (*
 }
 
 // Put performs a Put proposal into the Raft, supplied context must have a deadline set.
-func (t *ActiveTable) Put(ctx context.Context, req *regattapb.PutRequest) (*regattapb.PutResponse, error) {
+func (t *ActiveTable) Put(ctx context.Context, req *armadapb.PutRequest) (*armadapb.PutResponse, error) {
 	if len(req.Key) == 0 {
 		return nil, serrors.ErrEmptyKey
 	}
@@ -134,57 +134,57 @@ func (t *ActiveTable) Put(ctx context.Context, req *regattapb.PutRequest) (*rega
 	if len(req.Value) > MaxValueLen {
 		return nil, serrors.ErrValueLengthExceeded
 	}
-	cmd := &regattapb.Command{
-		Type:  regattapb.Command_PUT,
+	cmd := &armadapb.Command{
+		Type:  armadapb.Command_PUT,
 		Table: req.Table,
-		Kv: &regattapb.KeyValue{
+		Kv: &armadapb.KeyValue{
 			Key:   req.Key,
 			Value: req.Value,
 		},
 		PrevKvs: req.PrevKv,
 	}
-	r, rev, err := proposeTable[*regattapb.ResponseOp_ResponsePut](t, ctx, cmd)
+	r, rev, err := proposeTable[*armadapb.ResponseOp_ResponsePut](t, ctx, cmd)
 	if err != nil {
 		return nil, err
 	}
-	return &regattapb.PutResponse{PrevKv: r.ResponsePut.PrevKv, Header: &regattapb.ResponseHeader{Revision: rev}}, nil
+	return &armadapb.PutResponse{PrevKv: r.ResponsePut.PrevKv, Header: &armadapb.ResponseHeader{Revision: rev}}, nil
 }
 
 // Delete performs a DeleteRange proposal into the Raft, supplied context must have a deadline set.
-func (t *ActiveTable) Delete(ctx context.Context, req *regattapb.DeleteRangeRequest) (*regattapb.DeleteRangeResponse, error) {
+func (t *ActiveTable) Delete(ctx context.Context, req *armadapb.DeleteRangeRequest) (*armadapb.DeleteRangeResponse, error) {
 	if len(req.Key) == 0 {
 		return nil, serrors.ErrEmptyKey
 	}
 	if len(req.Key) > key.LatestVersionLen {
 		return nil, serrors.ErrKeyLengthExceeded
 	}
-	cmd := &regattapb.Command{
-		Type:  regattapb.Command_DELETE,
+	cmd := &armadapb.Command{
+		Type:  armadapb.Command_DELETE,
 		Table: req.Table,
-		Kv: &regattapb.KeyValue{
+		Kv: &armadapb.KeyValue{
 			Key: req.Key,
 		},
 		PrevKvs:  req.PrevKv,
 		RangeEnd: req.RangeEnd,
 		Count:    req.Count,
 	}
-	r, rev, err := proposeTable[*regattapb.ResponseOp_ResponseDeleteRange](t, ctx, cmd)
+	r, rev, err := proposeTable[*armadapb.ResponseOp_ResponseDeleteRange](t, ctx, cmd)
 	if err != nil {
 		return nil, err
 	}
-	return &regattapb.DeleteRangeResponse{Deleted: r.ResponseDeleteRange.Deleted, PrevKvs: r.ResponseDeleteRange.PrevKvs, Header: &regattapb.ResponseHeader{Revision: rev}}, nil
+	return &armadapb.DeleteRangeResponse{Deleted: r.ResponseDeleteRange.Deleted, PrevKvs: r.ResponseDeleteRange.PrevKvs, Header: &armadapb.ResponseHeader{Revision: rev}}, nil
 }
 
-func (t *ActiveTable) Txn(ctx context.Context, req *regattapb.TxnRequest) (*regattapb.TxnResponse, error) {
+func (t *ActiveTable) Txn(ctx context.Context, req *armadapb.TxnRequest) (*armadapb.TxnResponse, error) {
 	// Do not propose read-only transactions through the log
 	if req.IsReadonly() {
-		return readTable[*regattapb.TxnResponse](t, ctx, true, req)
+		return readTable[*armadapb.TxnResponse](t, ctx, true, req)
 	}
 
-	cmd := &regattapb.Command{
-		Type:  regattapb.Command_TXN,
+	cmd := &armadapb.Command{
+		Type:  armadapb.Command_TXN,
 		Table: req.Table,
-		Txn: &regattapb.Txn{
+		Txn: &armadapb.Txn{
 			Compare: req.Compare,
 			Success: req.Success,
 			Failure: req.Failure,
@@ -199,20 +199,20 @@ func (t *ActiveTable) Txn(ctx context.Context, req *regattapb.TxnRequest) (*rega
 	if err != nil {
 		return nil, err
 	}
-	txr := &regattapb.CommandResult{}
+	txr := &armadapb.CommandResult{}
 	if err := txr.UnmarshalVTUnsafe(res.Data); err != nil {
 		return nil, err
 	}
-	return &regattapb.TxnResponse{
+	return &armadapb.TxnResponse{
 		Succeeded: fsm.UpdateResult(res.Value) == fsm.ResultSuccess,
 		Responses: txr.Responses,
-		Header:    &regattapb.ResponseHeader{Revision: txr.Revision},
+		Header:    &armadapb.ResponseHeader{Revision: txr.Revision},
 	}, nil
 }
 
 // Iterator returns open pebble.Iterator it is an API consumer responsibility to close it.
-func (t *ActiveTable) Iterator(ctx context.Context, req *regattapb.RangeRequest) (iter.Seq[*regattapb.ResponseOp_Range], error) {
-	return readTable[iter.Seq[*regattapb.ResponseOp_Range]](t, ctx, req.Linearizable, fsm.IteratorRequest{RangeOp: &regattapb.RequestOp_Range{
+func (t *ActiveTable) Iterator(ctx context.Context, req *armadapb.RangeRequest) (iter.Seq[*armadapb.ResponseOp_Range], error) {
+	return readTable[iter.Seq[*armadapb.ResponseOp_Range]](t, ctx, req.Linearizable, fsm.IteratorRequest{RangeOp: &armadapb.RequestOp_Range{
 		Key:       req.Key,
 		RangeEnd:  req.RangeEnd,
 		Limit:     req.Limit,
@@ -252,8 +252,8 @@ func (t *ActiveTable) GCHorizon(ctx context.Context) (*fsm.IndexResponse, error)
 // Reset resets the leader index to 0.
 func (t *ActiveTable) Reset(ctx context.Context) error {
 	li := uint64(0)
-	cmd := &regattapb.Command{
-		Type:        regattapb.Command_DUMMY,
+	cmd := &armadapb.Command{
+		Type:        armadapb.Command_DUMMY,
 		Table:       []byte(t.Name),
 		LeaderIndex: &li,
 	}

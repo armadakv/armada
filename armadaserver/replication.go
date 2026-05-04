@@ -1,0 +1,325 @@
+// Copyright JAMF Software, LLC
+
+package armadaserver
+
+import (
+	"bufio"
+	"cmp"
+	"context"
+	"errors"
+	"io"
+	"os"
+	"slices"
+	"time"
+
+	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/raft/raftpb"
+	"github.com/armadakv/armada/replication/snapshot"
+	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/table"
+	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+const (
+	// DefaultMaxGRPCSize is the default maximum size of body of gRPC message to be loaded from dragonboat.
+	DefaultMaxGRPCSize = 4 * 1024 * 1024
+)
+
+// MetadataServer implements Metadata service from proto/replication.proto.
+type MetadataServer struct {
+	armadapb.UnimplementedMetadataServer
+	Tables TableService
+}
+
+func (m *MetadataServer) Get(context.Context, *armadapb.MetadataRequest) (*armadapb.MetadataResponse, error) {
+	tabs, err := m.Tables.GetTables()
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "unknown err %v", err)
+	}
+	resp := &armadapb.MetadataResponse{}
+	for _, tab := range tabs {
+		resp.Tables = append(resp.Tables, &armadapb.Table{
+			Type: armadapb.Table_REPLICATED,
+			Name: tab.Name,
+		})
+		slices.SortFunc(resp.Tables, func(a, b *armadapb.Table) int {
+			return cmp.Compare(a.Name, b.Name)
+		})
+	}
+	return resp, nil
+}
+
+// SnapshotServer implements Snapshot service from proto/replication.proto.
+type SnapshotServer struct {
+	armadapb.UnimplementedSnapshotServer
+	Tables TableService
+}
+
+func (s *SnapshotServer) Stream(req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer) error {
+	table, err := s.Tables.GetTable(string(req.Table))
+	if err != nil {
+		return status.Errorf(codes.Unavailable, "unable to stream from table '%s': %v", req.GetTable(), err)
+	}
+
+	ctx := srv.Context()
+	if _, ok := ctx.Deadline(); !ok {
+		dctx, cancel := context.WithTimeout(srv.Context(), 1*time.Hour)
+		defer cancel()
+		ctx = dctx
+	}
+
+	if req.Incremental {
+		return s.streamIncremental(ctx, req, srv, table)
+	}
+	return s.streamFull(ctx, req, srv, table)
+}
+
+func (s *SnapshotServer) streamFull(ctx context.Context, req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer, table table.ActiveTable) error {
+	sf, err := snapshot.NewTemp()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = sf.Close()
+		_ = os.Remove(sf.Path())
+	}()
+
+	resp, err := table.Snapshot(ctx, sf)
+	if err != nil {
+		return err
+	}
+	// Write dummy command with leader index to commit recovery snapshot.
+	final, err := (&armadapb.Command{
+		Table:       req.Table,
+		Type:        armadapb.Command_DUMMY,
+		LeaderIndex: &resp.Index,
+	}).MarshalVT()
+	if err != nil {
+		return err
+	}
+	_, err = sf.Write(final)
+	if err != nil {
+		return err
+	}
+	err = sf.Sync()
+	if err != nil {
+		return err
+	}
+	_, err = sf.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(&snapshot.Writer{Sender: srv}, bufio.NewReaderSize(sf.File, snapshot.DefaultSnapshotChunkSize))
+	return err
+}
+
+func (s *SnapshotServer) streamIncremental(ctx context.Context, req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer, t table.ActiveTable) error {
+	appliedIndex, err := t.LocalIndex(ctx, true)
+	if err != nil {
+		if serrors.IsSafeToRetry(err) {
+			return status.Error(codes.Unavailable, err.Error())
+		}
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	// Guard: the follower claims to be ahead of the leader — this should never
+	// happen in normal operation and indicates a misconfiguration or bug.
+	if req.LeaderIndex > appliedIndex.Index {
+		return status.Errorf(codes.OutOfRange, "requested leader_index %d is ahead of leader applied index %d", req.LeaderIndex, appliedIndex.Index)
+	}
+	// Guard: if GC has advanced past the requested index the MVCC versions for
+	// that range may be gone — the delta would be incomplete.
+	if gcHorizon, err := t.GCHorizon(ctx); err == nil && gcHorizon.Index > 0 && req.LeaderIndex <= gcHorizon.Index {
+		return status.Errorf(codes.FailedPrecondition, "requested leader_index %d is at or below GC horizon %d; use a full snapshot", req.LeaderIndex, gcHorizon.Index)
+	}
+
+	sf, err := snapshot.NewTemp()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = sf.Close()
+		_ = os.Remove(sf.Path())
+	}()
+
+	resp, err := t.IncrementalSnapshot(ctx, sf, req.LeaderIndex)
+	if err != nil {
+		return err
+	}
+	// Write dummy command with leader index so the follower can advance its
+	// applied index even if the delta contained no changes.
+	final, err := (&armadapb.Command{
+		Table:       req.Table,
+		Type:        armadapb.Command_DUMMY,
+		LeaderIndex: &resp.Index,
+	}).MarshalVT()
+	if err != nil {
+		return err
+	}
+	_, err = sf.Write(final)
+	if err != nil {
+		return err
+	}
+	err = sf.Sync()
+	if err != nil {
+		return err
+	}
+	_, err = sf.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	_, err = io.Copy(&snapshot.Writer{Sender: srv}, bufio.NewReaderSize(sf.File, snapshot.DefaultSnapshotChunkSize))
+	return err
+}
+
+// LogServer implements Log service from proto/replication.proto.
+type LogServer struct {
+	Tables    TableService
+	LogReader LogReaderService
+	Log       *zap.SugaredLogger
+
+	maxMessageSize uint64
+	armadapb.UnimplementedLogServer
+}
+
+func NewLogServer(ts TableService, lr LogReaderService, logger *zap.Logger, maxMessageSize uint64) *LogServer {
+	ls := &LogServer{
+		Tables:         ts,
+		Log:            logger.Sugar().Named("log-replication-server"),
+		LogReader:      lr,
+		maxMessageSize: maxMessageSize,
+	}
+
+	if maxMessageSize == 0 {
+		ls.maxMessageSize = DefaultMaxGRPCSize
+	}
+	return ls
+}
+
+var (
+	repErrUseSnapshot  = errorResponseFactory(armadapb.ReplicateError_USE_SNAPSHOT)
+	repErrLeaderBehind = errorResponseFactory(armadapb.ReplicateError_LEADER_BEHIND)
+)
+
+// Replicate entries from the leader's log.
+func (l *LogServer) Replicate(req *armadapb.ReplicateRequest, server armadapb.Log_ReplicateServer) error {
+	if req.LeaderIndex == 0 {
+		return status.Error(codes.InvalidArgument, "invalid leaderIndex: leaderIndex must be greater than 0")
+	}
+
+	t, err := l.Tables.GetTable(string(req.GetTable()))
+	if err != nil {
+		if errors.Is(err, serrors.ErrTableNotFound) {
+			return status.Error(codes.NotFound, err.Error())
+		}
+		if serrors.IsSafeToRetry(err) {
+			return status.Error(codes.Unavailable, err.Error())
+		}
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	ctx := server.Context()
+	appliedIndex, err := t.LocalIndex(ctx, true)
+	if err != nil {
+		if serrors.IsSafeToRetry(err) {
+			return status.Error(codes.Unavailable, err.Error())
+		}
+		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+
+	if appliedIndex.Index+1 < req.LeaderIndex {
+		return server.Send(repErrLeaderBehind)
+	}
+
+	// If the follower is requesting entries at or before the GC horizon the
+	// MVCC data at those revisions may already be compacted away. Direct the
+	// follower to recover from a snapshot instead of replaying an incomplete
+	// history.
+	if gcHorizon, err := t.GCHorizon(ctx); err == nil && gcHorizon.Index > 0 && req.LeaderIndex <= gcHorizon.Index {
+		return server.Send(repErrUseSnapshot)
+	}
+
+	logRange := raft.LogRange{FirstIndex: req.LeaderIndex, LastIndex: appliedIndex.Index + 1}
+	for {
+		if dl, ok := ctx.Deadline(); ok && time.Now().After(dl) {
+			l.Log.Infof("replication passed the deadline, ending stream prematurely")
+			return nil
+		}
+
+		entries, err := l.LogReader.QueryRaftLog(ctx, t.ClusterID, logRange, l.maxMessageSize)
+		switch {
+		case errors.Is(err, serrors.ErrLogBehind):
+			return server.Send(repErrLeaderBehind)
+		case errors.Is(err, serrors.ErrLogAhead):
+			return server.Send(repErrUseSnapshot)
+		case err != nil:
+			l.Log.Errorf("unknown error queriyng the raft log: %v", err)
+			return nil
+		default:
+		}
+
+		if len(entries) == 0 {
+			// query index for update.
+			appliedIndex, err := t.LocalIndex(ctx, false)
+			if err != nil {
+				return err
+			}
+			if err := server.Send(&armadapb.ReplicateResponse{LeaderIndex: appliedIndex.Index}); err != nil {
+				return err
+			}
+			return nil
+		}
+
+		// Transform entries into actual commands.
+		commands := make([]*armadapb.ReplicateCommand, 0, len(entries))
+		for _, e := range entries {
+			if cmd, err := entryToCommand(e); err != nil {
+				return err
+			} else {
+				commands = append(commands, &armadapb.ReplicateCommand{Command: cmd, LeaderIndex: e.Index})
+			}
+		}
+
+		msg := &armadapb.ReplicateResponse{
+			LeaderIndex: appliedIndex.Index,
+			Response: &armadapb.ReplicateResponse_CommandsResponse{
+				CommandsResponse: &armadapb.ReplicateCommandsResponse{
+					Commands: commands,
+				},
+			},
+		}
+
+		if err := server.Send(msg); err != nil {
+			return err
+		}
+		next := entries[len(entries)-1].Index + 1
+		logRange.FirstIndex = min(next, logRange.LastIndex)
+	}
+}
+
+// errorResponseFactory creates a ReplicateResponse error.
+func errorResponseFactory(err armadapb.ReplicateError) *armadapb.ReplicateResponse {
+	return &armadapb.ReplicateResponse{
+		Response: &armadapb.ReplicateResponse_ErrorResponse{
+			ErrorResponse: &armadapb.ReplicateErrResponse{
+				Error: err,
+			},
+		},
+	}
+}
+
+// entryToCommand converts the raftpb.Entry to equivalent proto.ReplicateCommand.
+func entryToCommand(e raftpb.Entry) (*armadapb.Command, error) {
+	cmd := &armadapb.Command{}
+	if e.Type != raftpb.EncodedEntry {
+		cmd.Type = armadapb.Command_DUMMY
+	} else if err := cmd.UnmarshalVT(e.Cmd[1:]); err != nil {
+		return nil, err
+	}
+	cmd.LeaderIndex = &e.Index
+	return cmd, nil
+}

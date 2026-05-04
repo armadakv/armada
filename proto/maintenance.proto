@@ -2,7 +2,7 @@
 
 syntax = "proto3";
 
-option go_package = "./regattapb";
+option go_package = "./armadapb";
 
 package maintenance.v1;
 

@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/armadakv/armada/regattapb"
-	"github.com/armadakv/armada/regattaserver"
+	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/security"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -41,7 +41,7 @@ func init() {
 
 	// Replication flags
 	leaderCmd.PersistentFlags().Bool("replication.enabled", true, "Whether replication API is enabled.")
-	leaderCmd.PersistentFlags().Uint64("replication.max-send-message-size-bytes", regattaserver.DefaultMaxGRPCSize, `The target maximum size of single replication message allowed to send.
+	leaderCmd.PersistentFlags().Uint64("replication.max-send-message-size-bytes", armadaserver.DefaultMaxGRPCSize, `The target maximum size of single replication message allowed to send.
 Under some circumstances, a larger message could be sent. Followers should be able to accept slightly larger messages.`)
 	leaderCmd.PersistentFlags().String("replication.address", "http://0.0.0.0:8444", "Replication API server address. The address the server listens on.")
 	leaderCmd.PersistentFlags().String("replication.cert-filename", "", "Path to the API server certificate.")
@@ -118,26 +118,26 @@ func leader(_ *cobra.Command, _ []string) error {
 
 	// Start servers
 	{
-		// Create regatta API server
+		// Create API server
 		{
 			regatta, err := createAPIServer(logger.Named("server.api"), func(r grpc.ServiceRegistrar) {
-				regattapb.RegisterKVServer(r, &regattaserver.KVServer{
+				armadapb.RegisterKVServer(r, &armadaserver.KVServer{
 					Storage: engine,
 				})
-				regattapb.RegisterClusterServer(r, &regattaserver.ClusterServer{
+				armadapb.RegisterClusterServer(r, &armadaserver.ClusterServer{
 					Cluster: engine,
 					Config:  viperConfigReader,
 				})
 				if viper.GetBool("tables.enabled") {
-					regattapb.RegisterTablesServer(r, &regattaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))})
+					armadapb.RegisterTablesServer(r, &armadaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))})
 				}
 				if viper.GetBool("maintenance.enabled") {
-					regattapb.RegisterMaintenanceServer(r, &regattaserver.BackupServer{Tables: engine, AuthFunc: authFunc(viper.GetString("maintenance.token"))})
+					armadapb.RegisterMaintenanceServer(r, &armadaserver.BackupServer{Tables: engine, AuthFunc: authFunc(viper.GetString("maintenance.token"))})
 				}
 
 				// Register metrics server for Prometheus metrics via gRPC
-				metricsServer := regattaserver.NewMetricsServer(nil) // Using default registry
-				regattapb.RegisterMetricsServer(r, metricsServer)
+				metricsServer := armadaserver.NewMetricsServer(nil) // Using default registry
+				armadapb.RegisterMetricsServer(r, metricsServer)
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create API server: %w", err)
@@ -154,16 +154,16 @@ func leader(_ *cobra.Command, _ []string) error {
 		if viper.GetBool("replication.enabled") {
 			// Load replication API certificate
 			replication, err := createReplicationServer(logger.Named("server.replication"), func(r grpc.ServiceRegistrar) {
-				ls := regattaserver.NewLogServer(
+				ls := armadaserver.NewLogServer(
 					engine,
 					engine.LogReader,
 					logger,
 					viper.GetUint64("replication.max-send-message-size-bytes"),
 				)
-				regattapb.RegisterMetadataServer(r, &regattaserver.MetadataServer{Tables: engine})
-				regattapb.RegisterSnapshotServer(r, &regattaserver.SnapshotServer{Tables: engine})
-				regattapb.RegisterKVServer(r, &regattaserver.KVServer{Storage: engine})
-				regattapb.RegisterLogServer(r, ls)
+				armadapb.RegisterMetadataServer(r, &armadaserver.MetadataServer{Tables: engine})
+				armadapb.RegisterSnapshotServer(r, &armadaserver.SnapshotServer{Tables: engine})
+				armadapb.RegisterKVServer(r, &armadaserver.KVServer{Storage: engine})
+				armadapb.RegisterLogServer(r, ls)
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create Replication server: %w", err)
@@ -188,7 +188,7 @@ func leader(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar)) (*regattaserver.RegattaServer, error) {
+func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar)) (*armadaserver.Server, error) {
 	addr, secure, nw := resolveURL(viper.GetString("replication.address"))
 	lopts := []logging.Option{logging.WithLogOnEvents(logging.FinishCall), logging.WithLevels(codeToLevel)}
 	opts := []grpc.ServerOption{
@@ -217,12 +217,12 @@ func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar))
 		}
 		opts = append(opts, grpc.Creds(credentials.NewTLS(cfg)))
 	}
-	// Create regatta replication server
+	// Create replication server
 	l, err := net.Listen(nw, addr)
 	if err != nil {
 		return nil, err
 	}
-	server := regattaserver.NewServer(l, log.Sugar(), opts...)
+	server := armadaserver.NewServer(l, log.Sugar(), opts...)
 	reg(server)
 	grpcmetrics.InitializeMetrics(server.Server)
 	return server, nil

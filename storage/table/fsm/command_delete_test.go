@@ -5,8 +5,8 @@ package fsm
 import (
 	"testing"
 
+	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
-	"github.com/armadakv/armada/regattapb"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +27,7 @@ func Test_handleDelete(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	// Make the PUT.
-	_, err = handlePut(c, &regattapb.RequestOp_Put{
+	_, err = handlePut(c, &armadapb.RequestOp_Put{
 		Key:   []byte("key_1"),
 		Value: []byte("value_1"),
 	})
@@ -37,12 +37,12 @@ func Test_handleDelete(t *testing.T) {
 	c.batch = db.NewBatch()
 
 	// Make the DELETE.
-	res, err := handleDelete(c, &regattapb.RequestOp_DeleteRange{
+	res, err := handleDelete(c, &armadapb.RequestOp_DeleteRange{
 		Key:    []byte("key_1"),
 		PrevKv: true,
 	})
 	r.NoError(err)
-	r.Equal(&regattapb.ResponseOp_DeleteRange{Deleted: 1, PrevKvs: []*regattapb.KeyValue{{Key: []byte("key_1"), Value: []byte("value_1")}}}, res)
+	r.Equal(&armadapb.ResponseOp_DeleteRange{Deleted: 1, PrevKvs: []*armadapb.KeyValue{{Key: []byte("key_1"), Value: []byte("value_1")}}}, res)
 	r.NoError(c.Commit())
 
 	// Assert that there are no more live user keys left.
@@ -50,12 +50,12 @@ func Test_handleDelete(t *testing.T) {
 
 	// Assert deleting non-existent key returns count 0.
 	c.batch = db.NewBatch()
-	res, err = handleDelete(c, &regattapb.RequestOp_DeleteRange{
+	res, err = handleDelete(c, &armadapb.RequestOp_DeleteRange{
 		Key:   []byte("key_1"),
 		Count: true,
 	})
 	r.NoError(err)
-	r.Equal(&regattapb.ResponseOp_DeleteRange{Deleted: 0, PrevKvs: nil}, res)
+	r.Equal(&armadapb.ResponseOp_DeleteRange{Deleted: 0, PrevKvs: nil}, res)
 	r.NoError(c.Commit())
 
 	// Check the system keys.
@@ -80,7 +80,7 @@ func Test_handleDeleteBatch(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	// Make the PUT_BATCH.
-	_, err = handlePutBatch(c, []*regattapb.RequestOp_Put{
+	_, err = handlePutBatch(c, []*armadapb.RequestOp_Put{
 		{Key: []byte("key_1"), Value: []byte("value")},
 		{Key: []byte("key_2"), Value: []byte("value")},
 		{Key: []byte("key_3"), Value: []byte("value")},
@@ -92,7 +92,7 @@ func Test_handleDeleteBatch(t *testing.T) {
 	c.batch = db.NewBatch()
 
 	// Make the DELETE_BATCH.
-	_, err = handleDeleteBatch(c, []*regattapb.RequestOp_DeleteRange{
+	_, err = handleDeleteBatch(c, []*armadapb.RequestOp_DeleteRange{
 		{Key: []byte("key_1")},
 		{Key: []byte("key_2")},
 		{Key: []byte("key_3")},
@@ -126,7 +126,7 @@ func Test_handleDeleteRange(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	// Make the PUT_BATCH.
-	_, err = handlePutBatch(c, []*regattapb.RequestOp_Put{
+	_, err = handlePutBatch(c, []*armadapb.RequestOp_Put{
 		{Key: []byte("key_1"), Value: []byte("value")},
 		{Key: []byte("key_2"), Value: []byte("value")},
 		{Key: []byte("key_3"), Value: []byte("value")},
@@ -138,7 +138,7 @@ func Test_handleDeleteRange(t *testing.T) {
 	c.batch = db.NewBatch()
 
 	// Make the DELETE RANGE - delete first two user keys.
-	_, err = handleDelete(c, &regattapb.RequestOp_DeleteRange{Key: []byte("key_1"), RangeEnd: []byte("key_3")})
+	_, err = handleDelete(c, &armadapb.RequestOp_DeleteRange{Key: []byte("key_1"), RangeEnd: []byte("key_3")})
 	r.NoError(err)
 	r.NoError(c.Commit())
 
@@ -151,7 +151,7 @@ func Test_handleDeleteRange(t *testing.T) {
 	c.batch = db.NewBatch()
 
 	// Make the DELETE RANGE - delete the rest of the user keys.
-	_, err = handleDelete(c, &regattapb.RequestOp_DeleteRange{Key: []byte("key_1"), RangeEnd: wildcard})
+	_, err = handleDelete(c, &armadapb.RequestOp_DeleteRange{Key: []byte("key_1"), RangeEnd: wildcard})
 	r.NoError(err)
 	r.NoError(c.Commit())
 

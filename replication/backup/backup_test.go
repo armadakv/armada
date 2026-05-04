@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/armadaserver"
 	gvfs "github.com/armadakv/armada/pebble"
-	"github.com/armadakv/armada/regattapb"
-	"github.com/armadakv/armada/regattaserver"
 	"github.com/armadakv/armada/storage"
 	lvfs "github.com/armadakv/armada/vfs"
 	"github.com/benbjohnson/clock"
@@ -35,7 +35,7 @@ func TestBackup_Backup(t *testing.T) {
 	tests := []struct {
 		name      string
 		fields    fields
-		tableData map[string][]*regattapb.PutRequest
+		tableData map[string][]*armadapb.PutRequest
 		want      Manifest
 		wantErr   error
 	}{
@@ -49,7 +49,7 @@ func TestBackup_Backup(t *testing.T) {
 		},
 		{
 			name: "Single empty table backup",
-			tableData: map[string][]*regattapb.PutRequest{
+			tableData: map[string][]*armadapb.PutRequest{
 				"regatta-test": nil,
 			},
 			want: Manifest{
@@ -66,7 +66,7 @@ func TestBackup_Backup(t *testing.T) {
 		},
 		{
 			name: "Multiple empty table backup",
-			tableData: map[string][]*regattapb.PutRequest{
+			tableData: map[string][]*armadapb.PutRequest{
 				"regatta-test":  nil,
 				"regatta-test2": nil,
 			},
@@ -89,15 +89,15 @@ func TestBackup_Backup(t *testing.T) {
 		},
 		{
 			name: "Multiple table backup",
-			tableData: map[string][]*regattapb.PutRequest{
+			tableData: map[string][]*armadapb.PutRequest{
 				"regatta-test": {
-					&regattapb.PutRequest{
+					&armadapb.PutRequest{
 						Key:   []byte("foo"),
 						Value: []byte("bar"),
 					},
 				},
 				"regatta-test2": {
-					&regattapb.PutRequest{
+					&armadapb.PutRequest{
 						Key:   []byte("foo2"),
 						Value: []byte("bar2"),
 					},
@@ -125,15 +125,15 @@ func TestBackup_Backup(t *testing.T) {
 			fields: fields{
 				Timeout: 1 * time.Microsecond,
 			},
-			tableData: map[string][]*regattapb.PutRequest{
+			tableData: map[string][]*armadapb.PutRequest{
 				"regatta-test": {
-					&regattapb.PutRequest{
+					&armadapb.PutRequest{
 						Key:   []byte("foo"),
 						Value: []byte("bar"),
 					},
 				},
 				"regatta-test2": {
-					&regattapb.PutRequest{
+					&armadapb.PutRequest{
 						Key:   []byte("foo2"),
 						Value: []byte("bar2"),
 					},
@@ -340,12 +340,12 @@ func newTestEngine(t *testing.T) *storage.Engine {
 	return e
 }
 
-func startBackupServer(manager *storage.Engine) *regattaserver.RegattaServer {
+func startBackupServer(manager *storage.Engine) *armadaserver.Server {
 	testNodeAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
 	l, _ := net.Listen("tcp", testNodeAddress)
-	server := regattaserver.NewServer(l, zap.NewNop().Sugar())
-	regattapb.RegisterClusterServer(server, &regattaserver.ClusterServer{Cluster: manager})
-	regattapb.RegisterMaintenanceServer(server, &regattaserver.BackupServer{AuthFunc: func(ctx context.Context) (context.Context, error) {
+	server := armadaserver.NewServer(l, zap.NewNop().Sugar())
+	armadapb.RegisterClusterServer(server, &armadaserver.ClusterServer{Cluster: manager})
+	armadapb.RegisterMaintenanceServer(server, &armadaserver.BackupServer{AuthFunc: func(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}, Tables: manager})
 	go func() {

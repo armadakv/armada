@@ -8,7 +8,7 @@ syntax = "proto3";
 
 package mvcc.v1;
 
-option go_package = "./regattapb";
+option go_package = "./armadapb";
 
 message Command {
   enum CommandType {

@@ -7,9 +7,9 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft/client"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/regattapb"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util"
@@ -50,14 +50,14 @@ func (m *mockRaftHandler) GetNoOPSession(id uint64) *client.Session {
 func TestActiveTable_Range(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.RangeRequest
+		req *armadapb.RangeRequest
 	}
 	tests := []struct {
 		name    string
 		on      func(*mockRaftHandler)
 		assert  func(*mockRaftHandler)
 		args    args
-		want    *regattapb.RangeResponse
+		want    *armadapb.RangeResponse
 		wantErr error
 	}{
 		{
@@ -65,21 +65,21 @@ func TestActiveTable_Range(t *testing.T) {
 			on: func(handler *mockRaftHandler) {
 				handler.
 					On("StaleRead", mock.Anything, mock.Anything).
-					Return(&regattapb.ResponseOp_Range{}, nil)
+					Return(&armadapb.ResponseOp_Range{}, nil)
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.RangeRequest{Key: []byte("missing")},
+				req: &armadapb.RangeRequest{Key: []byte("missing")},
 			},
-			want: &regattapb.RangeResponse{},
+			want: &armadapb.RangeResponse{},
 		},
 		{
 			name: "Query key found",
 			on: func(handler *mockRaftHandler) {
 				handler.
 					On("StaleRead", mock.Anything, mock.Anything).
-					Return(&regattapb.ResponseOp_Range{
-						Kvs: []*regattapb.KeyValue{
+					Return(&armadapb.ResponseOp_Range{
+						Kvs: []*armadapb.KeyValue{
 							{
 								Key:   []byte("foo"),
 								Value: []byte("bar"),
@@ -90,11 +90,11 @@ func TestActiveTable_Range(t *testing.T) {
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.RangeRequest{Key: []byte("foo")},
+				req: &armadapb.RangeRequest{Key: []byte("foo")},
 			},
-			want: &regattapb.RangeResponse{
+			want: &armadapb.RangeResponse{
 				Count: 1,
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{
 						Key:   []byte("foo"),
 						Value: []byte("bar"),
@@ -107,8 +107,8 @@ func TestActiveTable_Range(t *testing.T) {
 			on: func(handler *mockRaftHandler) {
 				handler.
 					On("SyncRead", mock.Anything, mock.Anything, mock.Anything).
-					Return(&regattapb.ResponseOp_Range{
-						Kvs: []*regattapb.KeyValue{
+					Return(&armadapb.ResponseOp_Range{
+						Kvs: []*armadapb.KeyValue{
 							{
 								Key:   []byte("foo"),
 								Value: []byte("bar"),
@@ -119,11 +119,11 @@ func TestActiveTable_Range(t *testing.T) {
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.RangeRequest{Key: []byte("foo"), Linearizable: true},
+				req: &armadapb.RangeRequest{Key: []byte("foo"), Linearizable: true},
 			},
-			want: &regattapb.RangeResponse{
+			want: &armadapb.RangeResponse{
 				Count: 1,
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{
 						Key:   []byte("foo"),
 						Value: []byte("bar"),
@@ -135,7 +135,7 @@ func TestActiveTable_Range(t *testing.T) {
 			name: "Query key too long",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.RangeRequest{Key: longKey},
+				req: &armadapb.RangeRequest{Key: longKey},
 			},
 			wantErr: serrors.ErrKeyLengthExceeded,
 		},
@@ -143,7 +143,7 @@ func TestActiveTable_Range(t *testing.T) {
 			name: "Query range end too long",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.RangeRequest{Key: []byte("foo"), RangeEnd: longKey},
+				req: &armadapb.RangeRequest{Key: []byte("foo"), RangeEnd: longKey},
 			},
 			wantErr: serrors.ErrKeyLengthExceeded,
 		},
@@ -156,7 +156,7 @@ func TestActiveTable_Range(t *testing.T) {
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.RangeRequest{Key: []byte("foo")},
+				req: &armadapb.RangeRequest{Key: []byte("foo")},
 			},
 			wantErr: errUnknown,
 		},
@@ -189,65 +189,65 @@ func TestActiveTable_Range(t *testing.T) {
 func TestActiveTable_Put(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.PutRequest
+		req *armadapb.PutRequest
 	}
 	tests := []struct {
 		name    string
 		on      func(*mockRaftHandler)
 		assert  func(*mockRaftHandler)
 		args    args
-		want    *regattapb.PutResponse
+		want    *armadapb.PutResponse
 		wantErr error
 	}{
 		{
 			name: "Put KV success",
 			on: func(handler *mockRaftHandler) {
 				handler.
-					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&regattapb.Command{
-						Type: regattapb.Command_PUT,
-						Kv:   &regattapb.KeyValue{Key: []byte("foo"), Value: []byte("bar")},
+					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&armadapb.Command{
+						Type: armadapb.Command_PUT,
+						Kv:   &armadapb.KeyValue{Key: []byte("foo"), Value: []byte("bar")},
 					})).
-					Return(sm.Result{Data: mustMarshallProto(&regattapb.CommandResult{Responses: []*regattapb.ResponseOp{{
-						Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}},
+					Return(sm.Result{Data: mustMarshallProto(&armadapb.CommandResult{Responses: []*armadapb.ResponseOp{{
+						Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}},
 					}}})}, nil)
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),
 				},
 			},
-			want: &regattapb.PutResponse{Header: &regattapb.ResponseHeader{}},
+			want: &armadapb.PutResponse{Header: &armadapb.ResponseHeader{}},
 		},
 		{
 			name: "Put KV with prev",
 			on: func(handler *mockRaftHandler) {
 				handler.
-					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&regattapb.Command{
-						Type:    regattapb.Command_PUT,
-						Kv:      &regattapb.KeyValue{Key: []byte("foo"), Value: []byte("bar")},
+					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&armadapb.Command{
+						Type:    armadapb.Command_PUT,
+						Kv:      &armadapb.KeyValue{Key: []byte("foo"), Value: []byte("bar")},
 						PrevKvs: true,
 					})).
-					Return(sm.Result{Data: mustMarshallProto(&regattapb.CommandResult{Responses: []*regattapb.ResponseOp{{
-						Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{PrevKv: &regattapb.KeyValue{Key: []byte("foo"), Value: []byte("val")}}},
+					Return(sm.Result{Data: mustMarshallProto(&armadapb.CommandResult{Responses: []*armadapb.ResponseOp{{
+						Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{PrevKv: &armadapb.KeyValue{Key: []byte("foo"), Value: []byte("val")}}},
 					}}})}, nil)
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Key:    []byte("foo"),
 					Value:  []byte("bar"),
 					PrevKv: true,
 				},
 			},
-			want: &regattapb.PutResponse{PrevKv: &regattapb.KeyValue{Key: []byte("foo"), Value: []byte("val")}, Header: &regattapb.ResponseHeader{}},
+			want: &armadapb.PutResponse{PrevKv: &armadapb.KeyValue{Key: []byte("foo"), Value: []byte("val")}, Header: &armadapb.ResponseHeader{}},
 		},
 		{
 			name: "Put KV empty key",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Key:   []byte(""),
 					Value: []byte("bar"),
 				},
@@ -258,7 +258,7 @@ func TestActiveTable_Put(t *testing.T) {
 			name: "Put KV key too long",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Key:   longKey,
 					Value: []byte("bar"),
 				},
@@ -269,7 +269,7 @@ func TestActiveTable_Put(t *testing.T) {
 			name: "Put KV value too long",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Key:   []byte("foo"),
 					Value: longValue,
 				},
@@ -285,7 +285,7 @@ func TestActiveTable_Put(t *testing.T) {
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.PutRequest{
+				req: &armadapb.PutRequest{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),
 				},
@@ -321,21 +321,21 @@ func TestActiveTable_Put(t *testing.T) {
 func TestActiveTable_Delete(t *testing.T) {
 	type args struct {
 		ctx context.Context
-		req *regattapb.DeleteRangeRequest
+		req *armadapb.DeleteRangeRequest
 	}
 	tests := []struct {
 		name    string
 		on      func(*mockRaftHandler)
 		assert  func(*mockRaftHandler)
 		args    args
-		want    *regattapb.DeleteRangeResponse
+		want    *armadapb.DeleteRangeResponse
 		wantErr error
 	}{
 		{
 			name: "Delete with empty key",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.DeleteRangeRequest{},
+				req: &armadapb.DeleteRangeRequest{},
 			},
 			wantErr: serrors.ErrEmptyKey,
 		},
@@ -343,84 +343,84 @@ func TestActiveTable_Delete(t *testing.T) {
 			name: "Delete existing key",
 			on: func(handler *mockRaftHandler) {
 				handler.
-					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&regattapb.Command{
-						Type: regattapb.Command_DELETE,
-						Kv:   &regattapb.KeyValue{Key: []byte("foo")},
+					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&armadapb.Command{
+						Type: armadapb.Command_DELETE,
+						Kv:   &armadapb.KeyValue{Key: []byte("foo")},
 					})).
-					Return(sm.Result{Data: mustMarshallProto(&regattapb.CommandResult{Responses: []*regattapb.ResponseOp{{
-						Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{Deleted: 1}},
+					Return(sm.Result{Data: mustMarshallProto(&armadapb.CommandResult{Responses: []*armadapb.ResponseOp{{
+						Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{Deleted: 1}},
 					}}})}, nil)
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.DeleteRangeRequest{Key: []byte("foo")},
+				req: &armadapb.DeleteRangeRequest{Key: []byte("foo")},
 			},
-			want: &regattapb.DeleteRangeResponse{Deleted: 1, Header: &regattapb.ResponseHeader{}},
+			want: &armadapb.DeleteRangeResponse{Deleted: 1, Header: &armadapb.ResponseHeader{}},
 		},
 		{
 			name: "Delete existing key with prev",
 			on: func(handler *mockRaftHandler) {
 				handler.
-					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&regattapb.Command{
-						Type:    regattapb.Command_DELETE,
-						Kv:      &regattapb.KeyValue{Key: []byte("foo")},
+					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&armadapb.Command{
+						Type:    armadapb.Command_DELETE,
+						Kv:      &armadapb.KeyValue{Key: []byte("foo")},
 						PrevKvs: true,
 					})).
-					Return(sm.Result{Data: mustMarshallProto(&regattapb.CommandResult{Responses: []*regattapb.ResponseOp{{
-						Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{PrevKvs: []*regattapb.KeyValue{{Key: []byte("foo"), Value: []byte("val")}}}},
+					Return(sm.Result{Data: mustMarshallProto(&armadapb.CommandResult{Responses: []*armadapb.ResponseOp{{
+						Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{PrevKvs: []*armadapb.KeyValue{{Key: []byte("foo"), Value: []byte("val")}}}},
 					}}})}, nil)
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.DeleteRangeRequest{
+				req: &armadapb.DeleteRangeRequest{
 					Key:    []byte("foo"),
 					PrevKv: true,
 				},
 			},
-			want: &regattapb.DeleteRangeResponse{PrevKvs: []*regattapb.KeyValue{{Key: []byte("foo"), Value: []byte("val")}}, Header: &regattapb.ResponseHeader{}},
+			want: &armadapb.DeleteRangeResponse{PrevKvs: []*armadapb.KeyValue{{Key: []byte("foo"), Value: []byte("val")}}, Header: &armadapb.ResponseHeader{}},
 		},
 		{
 			name: "Delete existing range",
 			on: func(handler *mockRaftHandler) {
 				handler.
-					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&regattapb.Command{
-						Type:     regattapb.Command_DELETE,
-						Kv:       &regattapb.KeyValue{Key: []byte("foo")},
+					On("SyncPropose", mock.Anything, mock.Anything, mustMarshallProto(&armadapb.Command{
+						Type:     armadapb.Command_DELETE,
+						Kv:       &armadapb.KeyValue{Key: []byte("foo")},
 						RangeEnd: []byte("foo1"),
 					})).
-					Return(sm.Result{Data: mustMarshallProto(&regattapb.CommandResult{Responses: []*regattapb.ResponseOp{{
-						Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}},
+					Return(sm.Result{Data: mustMarshallProto(&armadapb.CommandResult{Responses: []*armadapb.ResponseOp{{
+						Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}},
 					}}})}, nil)
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.DeleteRangeRequest{
+				req: &armadapb.DeleteRangeRequest{
 					Key:      []byte("foo"),
 					RangeEnd: []byte("foo1"),
 				},
 			},
-			want: &regattapb.DeleteRangeResponse{Header: &regattapb.ResponseHeader{}},
+			want: &armadapb.DeleteRangeResponse{Header: &armadapb.ResponseHeader{}},
 		},
 		{
 			name: "Delete non-existent key",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.DeleteRangeRequest{Key: []byte("foo")},
+				req: &armadapb.DeleteRangeRequest{Key: []byte("foo")},
 			},
 			on: func(handler *mockRaftHandler) {
 				handler.
 					On("SyncPropose", mock.Anything, mock.Anything, mock.Anything).
-					Return(sm.Result{Data: mustMarshallProto(&regattapb.CommandResult{Responses: []*regattapb.ResponseOp{{
-						Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}},
+					Return(sm.Result{Data: mustMarshallProto(&armadapb.CommandResult{Responses: []*armadapb.ResponseOp{{
+						Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}},
 					}}})}, nil)
 			},
-			want: &regattapb.DeleteRangeResponse{Deleted: 0, Header: &regattapb.ResponseHeader{}},
+			want: &armadapb.DeleteRangeResponse{Deleted: 0, Header: &armadapb.ResponseHeader{}},
 		},
 		{
 			name: "Delete key too long",
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.DeleteRangeRequest{Key: longKey},
+				req: &armadapb.DeleteRangeRequest{Key: longKey},
 			},
 			wantErr: serrors.ErrKeyLengthExceeded,
 		},
@@ -433,7 +433,7 @@ func TestActiveTable_Delete(t *testing.T) {
 			},
 			args: args{
 				ctx: context.TODO(),
-				req: &regattapb.DeleteRangeRequest{Key: []byte("foo")},
+				req: &armadapb.DeleteRangeRequest{Key: []byte("foo")},
 			},
 			wantErr: errUnknown,
 		},

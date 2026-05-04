@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	ap "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
-	"github.com/armadakv/armada/regattapb"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table/fsm"
@@ -583,9 +583,9 @@ func (m *Manager) readIntoTable(id uint64, reader io.Reader) error {
 	session := m.nh.GetNoOPSession(id)
 	msg := make([]byte, 1024*1024*4)
 
-	cmd := &regattapb.Command{}
-	batchCmd := &regattapb.Command{
-		Type: regattapb.Command_PUT_BATCH,
+	cmd := &armadapb.Command{}
+	batchCmd := &armadapb.Command{
+		Type: armadapb.Command_PUT_BATCH,
 	}
 	last := false
 
@@ -688,8 +688,8 @@ func (m *Manager) NotifyLogCompacted(shardID uint64, index uint64) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		cmd := &regattapb.Command{
-			Type:        regattapb.Command_GC,
+		cmd := &armadapb.Command{
+			Type:        armadapb.Command_GC,
 			LeaderIndex: &index,
 		}
 		bts, err := cmd.MarshalVT()

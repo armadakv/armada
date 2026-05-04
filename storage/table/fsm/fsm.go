@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
@@ -364,7 +364,7 @@ func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 // Lookup locally looks up the data.
 func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 	switch req := l.(type) {
-	case *regattapb.TxnRequest:
+	case *armadapb.TxnRequest:
 		snapshot := p.pebble.Load().NewSnapshot()
 		defer snapshot.Close()
 
@@ -373,7 +373,7 @@ func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 			return nil, err
 		}
 
-		var ops []*regattapb.RequestOp_Range
+		var ops []*armadapb.RequestOp_Range
 		if ok {
 			for _, op := range req.Success {
 				ops = append(ops, op.GetRequestRange())
@@ -384,7 +384,7 @@ func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 			}
 		}
 
-		resp := &regattapb.TxnResponse{Succeeded: ok}
+		resp := &armadapb.TxnResponse{Succeeded: ok}
 		for _, op := range ops {
 			rr, err := lookup(snapshot, op)
 			if err != nil {
@@ -393,7 +393,7 @@ func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 			resp.Responses = append(resp.Responses, wrapResponseOp(rr))
 		}
 		return resp, nil
-	case *regattapb.RequestOp_Range:
+	case *armadapb.RequestOp_Range:
 		db := p.pebble.Load()
 		return lookup(db, req)
 	case IteratorRequest:

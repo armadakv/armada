@@ -1,0 +1,324 @@
+// Copyright JAMF Software, LLC
+
+//
+// Regatta protobuffer specification
+//
+
+syntax = "proto3";
+
+option go_package = "./armadapb";
+
+// Original package name kept for backward compatibility
+package regatta.v1;
+
+// Add alternative package name to be used as armada
+option java_package = "armada.v1";
+option java_multiple_files = true;
+option ruby_package = "Armada::V1";
+option php_namespace = "Armada\\V1";
+option php_metadata_namespace = "Armada\\V1";
+option csharp_namespace = "Armada.V1";
+option objc_class_prefix = "AXV1";
+
+import "mvcc.proto";
+import "google/protobuf/struct.proto";
+
+// KV for handling the read/put requests
+service KV {
+  // Range gets the keys in the range from the key-value store.
+  rpc Range(RangeRequest) returns (RangeResponse);
+
+  // IterateRange gets the keys in the range from the key-value store.
+  rpc IterateRange(RangeRequest) returns (stream RangeResponse);
+
+  // Put puts the given key into the key-value store.
+  rpc Put(PutRequest) returns (PutResponse);
+
+  // DeleteRange deletes the given range from the key-value store.
+  rpc DeleteRange(DeleteRangeRequest) returns (DeleteRangeResponse);
+
+  // Txn processes multiple requests in a single transaction.
+  // A txn request increments the revision of the key-value store
+  // and generates events with the same revision for every completed request.
+  // It is allowed to modify the same key several times within one txn (the result will be the last Op that modified the key).
+  rpc Txn(TxnRequest) returns (TxnResponse);
+}
+
+message ResponseHeader {
+  // shard_id is the ID of the shard which sent the response.
+  uint64 shard_id = 1;
+  // replica_id is the ID of the member which sent the response.
+  uint64 replica_id = 2;
+  // revision is the key-value store revision when the request was applied.
+  uint64 revision = 3;
+  // raft_term is the raft term when the request was applied.
+  uint64 raft_term = 4;
+  // raft_leader_id is the ID of the actual raft quorum leader.
+  uint64 raft_leader_id = 5;
+}
+
+message RangeRequest {
+  // table name of the table
+  bytes table = 1;
+  // key is the first key for the range. If range_end is not given, the request only looks up key.
+  bytes key = 2;
+  // range_end is the upper bound on the requested range [key, range_end).
+  // If range_end is '\0', the range is all keys >= key.
+  // If range_end is key plus one (e.g., "aa"+1 == "ab", "a\xff"+1 == "b"),
+  // then the range request gets all keys prefixed with key.
+  // If both key and range_end are '\0', then the range request returns all keys.
+  bytes range_end = 3;
+  // limit is a limit on the number of keys returned for the request. When limit is set to 0,
+  // it is treated as no limit.
+  int64 limit = 4;
+
+  // linearizable sets the range request to use linearizable read. Linearizable requests
+  // have higher latency and lower throughput than serializable requests but reflect the current
+  // consensus of the cluster. For better performance, in exchange for possible stale reads,
+  // a serializable range request is served locally without needing to reach consensus
+  // with other nodes in the cluster. The serializable request is default option.
+  bool linearizable = 5;
+
+  // keys_only when set returns only the keys and not the values.
+  bool keys_only = 6;
+
+  // count_only when set returns only the count of the keys in the range.
+  bool count_only = 7;
+
+  // min_mod_revision is the lower bound for returned key mod revisions; all keys with
+  // lesser mod revisions will be filtered away.
+  int64 min_mod_revision = 8;
+
+  // max_mod_revision is the upper bound for returned key mod revisions; all keys with
+  // greater mod revisions will be filtered away.
+  int64 max_mod_revision = 9;
+
+  // min_create_revision is the lower bound for returned key create revisions; all keys with
+  // lesser create revisions will be filtered away.
+  int64 min_create_revision = 10;
+
+  // max_create_revision is the upper bound for returned key create revisions; all keys with
+  // greater create revisions will be filtered away.
+  int64 max_create_revision = 11;
+}
+
+message RangeResponse {
+  ResponseHeader header = 1;
+  // kvs is the list of key-value pairs matched by the range request.
+  // kvs is empty when count is requested.
+  repeated mvcc.v1.KeyValue kvs = 3;
+  // more indicates if there are more keys to return in the requested range.
+  bool more = 4;
+  // count is set to the number of keys within the range when requested.
+  int64 count = 5;
+}
+
+message PutRequest {
+  // table name of the table
+  bytes table = 1;
+  // key is the key, in bytes, to put into the key-value store.
+  bytes key = 2;
+  // value is the value, in bytes, to associate with the key in the key-value store.
+  bytes value = 3;
+  // prev_kv if true the previous key-value pair will be returned in the put response.
+  bool prev_kv = 4;
+}
+
+message PutResponse {
+  ResponseHeader header = 1;
+  // if prev_kv is set in the request, the previous key-value pair will be returned.
+  mvcc.v1.KeyValue prev_kv = 2;
+}
+
+message DeleteRangeRequest {
+  // table name of the table
+  bytes table = 1;
+  // key is the first key to delete in the range.
+  bytes key = 2;
+  // range_end is the key following the last key to delete for the range [key, range_end).
+  // If range_end is not given, the range is defined to contain only the key argument.
+  // If range_end is one bit larger than the given key, then the range is all the keys
+  // with the prefix (the given key).
+  // If range_end is '\0', the range is all keys greater than or equal to the key argument.
+  bytes range_end = 3;
+
+  // If prev_kv is set, regatta gets the previous key-value pairs before deleting it.
+  // The previous key-value pairs will be returned in the delete response.
+  // Beware that getting previous records could have serious performance impact on a delete range spanning a large dataset.
+  bool prev_kv = 4;
+
+  // If count is set, regatta gets the count of previous key-value pairs before deleting it.
+  // The deleted field will be set to number of deleted key-value pairs in the response.
+  // Beware that counting records could have serious performance impact on a delete range spanning a large dataset.
+  bool count = 5;
+}
+
+message DeleteRangeResponse {
+  ResponseHeader header = 1;
+  // deleted is the number of keys deleted by the delete range request.
+  int64 deleted = 2;
+
+  // if prev_kv is set in the request, the previous key-value pairs will be returned.
+  repeated mvcc.v1.KeyValue prev_kvs = 3;
+}
+
+// From google paxosdb paper:
+// Our implementation hinges around a powerful primitive which we call MultiOp. All other database
+// operations except for iteration are implemented as a single call to MultiOp. A MultiOp is applied atomically
+// and consists of three components:
+// 1. A list of tests called guard. Each test in guard checks a single entry in the database. It may check
+// for the absence or presence of a value, or compare with a given value. Two different tests in the guard
+// may apply to the same or different entries in the database. All tests in the guard are applied and
+// MultiOp returns the results. If all tests are true, MultiOp executes t op (see item 2 below), otherwise
+// it executes f op (see item 3 below).
+// 2. A list of database operations called t op. Each operation in the list is either an insert, delete, or
+// lookup operation, and applies to a database entry(ies). Two different operations in the list may apply
+// to the same or different entries in the database. These operations are executed
+// if guard evaluates to true.
+// 3. A list of database operations called f op. Like t op, but executed if guard evaluates to false.
+message TxnRequest {
+  // table name of the table
+  bytes table = 1;
+  // compare is a list of predicates representing a conjunction of terms.
+  // If the comparisons succeed, then the success requests will be processed in order,
+  // and the response will contain their respective responses in order.
+  // If the comparisons fail, then the failure requests will be processed in order,
+  // and the response will contain their respective responses in order.
+  repeated mvcc.v1.Compare compare = 2;
+  // success is a list of requests which will be applied when compare evaluates to true.
+  repeated mvcc.v1.RequestOp success = 3;
+  // failure is a list of requests which will be applied when compare evaluates to false.
+  repeated mvcc.v1.RequestOp failure = 4;
+}
+
+message TxnResponse {
+  ResponseHeader header = 1;
+  // succeeded is set to true if the compare evaluated to true or false otherwise.
+  bool succeeded = 2;
+  // responses is a list of responses corresponding to the results from applying
+  // success if succeeded is true or failure if succeeded is false.
+  repeated mvcc.v1.ResponseOp responses = 3;
+}
+
+// Cluster service ops.
+service Cluster {
+  // MemberList lists all the members in the cluster.
+  rpc MemberList(MemberListRequest) returns (MemberListResponse);
+
+  // Status gets the status of the member.
+  rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+message MemberListRequest {}
+
+message MemberListResponse {
+  // cluster is a name of the cluster.
+  string cluster = 1;
+  // members is a list of all members associated with the cluster.
+  repeated Member members = 2;
+}
+
+message Member {
+  // id is the member ID of this member.
+  string id = 1;
+  // name is the human-readable name of the member. If the member is not started, the name will be an empty string.
+  string name = 2;
+  // peerURLs is the list of URLs the member exposes to the cluster for communication.
+  repeated string peerURLs = 3;
+  // clientURLs is the list of URLs the member exposes to clients for communication. If the member is not started, clientURLs will be empty.
+  repeated string clientURLs = 4;
+}
+
+message TableStatus {
+  // dbSize is the size of the raft log, in bytes, of the responding member.
+  int64 logSize = 2;
+  // dbSize is the size of the backend database physically allocated, in bytes, of the responding member.
+  int64 dbSize = 3;
+  // leader is the member ID which the responding member believes is the current leader.
+  string leader = 4;
+  // raftIndex is the current raft committed index of the responding member.
+  uint64 raftIndex = 5;
+  // raftTerm is the current raft term of the responding member.
+  uint64 raftTerm = 6;
+  // raftAppliedIndex is the current raft applied index of the responding member.
+  uint64 raftAppliedIndex = 7;
+}
+
+message StatusRequest {
+  // config controls if the configuration values should be fetched as well.
+  bool config = 4;
+}
+
+message StatusResponse {
+  // id is the member ID of this member.
+  string id = 1;
+  // version is the semver version used by the responding member.
+  string version = 2;
+  // info is the additional server info.
+  string info = 3;
+  // tables is a status of tables of the responding member.
+  map<string, TableStatus> tables = 4;
+  // config the node configuration values.
+  google.protobuf.Struct config = 5;
+  // errors contains alarm/health information and status.
+  repeated string errors = 8;
+}
+
+
+// API for managing tables.
+service Tables {
+  // Create a table. All followers will automatically replicate the table.
+  // This procedure is available only in the leader cluster.
+  rpc Create(CreateTableRequest) returns (CreateTableResponse);
+
+  // Delete a table. All followers will automatically delete the table.
+  // This procedure is available only in the leader cluster.
+  rpc Delete(DeleteTableRequest) returns (DeleteTableResponse);
+
+  // Get names of all the tables present in the cluster.
+  // This procedure is available in both leader and follower clusters.
+  rpc List(ListTablesRequest) returns (ListTablesResponse);
+}
+
+// CreateTableRequest describes the table to be created.
+message CreateTableRequest {
+  // Name of the table to be created.
+  string name = 1;
+  // config the table configuration values.
+  google.protobuf.Struct config = 5;
+}
+
+// CreateTableResponse describes the newly created table.
+message CreateTableResponse {
+  // id the created table.
+  string id = 1;
+}
+
+// DeleteTableRequest describes the table to be deleted.
+message DeleteTableRequest {
+  // name of the table to be deleted.
+  string name = 1;
+}
+
+// DeleteTableResponse when the table was successfully deleted.
+message DeleteTableResponse {}
+
+// ListTablesRequest requests the list of currently registered tables.
+message ListTablesRequest {}
+
+// TableInfo describes a single table.
+message TableInfo {
+  // name of the table.
+  string name = 1;
+
+  // id of the table.
+  string id = 2;
+
+  // config the table configuration values.
+  google.protobuf.Struct config = 5;
+}
+
+// FollowerGetTablesResponse contains information about tables stored in the cluster.
+message ListTablesResponse {
+  repeated TableInfo tables = 1;
+}

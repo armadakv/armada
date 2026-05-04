@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/armadakv/armada/regattapb"
-	"github.com/armadakv/armada/regattaserver"
+	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/replication"
 	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage"
@@ -132,24 +132,24 @@ func follower(_ *cobra.Command, _ []string) error {
 	// Start servers
 	{
 		{
-			// Create regatta API server
+			// Create API server
 			// Create server
 			regatta, err := createAPIServer(logger.Named("server.api"), func(r grpc.ServiceRegistrar) {
-				regattapb.RegisterKVServer(r, regattaserver.NewForwardingKVServer(engine, regattapb.NewKVClient(conn), nQueue))
-				regattapb.RegisterClusterServer(r, &regattaserver.ClusterServer{
+				armadapb.RegisterKVServer(r, armadaserver.NewForwardingKVServer(engine, armadapb.NewKVClient(conn), nQueue))
+				armadapb.RegisterClusterServer(r, &armadaserver.ClusterServer{
 					Cluster: engine,
 					Config:  viperConfigReader,
 				})
 				if viper.GetBool("maintenance.enabled") {
-					regattapb.RegisterMaintenanceServer(r, &regattaserver.ResetServer{Tables: engine, AuthFunc: authFunc(viper.GetString("maintenance.token"))})
+					armadapb.RegisterMaintenanceServer(r, &armadaserver.ResetServer{Tables: engine, AuthFunc: authFunc(viper.GetString("maintenance.token"))})
 				}
 				if viper.GetBool("tables.enabled") {
-					regattapb.RegisterTablesServer(r, &regattaserver.ReadonlyTablesServer{TablesServer: regattaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))}})
+					armadapb.RegisterTablesServer(r, &armadaserver.ReadonlyTablesServer{TablesServer: armadaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))}})
 				}
 
 				// Register metrics server for Prometheus metrics via gRPC
-				metricsServer := regattaserver.NewMetricsServer(nil) // Using default registry
-				regattapb.RegisterMetricsServer(r, metricsServer)
+				metricsServer := armadaserver.NewMetricsServer(nil) // Using default registry
+				armadapb.RegisterMetricsServer(r, metricsServer)
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create API server: %w", err)

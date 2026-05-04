@@ -9,8 +9,8 @@ import (
 	"io"
 	"testing"
 
+	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
-	"github.com/armadakv/armada/regattapb"
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
@@ -41,7 +41,7 @@ func Test_txnCompare(t *testing.T) {
 
 	type args struct {
 		reader  pebble.Reader
-		compare []*regattapb.Compare
+		compare []*armadapb.Compare
 	}
 	tests := []struct {
 		name    string
@@ -53,7 +53,7 @@ func Test_txnCompare(t *testing.T) {
 			name: "key exist",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key: []byte(fmt.Sprintf(testKeyFormat, 1)),
 					},
@@ -65,7 +65,7 @@ func Test_txnCompare(t *testing.T) {
 			name: "key does not exist",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key: []byte("nonsense"),
 					},
@@ -77,7 +77,7 @@ func Test_txnCompare(t *testing.T) {
 			name: "non empty range",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key:      []byte(fmt.Sprintf(testKeyFormat, 1)),
 						RangeEnd: []byte(fmt.Sprintf(testKeyFormat, 5)),
@@ -90,7 +90,7 @@ func Test_txnCompare(t *testing.T) {
 			name: "empty range",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key:      []byte("nonsense"),
 						RangeEnd: []byte("nonsense2"),
@@ -103,7 +103,7 @@ func Test_txnCompare(t *testing.T) {
 			name: "fail fast",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key: []byte("nonsense"),
 					},
@@ -118,7 +118,7 @@ func Test_txnCompare(t *testing.T) {
 			name: "fail late",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key: []byte(fmt.Sprintf(testKeyFormat, 1)),
 					},
@@ -133,10 +133,10 @@ func Test_txnCompare(t *testing.T) {
 			name: "value comparison",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key:         []byte(fmt.Sprintf(testKeyFormat, 1)),
-						TargetUnion: &regattapb.Compare_Value{Value: []byte(testValue)},
+						TargetUnion: &armadapb.Compare_Value{Value: []byte(testValue)},
 					},
 				},
 			},
@@ -146,11 +146,11 @@ func Test_txnCompare(t *testing.T) {
 			name: "range value comparison",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key:         []byte(fmt.Sprintf(testKeyFormat, 1)),
 						RangeEnd:    []byte(fmt.Sprintf(testKeyFormat, 10)),
-						TargetUnion: &regattapb.Compare_Value{Value: []byte(testValue)},
+						TargetUnion: &armadapb.Compare_Value{Value: []byte(testValue)},
 					},
 				},
 			},
@@ -160,10 +160,10 @@ func Test_txnCompare(t *testing.T) {
 			name: "fail value comparison",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key:         []byte(fmt.Sprintf(testKeyFormat, 1)),
-						TargetUnion: &regattapb.Compare_Value{Value: []byte("nonsense")},
+						TargetUnion: &armadapb.Compare_Value{Value: []byte("nonsense")},
 					},
 				},
 			},
@@ -173,11 +173,11 @@ func Test_txnCompare(t *testing.T) {
 			name: "fail range comparison",
 			args: args{
 				reader: loadedPebble,
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key:         []byte(fmt.Sprintf(testKeyFormat, 1)),
 						RangeEnd:    []byte(fmt.Sprintf(testKeyFormat, 10)),
-						TargetUnion: &regattapb.Compare_Value{Value: []byte("nonsense")},
+						TargetUnion: &armadapb.Compare_Value{Value: []byte("nonsense")},
 					},
 				},
 			},
@@ -187,7 +187,7 @@ func Test_txnCompare(t *testing.T) {
 			name: "fail to get key",
 			args: args{
 				reader: errorReader{},
-				compare: []*regattapb.Compare{
+				compare: []*armadapb.Compare{
 					{
 						Key: []byte(fmt.Sprintf(testKeyFormat, 1)),
 					},
@@ -226,7 +226,7 @@ func Test_handleTxn(t *testing.T) {
 	defer func() { _ = c.Close() }()
 
 	// Make the PUT_BATCH.
-	_, err = handlePutBatch(c, []*regattapb.RequestOp_Put{
+	_, err = handlePutBatch(c, []*armadapb.RequestOp_Put{
 		{Key: []byte("key_1"), Value: []byte("value")},
 		{Key: []byte("key_2"), Value: []byte("value")},
 		{Key: []byte("key_3"), Value: []byte("value")},
@@ -238,33 +238,33 @@ func Test_handleTxn(t *testing.T) {
 	c.batch = db.NewBatch()
 
 	// empty transaction
-	succ, res, err := handleTxn(c, []*regattapb.Compare{{Key: []byte("key_1")}}, nil, nil)
+	succ, res, err := handleTxn(c, []*armadapb.Compare{{Key: []byte("key_1")}}, nil, nil)
 	r.True(succ)
 	r.NoError(err)
 	r.Empty(res)
 
 	// insert key_5 with nil value
-	succ, res, err = handleTxn(c, []*regattapb.Compare{{Key: []byte("key_1")}}, []*regattapb.RequestOp{{Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{Key: []byte("key_5"), Value: nil}}}}, nil)
+	succ, res, err = handleTxn(c, []*armadapb.Compare{{Key: []byte("key_1")}}, []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{Key: []byte("key_5"), Value: nil}}}}, nil)
 	r.True(succ)
 	r.NoError(err)
 	r.Len(res, 1)
-	r.Equal(wrapResponseOp(&regattapb.ResponseOp_Put{}), res[0])
+	r.Equal(wrapResponseOp(&armadapb.ResponseOp_Put{}), res[0])
 
 	// compare key_5 nil value and associate the key with "value"
-	succ, res, err = handleTxn(c, []*regattapb.Compare{{Key: []byte("key_5"), TargetUnion: &regattapb.Compare_Value{Value: nil}}}, []*regattapb.RequestOp{{Request: &regattapb.RequestOp_RequestPut{RequestPut: &regattapb.RequestOp_Put{Key: []byte("key_5"), Value: []byte("value"), PrevKv: true}}}}, nil)
+	succ, res, err = handleTxn(c, []*armadapb.Compare{{Key: []byte("key_5"), TargetUnion: &armadapb.Compare_Value{Value: nil}}}, []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{Key: []byte("key_5"), Value: []byte("value"), PrevKv: true}}}}, nil)
 	r.True(succ)
 	r.NoError(err)
 	r.Len(res, 1)
-	r.Equal(wrapResponseOp(&regattapb.ResponseOp_Put{PrevKv: &regattapb.KeyValue{Key: []byte("key_5"), Value: nil}}), res[0])
+	r.Equal(wrapResponseOp(&armadapb.ResponseOp_Put{PrevKv: &armadapb.KeyValue{Key: []byte("key_5"), Value: nil}}), res[0])
 
 	// compare key_5 value with "value" and delete keys up to key_4 (non-inclusive)
-	succ, res, err = handleTxn(c, []*regattapb.Compare{{Key: []byte("key_5"), TargetUnion: &regattapb.Compare_Value{Value: []byte("value")}}}, []*regattapb.RequestOp{{Request: &regattapb.RequestOp_RequestDeleteRange{RequestDeleteRange: &regattapb.RequestOp_DeleteRange{Key: []byte("key_1"), RangeEnd: []byte("key_4"), PrevKv: true}}}}, nil)
+	succ, res, err = handleTxn(c, []*armadapb.Compare{{Key: []byte("key_5"), TargetUnion: &armadapb.Compare_Value{Value: []byte("value")}}}, []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestDeleteRange{RequestDeleteRange: &armadapb.RequestOp_DeleteRange{Key: []byte("key_1"), RangeEnd: []byte("key_4"), PrevKv: true}}}}, nil)
 	r.True(succ)
 	r.NoError(err)
 	r.Len(res, 1)
-	r.Equal(wrapResponseOp(&regattapb.ResponseOp_DeleteRange{
+	r.Equal(wrapResponseOp(&armadapb.ResponseOp_DeleteRange{
 		Deleted: 3,
-		PrevKvs: []*regattapb.KeyValue{
+		PrevKvs: []*armadapb.KeyValue{
 			{Key: []byte("key_1"), Value: []byte("value")},
 			{Key: []byte("key_2"), Value: []byte("value")},
 			{Key: []byte("key_3"), Value: []byte("value")},
@@ -296,7 +296,7 @@ func Test_handleTxn(t *testing.T) {
 
 func Test_txnCompareSingle(t *testing.T) {
 	type args struct {
-		cmp   *regattapb.Compare
+		cmp   *armadapb.Compare
 		value []byte
 	}
 	tests := []struct {
@@ -307,7 +307,7 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "empty compare",
 			args: args{
-				cmp:   &regattapb.Compare{},
+				cmp:   &armadapb.Compare{},
 				value: nil,
 			},
 			want: true,
@@ -315,9 +315,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "EQUAL - equal value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_EQUAL,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("test")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_EQUAL,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("test")},
 				},
 				value: []byte("test"),
 			},
@@ -326,9 +326,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "EQUAL - unequal value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_EQUAL,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("test")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_EQUAL,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("test")},
 				},
 				value: []byte("testssadasd"),
 			},
@@ -337,9 +337,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "NOT EQUAL - equal value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_NOT_EQUAL,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("test")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_NOT_EQUAL,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("test")},
 				},
 				value: []byte("test"),
 			},
@@ -348,9 +348,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "NOT EQUAL - unequal value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_NOT_EQUAL,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("test")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_NOT_EQUAL,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("test")},
 				},
 				value: []byte("testytest"),
 			},
@@ -359,9 +359,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "GREATER - greater value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_GREATER,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("testa")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_GREATER,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("testa")},
 				},
 				value: []byte("testaa"),
 			},
@@ -370,9 +370,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "GREATER - lesser value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_GREATER,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("testa")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_GREATER,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("testa")},
 				},
 				value: []byte("test"),
 			},
@@ -381,9 +381,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "LESS - greater value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_LESS,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("test")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_LESS,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("test")},
 				},
 				value: []byte("testa"),
 			},
@@ -392,9 +392,9 @@ func Test_txnCompareSingle(t *testing.T) {
 		{
 			name: "LESS - lesser value",
 			args: args{
-				cmp: &regattapb.Compare{
-					Result:      regattapb.Compare_LESS,
-					TargetUnion: &regattapb.Compare_Value{Value: []byte("testa")},
+				cmp: &armadapb.Compare{
+					Result:      armadapb.Compare_LESS,
+					TargetUnion: &armadapb.Compare_Value{Value: []byte("testa")},
 				},
 				value: []byte("test"),
 			},

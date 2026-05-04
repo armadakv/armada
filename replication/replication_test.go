@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftpb"
-	"github.com/armadakv/armada/regattapb"
-	"github.com/armadakv/armada/regattaserver"
 	"github.com/armadakv/armada/replication/snapshot"
 	"github.com/armadakv/armada/storage"
 	"github.com/armadakv/armada/vfs"
@@ -28,28 +28,28 @@ import (
 )
 
 type testReplicationServer struct {
-	regattapb.UnimplementedLogServer
-	regattapb.UnimplementedMetadataServer
-	regattapb.UnimplementedSnapshotServer
-	metaResp     *regattapb.MetadataResponse
+	armadapb.UnimplementedLogServer
+	armadapb.UnimplementedMetadataServer
+	armadapb.UnimplementedSnapshotServer
+	metaResp     *armadapb.MetadataResponse
 	metaErr      error
-	repResp      []*regattapb.ReplicateResponse
+	repResp      []*armadapb.ReplicateResponse
 	repErr       error
 	snapshotFile string
 }
 
-func (t testReplicationServer) Get(context.Context, *regattapb.MetadataRequest) (*regattapb.MetadataResponse, error) {
+func (t testReplicationServer) Get(context.Context, *armadapb.MetadataRequest) (*armadapb.MetadataResponse, error) {
 	return t.metaResp, t.metaErr
 }
 
-func (t testReplicationServer) Replicate(_ *regattapb.ReplicateRequest, s regattapb.Log_ReplicateServer) error {
+func (t testReplicationServer) Replicate(_ *armadapb.ReplicateRequest, s armadapb.Log_ReplicateServer) error {
 	for _, r := range t.repResp {
 		s.Send(r)
 	}
 	return t.repErr
 }
 
-func (t testReplicationServer) Stream(_ *regattapb.SnapshotRequest, s regattapb.Snapshot_StreamServer) error {
+func (t testReplicationServer) Stream(_ *armadapb.SnapshotRequest, s armadapb.Snapshot_StreamServer) error {
 	f, err := os.Open(t.snapshotFile)
 	if err != nil {
 		return err
@@ -81,7 +81,7 @@ func TestManager_reconcile(t *testing.T) {
 	_, followerEngine := prepareLeaderAndFollowerEngine(t)
 
 	conn := testServer(t, func(server *grpc.Server) {
-		s := testReplicationServer{metaResp: &regattapb.MetadataResponse{Tables: []*regattapb.Table{
+		s := testReplicationServer{metaResp: &armadapb.MetadataResponse{Tables: []*armadapb.Table{
 			{
 				Name: "test",
 			},
@@ -89,8 +89,8 @@ func TestManager_reconcile(t *testing.T) {
 				Name: "test2",
 			},
 		}}}
-		regattapb.RegisterMetadataServer(server, s)
-		regattapb.RegisterLogServer(server, s)
+		armadapb.RegisterMetadataServer(server, s)
+		armadapb.RegisterLogServer(server, s)
 	})
 
 	queue := storage.NewNotificationQueue()
@@ -162,22 +162,22 @@ func TestManager_recover(t *testing.T) {
 
 	conn := testServer(t, func(server *grpc.Server) {
 		s := testReplicationServer{
-			metaResp: &regattapb.MetadataResponse{Tables: []*regattapb.Table{
+			metaResp: &armadapb.MetadataResponse{Tables: []*armadapb.Table{
 				{
 					Name: "test",
 				},
 			}},
-			repResp: []*regattapb.ReplicateResponse{
+			repResp: []*armadapb.ReplicateResponse{
 				{
 					LeaderIndex: 100,
-					Response:    &regattapb.ReplicateResponse_ErrorResponse{ErrorResponse: &regattapb.ReplicateErrResponse{Error: regattapb.ReplicateError_USE_SNAPSHOT}},
+					Response:    &armadapb.ReplicateResponse_ErrorResponse{ErrorResponse: &armadapb.ReplicateErrResponse{Error: armadapb.ReplicateError_USE_SNAPSHOT}},
 				},
 			},
 			snapshotFile: "snapshot/testdata/snapshot.bin",
 		}
-		regattapb.RegisterMetadataServer(server, s)
-		regattapb.RegisterLogServer(server, s)
-		regattapb.RegisterSnapshotServer(server, s)
+		armadapb.RegisterMetadataServer(server, s)
+		armadapb.RegisterLogServer(server, s)
+		armadapb.RegisterSnapshotServer(server, s)
 	})
 
 	queue := storage.NewNotificationQueue()
@@ -254,15 +254,15 @@ func prepareLeaderAndFollowerEngine(t *testing.T) (leaderTM *storage.Engine, fol
 	return
 }
 
-func startReplicationServer(engine *storage.Engine) *regattaserver.RegattaServer {
+func startReplicationServer(engine *storage.Engine) *armadaserver.Server {
 	testNodeAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
 	l, _ := net.Listen("tcp", testNodeAddress)
-	server := regattaserver.NewServer(l, zap.NewNop().Sugar())
-	regattapb.RegisterMetadataServer(server, &regattaserver.MetadataServer{Tables: engine})
-	regattapb.RegisterSnapshotServer(server, &regattaserver.SnapshotServer{Tables: engine})
-	regattapb.RegisterLogServer(
+	server := armadaserver.NewServer(l, zap.NewNop().Sugar())
+	armadapb.RegisterMetadataServer(server, &armadaserver.MetadataServer{Tables: engine})
+	armadapb.RegisterSnapshotServer(server, &armadaserver.SnapshotServer{Tables: engine})
+	armadapb.RegisterLogServer(
 		server,
-		regattaserver.NewLogServer(
+		armadaserver.NewLogServer(
 			engine,
 			&testLogReader{nh: engine.NodeHost},
 			zap.NewNop(),

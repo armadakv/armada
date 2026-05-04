@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table"
@@ -83,7 +83,7 @@ func TestWorker_do(t *testing.T) {
 		engine:        followerEngine,
 		queue:         queue,
 		store:         &kv.MapStore{},
-		logClient:     regattapb.NewLogClient(conn),
+		logClient:     armadapb.NewLogClient(conn),
 		log:           zap.New(logger).Sugar(),
 		pollInterval:  500 * time.Millisecond,
 		leaseInterval: 500 * time.Millisecond,
@@ -116,7 +116,7 @@ func TestWorker_do(t *testing.T) {
 	func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		response, err := table.Range(ctx, &regattapb.RangeRequest{
+		response, err := table.Range(ctx, &armadapb.RangeRequest{
 			Table:        []byte("test"),
 			Key:          []byte{0},
 			RangeEnd:     []byte{0},
@@ -183,7 +183,7 @@ func fillData(keyCount int, at table.ActiveTable) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	for i := 0; i < keyCount; i++ {
-		if _, err := at.Put(ctx, &regattapb.PutRequest{
+		if _, err := at.Put(ctx, &armadapb.PutRequest{
 			Key:   []byte(fmt.Sprintf("foo-%d", i)),
 			Value: []byte("bar"),
 		}); err != nil {
@@ -214,7 +214,7 @@ func TestWorker_recover(t *testing.T) {
 	}, 5*time.Second, 500*time.Millisecond, "table not created in time")
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	_, err = at.Put(ctx, &regattapb.PutRequest{
+	_, err = at.Put(ctx, &armadapb.PutRequest{
 		Key:   []byte("foo"),
 		Value: []byte("bar"),
 	})
@@ -223,7 +223,7 @@ func TestWorker_recover(t *testing.T) {
 	t.Log("create worker")
 	conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	r.NoError(err)
-	w := &worker{table: "test", workerFactory: &workerFactory{snapshotTimeout: time.Minute, engine: followerEngine, queue: storage.NewNotificationQueue(), snapshotClient: regattapb.NewSnapshotClient(conn)}, log: zaptest.NewLogger(t).Sugar()}
+	w := &worker{table: "test", workerFactory: &workerFactory{snapshotTimeout: time.Minute, engine: followerEngine, queue: storage.NewNotificationQueue(), snapshotClient: armadapb.NewSnapshotClient(conn)}, log: zaptest.NewLogger(t).Sugar()}
 
 	t.Log("recover table from leader")
 	r.NoError(w.recover())
@@ -234,7 +234,7 @@ func TestWorker_recover(t *testing.T) {
 	r.NoError(err)
 	r.Greater(ir.Index, uint64(1))
 
-	w = &worker{table: "test2", workerFactory: &workerFactory{snapshotTimeout: time.Minute, engine: followerEngine, queue: storage.NewNotificationQueue(), snapshotClient: regattapb.NewSnapshotClient(conn)}, log: zaptest.NewLogger(t).Sugar()}
+	w = &worker{table: "test2", workerFactory: &workerFactory{snapshotTimeout: time.Minute, engine: followerEngine, queue: storage.NewNotificationQueue(), snapshotClient: armadapb.NewSnapshotClient(conn)}, log: zaptest.NewLogger(t).Sugar()}
 	t.Log("recover second table from leader")
 	r.NoError(w.recover())
 	tab, err = followerEngine.GetTable("test2")
