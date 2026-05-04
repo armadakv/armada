@@ -5,19 +5,19 @@ package fsm
 import (
 	"encoding/binary"
 
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 )
 
 type commandGC struct {
-	*regattapb.Command
+	*armadapb.Command
 }
 
-func (c commandGC) handle(ctx *updateContext) (UpdateResult, *regattapb.CommandResult, error) {
+func (c commandGC) handle(ctx *updateContext) (UpdateResult, *armadapb.CommandResult, error) {
 	horizon := ctx.seqno()
 	val := make([]byte, 8)
 	binary.LittleEndian.PutUint64(val, horizon)
 	if err := ctx.batch.Set(sysGCHorizon, val, nil); err != nil {
 		return ResultFailure, nil, err
 	}
-	return ResultGC, &regattapb.CommandResult{Revision: horizon}, nil
+	return ResultGC, &armadapb.CommandResult{Revision: horizon}, nil
 }

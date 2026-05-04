@@ -9,7 +9,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util"
 	"github.com/armadakv/armada/util/iterx"
@@ -20,48 +20,48 @@ import (
 
 func Test_iterateBasic(t *testing.T) {
 	type args struct {
-		req  *regattapb.RequestOp_Range
-		data iter.Seq[*regattapb.KeyValue]
+		req  *armadapb.RequestOp_Range
+		data iter.Seq[*armadapb.KeyValue]
 	}
 	tests := []struct {
 		name string
 		args args
-		want iter.Seq[*regattapb.ResponseOp_Range]
+		want iter.Seq[*armadapb.ResponseOp_Range]
 	}{
 		{
 			name: "empty dataset",
 			args: args{
-				req:  &regattapb.RequestOp_Range{},
-				data: iterx.From[*regattapb.KeyValue](),
+				req:  &armadapb.RequestOp_Range{},
+				data: iterx.From[*armadapb.KeyValue](),
 			},
-			want: iterx.From(&regattapb.ResponseOp_Range{}),
+			want: iterx.From(&armadapb.ResponseOp_Range{}),
 		},
 		{
 			name: "small dataset query miss",
 			args: args{
-				req: &regattapb.RequestOp_Range{},
-				data: iterx.From(&regattapb.KeyValue{
+				req: &armadapb.RequestOp_Range{},
+				data: iterx.From(&armadapb.KeyValue{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),
 				}),
 			},
-			want: iterx.From(&regattapb.ResponseOp_Range{}),
+			want: iterx.From(&armadapb.ResponseOp_Range{}),
 		},
 		{
 			name: "small dataset query hit",
 			args: args{
-				req: &regattapb.RequestOp_Range{
+				req: &armadapb.RequestOp_Range{
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 				},
-				data: iterx.From(&regattapb.KeyValue{
+				data: iterx.From(&armadapb.KeyValue{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),
 				}),
 			},
-			want: iterx.From(&regattapb.ResponseOp_Range{
+			want: iterx.From(&armadapb.ResponseOp_Range{
 				Count: 1,
-				Kvs: []*regattapb.KeyValue{
+				Kvs: []*armadapb.KeyValue{
 					{
 						Key:   []byte("foo"),
 						Value: []byte("bar"),
@@ -72,27 +72,27 @@ func Test_iterateBasic(t *testing.T) {
 		{
 			name: "large dataset no response split",
 			args: args{
-				req: &regattapb.RequestOp_Range{
+				req: &armadapb.RequestOp_Range{
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 				},
-				data: generateSequence(1000, func(n int) *regattapb.KeyValue {
-					return &regattapb.KeyValue{
+				data: generateSequence(1000, func(n int) *armadapb.KeyValue {
+					return &armadapb.KeyValue{
 						Key:   []byte(fmt.Sprintf("key/%d", n)),
 						Value: []byte("foo"),
 					}
 				}),
 			},
-			want: iterx.From(&regattapb.ResponseOp_Range{
+			want: iterx.From(&armadapb.ResponseOp_Range{
 				Count: 1000,
-				Kvs: func() []*regattapb.KeyValue {
-					kvs := iterx.Collect(generateSequence(1000, func(n int) *regattapb.KeyValue {
-						return &regattapb.KeyValue{
+				Kvs: func() []*armadapb.KeyValue {
+					kvs := iterx.Collect(generateSequence(1000, func(n int) *armadapb.KeyValue {
+						return &armadapb.KeyValue{
 							Key:   []byte(fmt.Sprintf("key/%d", n)),
 							Value: []byte("foo"),
 						}
 					}))
-					slices.SortFunc(kvs, func(a, b *regattapb.KeyValue) int {
+					slices.SortFunc(kvs, func(a, b *armadapb.KeyValue) int {
 						return bytes.Compare(a.Key, b.Key)
 					})
 					return kvs
@@ -104,7 +104,7 @@ func Test_iterateBasic(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, err := pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
 			require.NoError(t, err)
-			iterx.Consume(tt.args.data, func(kv *regattapb.KeyValue) {
+			iterx.Consume(tt.args.data, func(kv *armadapb.KeyValue) {
 				kk := mustEncodeKey(key.Key{
 					KeyType: key.TypeUser,
 					Key:     kv.Key,
@@ -120,29 +120,29 @@ func Test_iterateBasic(t *testing.T) {
 
 func Test_iterateLargeDataset(t *testing.T) {
 	type args struct {
-		req  *regattapb.RequestOp_Range
-		data iter.Seq[*regattapb.KeyValue]
+		req  *armadapb.RequestOp_Range
+		data iter.Seq[*armadapb.KeyValue]
 	}
 	tests := []struct {
 		name   string
 		args   args
-		assert func(t *testing.T, seq iter.Seq[*regattapb.ResponseOp_Range])
+		assert func(t *testing.T, seq iter.Seq[*armadapb.ResponseOp_Range])
 	}{
 		{
 			name: "large dataset response split",
 			args: args{
-				req: &regattapb.RequestOp_Range{
+				req: &armadapb.RequestOp_Range{
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 				},
-				data: generateSequence(10, func(n int) *regattapb.KeyValue {
-					return &regattapb.KeyValue{
+				data: generateSequence(10, func(n int) *armadapb.KeyValue {
+					return &armadapb.KeyValue{
 						Key:   []byte(fmt.Sprintf("key/%d", n)),
 						Value: []byte(util.RandString(1024 * 512)),
 					}
 				}),
 			},
-			assert: func(t *testing.T, seq iter.Seq[*regattapb.ResponseOp_Range]) {
+			assert: func(t *testing.T, seq iter.Seq[*armadapb.ResponseOp_Range]) {
 				col := iterx.Collect(seq)
 				require.Len(t, col, 2, "should generate 2 chunks")
 				require.True(t, col[0].More, "first chunk should have More flag set")
@@ -153,21 +153,21 @@ func Test_iterateLargeDataset(t *testing.T) {
 		{
 			name: "large dataset multi response split",
 			args: args{
-				req: &regattapb.RequestOp_Range{
+				req: &armadapb.RequestOp_Range{
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 				},
-				data: generateSequence(100, func(n int) *regattapb.KeyValue {
-					return &regattapb.KeyValue{
+				data: generateSequence(100, func(n int) *armadapb.KeyValue {
+					return &armadapb.KeyValue{
 						Key:   []byte(fmt.Sprintf("key/%d", n)),
 						Value: []byte(util.RandString(1024 * 512)),
 					}
 				}),
 			},
-			assert: func(t *testing.T, seq iter.Seq[*regattapb.ResponseOp_Range]) {
+			assert: func(t *testing.T, seq iter.Seq[*armadapb.ResponseOp_Range]) {
 				chunks := 0
 				items := int64(0)
-				seq(func(r *regattapb.ResponseOp_Range) bool {
+				seq(func(r *armadapb.ResponseOp_Range) bool {
 					chunks++
 					items += r.Count
 					return true
@@ -179,22 +179,22 @@ func Test_iterateLargeDataset(t *testing.T) {
 		{
 			name: "large dataset multi response split query limit",
 			args: args{
-				req: &regattapb.RequestOp_Range{
+				req: &armadapb.RequestOp_Range{
 					Key:      []byte{0},
 					RangeEnd: []byte{0},
 					Limit:    50,
 				},
-				data: generateSequence(100, func(n int) *regattapb.KeyValue {
-					return &regattapb.KeyValue{
+				data: generateSequence(100, func(n int) *armadapb.KeyValue {
+					return &armadapb.KeyValue{
 						Key:   []byte(fmt.Sprintf("key/%d", n)),
 						Value: []byte(util.RandString(1024 * 512)),
 					}
 				}),
 			},
-			assert: func(t *testing.T, seq iter.Seq[*regattapb.ResponseOp_Range]) {
+			assert: func(t *testing.T, seq iter.Seq[*armadapb.ResponseOp_Range]) {
 				chunks := 0
 				items := int64(0)
-				seq(func(r *regattapb.ResponseOp_Range) bool {
+				seq(func(r *armadapb.ResponseOp_Range) bool {
 					chunks++
 					items += r.Count
 					return true
@@ -208,7 +208,7 @@ func Test_iterateLargeDataset(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			db, err := pebble.Open("", &pebble.Options{FS: vfs.NewMem()})
 			require.NoError(t, err)
-			iterx.Consume(tt.args.data, func(kv *regattapb.KeyValue) {
+			iterx.Consume(tt.args.data, func(kv *armadapb.KeyValue) {
 				kk := mustEncodeKey(key.Key{
 					KeyType: key.TypeUser,
 					Key:     kv.Key,

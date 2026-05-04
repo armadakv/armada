@@ -8,7 +8,7 @@ import (
 
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
@@ -41,7 +41,7 @@ func TestUpdateContext_Parse(t *testing.T) {
 		},
 		{
 			name: "put command with index",
-			args: args{entry: sm.Entry{Index: 200, Cmd: mustMarshallProto(&regattapb.Command{Type: regattapb.Command_PUT, Table: []byte("test"), Kv: &regattapb.KeyValue{Key: []byte("key")}})}},
+			args: args{entry: sm.Entry{Index: 200, Cmd: mustMarshallProto(&armadapb.Command{Type: armadapb.Command_PUT, Table: []byte("test"), Kv: &armadapb.KeyValue{Key: []byte("key")}})}},
 			want: want{index: 200, cmd: commandPut{}},
 		},
 	}

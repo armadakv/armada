@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/util"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
@@ -35,7 +35,7 @@ func Test_snapshotFile_Read(t *testing.T) {
 		n, err := sf.Read(buff)
 		if n > 0 {
 			r.NoError(err)
-			r.NoError(pb.Unmarshal(buff[:n], &regattapb.Command{}))
+			r.NoError(pb.Unmarshal(buff[:n], &armadapb.Command{}))
 		} else {
 			r.Equal(io.EOF, err)
 			break
@@ -51,7 +51,7 @@ func Test_snapshotFile_Write(t *testing.T) {
 		_ = sf.Close()
 	}()
 
-	bts, _ := pb.Marshal(&regattapb.Command{Type: regattapb.Command_PUT, Kv: &regattapb.KeyValue{
+	bts, _ := pb.Marshal(&armadapb.Command{Type: armadapb.Command_PUT, Kv: &armadapb.KeyValue{
 		Key:   []byte("foo"),
 		Value: []byte("bar"),
 	}})
@@ -71,7 +71,7 @@ func Test_snapshotFile_ReadWrite(t *testing.T) {
 		_ = sf.Close()
 	}()
 	for i := 0; i < 1000; i++ {
-		bts, _ := pb.Marshal(&regattapb.Command{Type: regattapb.Command_PUT, Kv: &regattapb.KeyValue{
+		bts, _ := pb.Marshal(&armadapb.Command{Type: armadapb.Command_PUT, Kv: &armadapb.KeyValue{
 			Key:   []byte("foo" + strconv.Itoa(i)),
 			Value: []byte(testString),
 		}})
@@ -87,7 +87,7 @@ func Test_snapshotFile_ReadWrite(t *testing.T) {
 		n, err := sf.Read(buff)
 		if n > 0 {
 			r.NoError(err)
-			m := &regattapb.Command{}
+			m := &armadapb.Command{}
 			r.NoError(pb.Unmarshal(buff[:n], m))
 			r.Equal(m.Kv.Value, []byte(testString))
 		} else {
@@ -100,21 +100,21 @@ func Test_snapshotFile_ReadWrite(t *testing.T) {
 func TestReaderWriter(t *testing.T) {
 	lis := bufconn.Listen(10 * 1024 * 1024)
 	srv := grpc.NewServer()
-	regattapb.RegisterSnapshotServer(srv, &mockSnapshotServer{cmds: []*regattapb.Command{
+	armadapb.RegisterSnapshotServer(srv, &mockSnapshotServer{cmds: []*armadapb.Command{
 		{
 			Table: []byte("table"),
-			Type:  regattapb.Command_PUT,
-			Kv:    &regattapb.KeyValue{Key: []byte("key"), Value: []byte(util.RandString(1024))},
+			Type:  armadapb.Command_PUT,
+			Kv:    &armadapb.KeyValue{Key: []byte("key"), Value: []byte(util.RandString(1024))},
 		},
 		{
 			Table: []byte("table"),
-			Type:  regattapb.Command_PUT,
-			Kv:    &regattapb.KeyValue{Key: []byte("key2"), Value: []byte(util.RandString(1024))},
+			Type:  armadapb.Command_PUT,
+			Kv:    &armadapb.KeyValue{Key: []byte("key2"), Value: []byte(util.RandString(1024))},
 		},
 		{
 			Table: []byte("table"),
-			Type:  regattapb.Command_PUT,
-			Kv:    &regattapb.KeyValue{Key: []byte("key3"), Value: []byte(util.RandString(1024))},
+			Type:  armadapb.Command_PUT,
+			Kv:    &armadapb.KeyValue{Key: []byte("key3"), Value: []byte(util.RandString(1024))},
 		},
 	}})
 	go srv.Serve(lis)
@@ -128,14 +128,14 @@ func TestReaderWriter(t *testing.T) {
 		require.NoError(t, conn.Close())
 	})
 
-	sc := regattapb.NewSnapshotClient(conn)
-	s, err := sc.Stream(context.Background(), &regattapb.SnapshotRequest{})
+	sc := armadapb.NewSnapshotClient(conn)
+	s, err := sc.Stream(context.Background(), &armadapb.SnapshotRequest{})
 	require.NoError(t, err)
 
 	_, err = io.Copy(io.Discard, &Reader{Stream: s})
 	require.NoError(t, err)
 
-	s, err = sc.Stream(context.Background(), &regattapb.SnapshotRequest{})
+	s, err = sc.Stream(context.Background(), &armadapb.SnapshotRequest{})
 	require.NoError(t, err)
 
 	r := &Reader{Stream: s, Limiter: rate.NewLimiter(rate.Limit(256), int(256))}
@@ -150,11 +150,11 @@ func TestReaderWriter(t *testing.T) {
 }
 
 type mockSnapshotServer struct {
-	regattapb.UnimplementedSnapshotServer
-	cmds []*regattapb.Command
+	armadapb.UnimplementedSnapshotServer
+	cmds []*armadapb.Command
 }
 
-func (m *mockSnapshotServer) Stream(req *regattapb.SnapshotRequest, srv regattapb.Snapshot_StreamServer) error {
+func (m *mockSnapshotServer) Stream(req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer) error {
 	sf, err := NewTemp()
 	if err != nil {
 		return err
@@ -171,9 +171,9 @@ func (m *mockSnapshotServer) Stream(req *regattapb.SnapshotRequest, srv regattap
 		return err
 	}
 	// Write dummy command with leader index to commit recovery snapshot.
-	final, err := (&regattapb.Command{
+	final, err := (&armadapb.Command{
 		Table:       req.Table,
-		Type:        regattapb.Command_DUMMY,
+		Type:        armadapb.Command_DUMMY,
 		LeaderIndex: m.cmds[len(m.cmds)-1].LeaderIndex,
 	}).MarshalVT()
 	if err != nil {

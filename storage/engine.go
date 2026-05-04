@@ -11,7 +11,7 @@ import (
 
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"
@@ -109,7 +109,7 @@ func (e *Engine) Close() error {
 	return nil
 }
 
-func (e *Engine) Range(ctx context.Context, req *regattapb.RangeRequest) (*regattapb.RangeResponse, error) {
+func (e *Engine) Range(ctx context.Context, req *armadapb.RangeRequest) (*armadapb.RangeResponse, error) {
 	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
@@ -122,7 +122,7 @@ func (e *Engine) Range(ctx context.Context, req *regattapb.RangeRequest) (*regat
 	return rng, nil
 }
 
-func (e *Engine) IterateRange(ctx context.Context, req *regattapb.RangeRequest) (iter.Seq[*regattapb.RangeResponse], error) {
+func (e *Engine) IterateRange(ctx context.Context, req *armadapb.RangeRequest) (iter.Seq[*armadapb.RangeResponse], error) {
 	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
@@ -131,8 +131,8 @@ func (e *Engine) IterateRange(ctx context.Context, req *regattapb.RangeRequest) 
 	if err != nil {
 		return nil, err
 	}
-	return iterx.Map(it, func(s *regattapb.ResponseOp_Range) *regattapb.RangeResponse {
-		return &regattapb.RangeResponse{
+	return iterx.Map(it, func(s *armadapb.ResponseOp_Range) *armadapb.RangeResponse {
+		return &armadapb.RangeResponse{
 			Header: e.getHeader(nil, t.ClusterID),
 			Kvs:    s.Kvs,
 			More:   s.More,
@@ -141,7 +141,7 @@ func (e *Engine) IterateRange(ctx context.Context, req *regattapb.RangeRequest) 
 	}), nil
 }
 
-func (e *Engine) Put(ctx context.Context, req *regattapb.PutRequest) (*regattapb.PutResponse, error) {
+func (e *Engine) Put(ctx context.Context, req *armadapb.PutRequest) (*armadapb.PutResponse, error) {
 	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
@@ -154,7 +154,7 @@ func (e *Engine) Put(ctx context.Context, req *regattapb.PutRequest) (*regattapb
 	return put, nil
 }
 
-func (e *Engine) Delete(ctx context.Context, req *regattapb.DeleteRangeRequest) (*regattapb.DeleteRangeResponse, error) {
+func (e *Engine) Delete(ctx context.Context, req *armadapb.DeleteRangeRequest) (*armadapb.DeleteRangeResponse, error) {
 	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
@@ -167,7 +167,7 @@ func (e *Engine) Delete(ctx context.Context, req *regattapb.DeleteRangeRequest) 
 	return del, nil
 }
 
-func (e *Engine) Txn(ctx context.Context, req *regattapb.TxnRequest) (*regattapb.TxnResponse, error) {
+func (e *Engine) Txn(ctx context.Context, req *armadapb.TxnRequest) (*armadapb.TxnResponse, error) {
 	t, err := e.GetTable(string(req.Table))
 	if err != nil {
 		return nil, err
@@ -180,12 +180,12 @@ func (e *Engine) Txn(ctx context.Context, req *regattapb.TxnRequest) (*regattapb
 	return tx, nil
 }
 
-func (e *Engine) MemberList(ctx context.Context, r *regattapb.MemberListRequest) (*regattapb.MemberListResponse, error) {
-	return withDefaultTimeout(ctx, r, func(ctx context.Context, r *regattapb.MemberListRequest) (*regattapb.MemberListResponse, error) {
+func (e *Engine) MemberList(ctx context.Context, r *armadapb.MemberListRequest) (*armadapb.MemberListResponse, error) {
+	return withDefaultTimeout(ctx, r, func(ctx context.Context, r *armadapb.MemberListRequest) (*armadapb.MemberListResponse, error) {
 		nodes := e.Cluster.Nodes()
-		res := &regattapb.MemberListResponse{Cluster: e.Cluster.Name(), Members: make([]*regattapb.Member, len(nodes))}
+		res := &armadapb.MemberListResponse{Cluster: e.Cluster.Name(), Members: make([]*armadapb.Member, len(nodes))}
 		for i, node := range nodes {
-			res.Members[i] = &regattapb.Member{
+			res.Members[i] = &armadapb.Member{
 				Id:         strconv.FormatUint(node.NodeID, 10),
 				Name:       node.Name,
 				PeerURLs:   []string{node.RaftAddress},
@@ -196,12 +196,12 @@ func (e *Engine) MemberList(ctx context.Context, r *regattapb.MemberListRequest)
 	})
 }
 
-func (e *Engine) Status(ctx context.Context, r *regattapb.StatusRequest) (*regattapb.StatusResponse, error) {
-	return withDefaultTimeout(ctx, r, func(ctx context.Context, _ *regattapb.StatusRequest) (*regattapb.StatusResponse, error) {
-		res := &regattapb.StatusResponse{
+func (e *Engine) Status(ctx context.Context, r *armadapb.StatusRequest) (*armadapb.StatusResponse, error) {
+	return withDefaultTimeout(ctx, r, func(ctx context.Context, _ *armadapb.StatusRequest) (*armadapb.StatusResponse, error) {
+		res := &armadapb.StatusResponse{
 			Id:      strconv.FormatUint(e.cfg.NodeID, 10),
 			Version: version.Version,
-			Tables:  make(map[string]*regattapb.TableStatus),
+			Tables:  make(map[string]*armadapb.TableStatus),
 		}
 		tables, err := e.GetTables()
 		if err != nil {
@@ -223,7 +223,7 @@ func (e *Engine) Status(ctx context.Context, r *regattapb.StatusRequest) (*regat
 				res.Errors = append(res.Errors, fmt.Sprintf("%s: %v", t.Name, err.Error()))
 				continue
 			}
-			res.Tables[at.Name] = &regattapb.TableStatus{
+			res.Tables[at.Name] = &armadapb.TableStatus{
 				Leader:           strconv.FormatUint(lid, 10),
 				RaftIndex:        index.Index,
 				RaftTerm:         term,
@@ -234,9 +234,9 @@ func (e *Engine) Status(ctx context.Context, r *regattapb.StatusRequest) (*regat
 	})
 }
 
-func (e *Engine) getHeader(header *regattapb.ResponseHeader, shardID uint64) *regattapb.ResponseHeader {
+func (e *Engine) getHeader(header *armadapb.ResponseHeader, shardID uint64) *armadapb.ResponseHeader {
 	if header == nil {
-		header = &regattapb.ResponseHeader{}
+		header = &armadapb.ResponseHeader{}
 	}
 	header.ReplicaId = e.cfg.NodeID
 	header.ShardId = shardID

@@ -15,7 +15,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/replication/snapshot"
 	"google.golang.org/grpc"
 )
@@ -101,8 +101,8 @@ func (b *Backup) ensureDefaults() {
 func (b *Backup) Backup() (Manifest, error) {
 	b.ensureDefaults()
 
-	mc := regattapb.NewClusterClient(b.Conn)
-	sc := regattapb.NewMaintenanceClient(b.Conn)
+	mc := armadapb.NewClusterClient(b.Conn)
+	sc := armadapb.NewMaintenanceClient(b.Conn)
 
 	manifest := Manifest{
 		Started: b.clock.Now(),
@@ -116,7 +116,7 @@ func (b *Backup) Backup() (Manifest, error) {
 		return manifest, err
 	}
 
-	status, err := mc.Status(ctx, &regattapb.StatusRequest{})
+	status, err := mc.Status(ctx, &armadapb.StatusRequest{})
 	if err != nil {
 		return manifest, err
 	}
@@ -124,7 +124,7 @@ func (b *Backup) Backup() (Manifest, error) {
 	b.Log.Infof("starting backup")
 	for t := range status.Tables {
 		b.Log.Infof("backing up table '%s'", t)
-		stream, err := sc.Backup(ctx, &regattapb.BackupRequest{Table: []byte(t)})
+		stream, err := sc.Backup(ctx, &armadapb.BackupRequest{Table: []byte(t)})
 		if err != nil {
 			return manifest, err
 		}
@@ -179,7 +179,7 @@ func (b *Backup) Backup() (Manifest, error) {
 func (b *Backup) Restore() error {
 	b.ensureDefaults()
 
-	sc := regattapb.NewMaintenanceClient(b.Conn)
+	sc := armadapb.NewMaintenanceClient(b.Conn)
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.Timeout)
 	defer cancel()
@@ -229,9 +229,9 @@ func (b *Backup) Restore() error {
 		if err != nil {
 			return err
 		}
-		err = stream.Send(&regattapb.RestoreMessage{
-			Data: &regattapb.RestoreMessage_Info{
-				Info: &regattapb.RestoreInfo{
+		err = stream.Send(&armadapb.RestoreMessage{
+			Data: &armadapb.RestoreMessage_Info{
+				Info: &armadapb.RestoreInfo{
 					Table: []byte(table.Name),
 				},
 			},
@@ -271,14 +271,14 @@ func checkDir(dir string) error {
 }
 
 type Writer struct {
-	Sender regattapb.Maintenance_RestoreClient
+	Sender armadapb.Maintenance_RestoreClient
 }
 
 func (g Writer) Write(p []byte) (int, error) {
 	ln := len(p)
-	if err := g.Sender.Send(&regattapb.RestoreMessage{
-		Data: &regattapb.RestoreMessage_Chunk{
-			Chunk: &regattapb.SnapshotChunk{
+	if err := g.Sender.Send(&armadapb.RestoreMessage{
+		Data: &armadapb.RestoreMessage_Chunk{
+			Chunk: &armadapb.SnapshotChunk{
 				Data: p,
 				Len:  uint64(ln),
 			},

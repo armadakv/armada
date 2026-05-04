@@ -9,7 +9,7 @@ import (
 	"iter"
 
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util/iterx"
 	"github.com/cockroachdb/pebble/v2"
@@ -95,11 +95,11 @@ func commandIncrementalSnapshot(reader pebble.Reader, tableName string, sinceInd
 
 // writeDeleteCommand writes a DELETE proto.Command for key into (optionally provided) buffer.
 func writeDeleteCommand(tableName string, userKey []byte, buffer []byte) ([]byte, error) {
-	cmd := regattapb.CommandFromVTPool()
+	cmd := armadapb.CommandFromVTPool()
 	defer cmd.ReturnToVTPool()
 	cmd.Table = []byte(tableName)
-	cmd.Type = regattapb.Command_DELETE
-	cmd.Kv = &regattapb.KeyValue{
+	cmd.Type = armadapb.Command_DELETE
+	cmd.Kv = &armadapb.KeyValue{
 		Key: userKey,
 	}
 	size := cmd.SizeVT()
@@ -166,11 +166,11 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 
 // writeCommand writes KV pair as PUT proto.Command into (optionally provided) buffer.
 func writeCommand(tableName string, key []byte, val []byte, buffer []byte) ([]byte, error) {
-	cmd := regattapb.CommandFromVTPool()
+	cmd := armadapb.CommandFromVTPool()
 	defer cmd.ReturnToVTPool()
 	cmd.Table = []byte(tableName)
-	cmd.Type = regattapb.Command_PUT
-	cmd.Kv = &regattapb.KeyValue{
+	cmd.Type = armadapb.Command_PUT
+	cmd.Kv = &armadapb.KeyValue{
 		Key:   key,
 		Value: val,
 	}
@@ -201,14 +201,14 @@ func readLocalIndex(db pebble.Reader, indexKey []byte) (idx uint64, err error) {
 	return binary.LittleEndian.Uint64(indexVal), nil
 }
 
-func lookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regattapb.ResponseOp_Range, error) {
+func lookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb.ResponseOp_Range, error) {
 	if req.RangeEnd != nil {
 		return rangeLookup(reader, req)
 	}
 	return singleLookup(reader, req)
 }
 
-func rangeLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regattapb.ResponseOp_Range, error) {
+func rangeLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb.ResponseOp_Range, error) {
 	it, err := iterate(reader, req)
 	if err != nil {
 		return nil, err
@@ -216,7 +216,7 @@ func rangeLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatta
 	return iterx.First(it), nil
 }
 
-func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regattapb.ResponseOp_Range, error) {
+func singleLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb.ResponseOp_Range, error) {
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
 
@@ -236,33 +236,33 @@ func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatt
 	// SeekPrefixGE with the V2 split function lands on the latest version of the key
 	// (highest seqno sorts first due to bit-inversion encoding).
 	if !found {
-		return &regattapb.ResponseOp_Range{}, nil
+		return &armadapb.ResponseOp_Range{}, nil
 	}
 
 	// If the latest version is a tombstone the key has been deleted.
 	if isTombstone(iter.Value()) {
-		return &regattapb.ResponseOp_Range{}, nil
+		return &armadapb.ResponseOp_Range{}, nil
 	}
 
-	kv := &regattapb.KeyValue{Key: req.Key}
+	kv := &armadapb.KeyValue{Key: req.Key}
 	value := iter.Value()
 	if !req.KeysOnly && !req.CountOnly && len(value) > 0 {
 		kv.Value = make([]byte, len(value))
 		copy(kv.Value, value)
 	}
 
-	var kvs []*regattapb.KeyValue
+	var kvs []*armadapb.KeyValue
 	if !req.CountOnly {
 		kvs = append(kvs, kv)
 	}
 
-	return &regattapb.ResponseOp_Range{
+	return &armadapb.ResponseOp_Range{
 		Kvs:   kvs,
 		Count: 1,
 	}, nil
 }
 
-func iteratorLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*regattapb.ResponseOp_Range], error) {
+func iteratorLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*armadapb.ResponseOp_Range], error) {
 	if req.RangeEnd != nil {
 		return iterate(reader, req)
 	}
@@ -275,7 +275,7 @@ func iteratorLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.
 
 // IteratorRequest returns open pebble.Iterator it is an API consumer responsibility to close it.
 type IteratorRequest struct {
-	RangeOp *regattapb.RequestOp_Range
+	RangeOp *armadapb.RequestOp_Range
 }
 
 // SnapshotRequest to write Command snapshot into provided writer.

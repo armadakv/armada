@@ -10,7 +10,7 @@ package replication.v1;
 
 import "mvcc.proto";
 
-option go_package = "./regattapb";
+option go_package = "./armadapb";
 
 // Metadata service provides method to get Regatta metadata, e.g. tables.
 service Metadata {

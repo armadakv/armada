@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/kv"
@@ -63,7 +63,7 @@ func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *
 	return &Manager{
 		reconcileInterval: cfg.ReconcileInterval,
 		engine:            e,
-		metadataClient:    regattapb.NewMetadataClient(conn),
+		metadataClient:    armadapb.NewMetadataClient(conn),
 		factory: &workerFactory{
 			queue:             queue,
 			reconcileInterval: cfg.ReconcileInterval,
@@ -79,8 +79,8 @@ func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *
 				ClusterID: replicationStoreID,
 			},
 			log:            replicationLog,
-			logClient:      regattapb.NewLogClient(conn),
-			snapshotClient: regattapb.NewSnapshotClient(conn),
+			logClient:      armadapb.NewLogClient(conn),
+			snapshotClient: armadapb.NewSnapshotClient(conn),
 			metrics: struct {
 				replicationIndex  *prometheus.GaugeVec
 				replicationLeased *prometheus.GaugeVec
@@ -101,7 +101,7 @@ func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *
 type Manager struct {
 	reconcileInterval time.Duration
 	engine            *storage.Engine
-	metadataClient    regattapb.MetadataClient
+	metadataClient    armadapb.MetadataClient
 	factory           *workerFactory
 	workers           struct {
 		registry map[string]*worker
@@ -163,7 +163,7 @@ func (m *Manager) Start() error {
 func (m *Manager) reconcileTables() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	response, err := m.metadataClient.Get(ctx, &regattapb.MetadataRequest{})
+	response, err := m.metadataClient.Get(ctx, &armadapb.MetadataRequest{})
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (m *Manager) reconcileTables() error {
 	var toCreate, toDelete []string
 
 	for _, ft := range followerTables {
-		if !slices.ContainsFunc(leaderTables, func(lt *regattapb.Table) bool {
+		if !slices.ContainsFunc(leaderTables, func(lt *armadapb.Table) bool {
 			return ft.Name == lt.Name
 		}) {
 			toDelete = append(toDelete, ft.Name)

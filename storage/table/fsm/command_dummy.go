@@ -3,11 +3,11 @@
 package fsm
 
 import (
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 )
 
 type commandDummy struct{}
 
-func (c commandDummy) handle(ctx *updateContext) (UpdateResult, *regattapb.CommandResult, error) {
-	return ResultSuccess, &regattapb.CommandResult{Revision: ctx.seqno()}, nil
+func (c commandDummy) handle(ctx *updateContext) (UpdateResult, *armadapb.CommandResult, error) {
+	return ResultSuccess, &armadapb.CommandResult{Revision: ctx.seqno()}, nil
 }

@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/util"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
@@ -123,8 +123,8 @@ func TestFSM_ReOpen(t *testing.T) {
 	_, err = p.Update([]sm.Entry{
 		{
 			Index: testIndex,
-			Cmd: mustMarshallProto(&regattapb.Command{
-				Kv: &regattapb.KeyValue{
+			Cmd: mustMarshallProto(&armadapb.Command{
+				Kv: &armadapb.KeyValue{
 					Key:   []byte("foo"),
 					Value: []byte("bar"),
 				},
@@ -164,11 +164,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test"),
 								Value: []byte("test"),
 							},
@@ -181,10 +181,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -201,10 +201,10 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_DUMMY,
+							Type:        armadapb.Command_DUMMY,
 						}),
 					},
 				},
@@ -214,7 +214,7 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data:  mustMarshallProto(&regattapb.CommandResult{Revision: 1}),
+						Data:  mustMarshallProto(&armadapb.CommandResult{Revision: 1}),
 					},
 				},
 			},
@@ -229,11 +229,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test"),
 								Value: []byte("test"),
 							},
@@ -241,11 +241,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 2,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &two,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_DELETE,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_DELETE,
+							Kv: &armadapb.KeyValue{
 								Key: []byte("test"),
 							},
 						}),
@@ -257,10 +257,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -269,10 +269,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 2,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 2,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}}},
 							},
 						}),
 					},
@@ -289,11 +289,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT_BATCH,
-							Batch: []*regattapb.KeyValue{
+							Type:        armadapb.Command_PUT_BATCH,
+							Batch: []*armadapb.KeyValue{
 								{
 									Key:   []byte("test"),
 									Value: []byte("test"),
@@ -316,12 +316,12 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -338,11 +338,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_DELETE_BATCH,
-							Batch: []*regattapb.KeyValue{
+							Type:        armadapb.Command_DELETE_BATCH,
+							Batch: []*armadapb.KeyValue{
 								{
 									Key: []byte("test"),
 								},
@@ -362,12 +362,12 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}}},
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}}},
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}}},
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}}},
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}}},
 							},
 						}),
 					},
@@ -384,11 +384,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test1"),
 								Value: []byte("test"),
 							},
@@ -396,11 +396,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 2,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &two,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test2"),
 								Value: []byte("test"),
 							},
@@ -408,11 +408,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 3,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &three,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_DELETE,
-							Kv:          &regattapb.KeyValue{Key: []byte("test")},
+							Type:        armadapb.Command_DELETE,
+							Kv:          &armadapb.KeyValue{Key: []byte("test")},
 							RangeEnd:    incrementRightmostByte([]byte("test")),
 						}),
 					},
@@ -423,10 +423,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -435,10 +435,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 2,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 2,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -447,10 +447,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 3,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 3,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}}},
 							},
 						}),
 					},
@@ -467,11 +467,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test1"),
 								Value: []byte("test"),
 							},
@@ -479,11 +479,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 2,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &two,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test2"),
 								Value: []byte("test"),
 							},
@@ -491,11 +491,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 3,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &three,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_DELETE,
-							Kv:          &regattapb.KeyValue{Key: []byte("test")},
+							Type:        armadapb.Command_DELETE,
+							Kv:          &armadapb.KeyValue{Key: []byte("test")},
 							RangeEnd:    prependByte([]byte("test"), 1),
 						}),
 					},
@@ -506,10 +506,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -518,10 +518,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 2,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 2,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -530,10 +530,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 3,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 3,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{}}},
 							},
 						}),
 					},
@@ -550,11 +550,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test1"),
 								Value: []byte("test"),
 							},
@@ -562,11 +562,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 2,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &two,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_DELETE,
-							Kv:          &regattapb.KeyValue{Key: []byte("test1")},
+							Type:        armadapb.Command_DELETE,
+							Kv:          &armadapb.KeyValue{Key: []byte("test1")},
 							Count:       true,
 						}),
 					},
@@ -577,10 +577,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -589,10 +589,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 2,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 2,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{Deleted: 1}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{Deleted: 1}}},
 							},
 						}),
 					},
@@ -609,11 +609,11 @@ func TestSM_Update(t *testing.T) {
 				updates: []sm.Entry{
 					{
 						Index: 1,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &one,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test1"),
 								Value: []byte("test"),
 							},
@@ -621,11 +621,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 2,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &two,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_PUT,
-							Kv: &regattapb.KeyValue{
+							Type:        armadapb.Command_PUT,
+							Kv: &armadapb.KeyValue{
 								Key:   []byte("test2"),
 								Value: []byte("test"),
 							},
@@ -633,11 +633,11 @@ func TestSM_Update(t *testing.T) {
 					},
 					{
 						Index: 3,
-						Cmd: mustMarshallProto(&regattapb.Command{
+						Cmd: mustMarshallProto(&armadapb.Command{
 							LeaderIndex: &three,
 							Table:       []byte("test"),
-							Type:        regattapb.Command_DELETE,
-							Kv:          &regattapb.KeyValue{Key: []byte{0}},
+							Type:        armadapb.Command_DELETE,
+							Kv:          &armadapb.KeyValue{Key: []byte{0}},
 							RangeEnd:    []byte{0},
 							Count:       true,
 						}),
@@ -649,10 +649,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 1,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 1,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -661,10 +661,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 2,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 2,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponsePut{ResponsePut: &regattapb.ResponseOp_Put{}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponsePut{ResponsePut: &armadapb.ResponseOp_Put{}}},
 							},
 						}),
 					},
@@ -673,10 +673,10 @@ func TestSM_Update(t *testing.T) {
 					Index: 3,
 					Result: sm.Result{
 						Value: 1,
-						Data: mustMarshallProto(&regattapb.CommandResult{
+						Data: mustMarshallProto(&armadapb.CommandResult{
 							Revision: 3,
-							Responses: []*regattapb.ResponseOp{
-								{Response: &regattapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &regattapb.ResponseOp_DeleteRange{Deleted: 2}}},
+							Responses: []*armadapb.ResponseOp{
+								{Response: &armadapb.ResponseOp_ResponseDeleteRange{ResponseDeleteRange: &armadapb.ResponseOp_DeleteRange{Deleted: 2}}},
 							},
 						}),
 					},
@@ -728,8 +728,8 @@ func TestSM_Update(t *testing.T) {
 
 func equalResult(t *testing.T, want sm.Result, got sm.Result) {
 	require.Equal(t, want.Value, got.Value, "value does not match")
-	w := &regattapb.CommandResult{}
-	g := &regattapb.CommandResult{}
+	w := &armadapb.CommandResult{}
+	g := &armadapb.CommandResult{}
 	require.NoError(t, pb.Unmarshal(want.Data, w))
 	require.NoError(t, pb.Unmarshal(got.Data, g))
 	require.Equal(t, w, g, "data does not match")
@@ -757,10 +757,10 @@ func filledSM() *FSM {
 	for i := 0; i < smallEntries; i++ {
 		entries = append(entries, sm.Entry{
 			Index: uint64(i),
-			Cmd: mustMarshallProto(&regattapb.Command{
+			Cmd: mustMarshallProto(&armadapb.Command{
 				Table: []byte(testTable),
-				Type:  regattapb.Command_PUT,
-				Kv: &regattapb.KeyValue{
+				Type:  armadapb.Command_PUT,
+				Kv: &armadapb.KeyValue{
 					Key:   []byte(fmt.Sprintf(testKeyFormat, i)),
 					Value: []byte(testValue),
 				},
@@ -770,10 +770,10 @@ func filledSM() *FSM {
 	for i := 0; i < largeEntries; i++ {
 		entries = append(entries, sm.Entry{
 			Index: uint64(i),
-			Cmd: mustMarshallProto(&regattapb.Command{
+			Cmd: mustMarshallProto(&armadapb.Command{
 				Table: []byte(testTable),
-				Type:  regattapb.Command_PUT,
-				Kv: &regattapb.KeyValue{
+				Type:  armadapb.Command_PUT,
+				Kv: &armadapb.KeyValue{
 					Key:   []byte(fmt.Sprintf(testLargeKeyFormat, i)),
 					Value: []byte(largeValues[i]),
 				},
@@ -805,10 +805,10 @@ func filledLargeValuesSM() *FSM {
 	for i := 0; i < len(entries); i++ {
 		entries[i] = sm.Entry{
 			Index: uint64(i),
-			Cmd: mustMarshallProto(&regattapb.Command{
+			Cmd: mustMarshallProto(&armadapb.Command{
 				Table: []byte(testTable),
-				Type:  regattapb.Command_PUT,
-				Kv: &regattapb.KeyValue{
+				Type:  armadapb.Command_PUT,
+				Kv: &armadapb.KeyValue{
 					Key:   []byte(fmt.Sprintf(testKeyFormat, i)),
 					Value: []byte(largeValues[i]),
 				},
@@ -852,9 +852,9 @@ func filledIndexOnlySM() *FSM {
 	_, err = p.Update([]sm.Entry{
 		{
 			Index: uint64(1),
-			Cmd: mustMarshallProto(&regattapb.Command{
+			Cmd: mustMarshallProto(&armadapb.Command{
 				Table: []byte(testTable),
-				Type:  regattapb.Command_DUMMY,
+				Type:  armadapb.Command_DUMMY,
 			}),
 		},
 	})

@@ -12,7 +12,7 @@ import (
 	"syscall"
 
 	rl "github.com/armadakv/armada/log"
-	"github.com/armadakv/armada/regattaserver"
+	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/storage"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/spf13/viper"
@@ -90,9 +90,9 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 }
 
 // setupRESTServer creates and starts a REST server.
-func setupRESTServer(log *zap.SugaredLogger) *regattaserver.RESTServer {
+func setupRESTServer(log *zap.SugaredLogger) *armadaserver.RESTServer {
 	addr, _, _ := resolveURL(viper.GetString("rest.address"))
-	hs := regattaserver.NewRESTServer(addr, viper.GetDuration("rest.read-timeout"))
+	hs := armadaserver.NewRESTServer(addr, viper.GetDuration("rest.read-timeout"))
 	go func() {
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Errorf("REST listenAndServe failed: %v", err)

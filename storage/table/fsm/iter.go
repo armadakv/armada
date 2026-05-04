@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"iter"
 
-	"github.com/armadakv/armada/regattapb"
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
 )
@@ -58,7 +58,7 @@ func iterNextUserKey(piter *pebble.Iterator, currentPebbleKey []byte) bool {
 
 // iterate until the provided pebble.Iterator is no longer valid or the limit is reached.
 // Apply a function on the key/value pair in every iteration filling proto.RangeResponse.
-func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*regattapb.ResponseOp_Range], error) { //nolint:gocognit
+func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*armadapb.ResponseOp_Range], error) { //nolint:gocognit
 	opts, err := iterOptionsForBounds(req.Key, req.RangeEnd)
 	if err != nil {
 		return nil, err
@@ -66,7 +66,7 @@ func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*re
 	fill, sf := iterFuncsFromReq(req)
 	limit := int(req.Limit)
 
-	return func(yield func(*regattapb.ResponseOp_Range) bool) {
+	return func(yield func(*armadapb.ResponseOp_Range) bool) {
 		piter, err := reader.NewIter(opts)
 		if err != nil {
 			return
@@ -74,7 +74,7 @@ func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*re
 		defer func() {
 			_ = piter.Close()
 		}()
-		response := &regattapb.ResponseOp_Range{}
+		response := &armadapb.ResponseOp_Range{}
 		// If no results found yield and end immediately.
 		if !piter.First() {
 			yield(response)
@@ -107,7 +107,7 @@ func iterate(reader pebble.Reader, req *regattapb.RequestOp_Range) (iter.Seq[*re
 				if !yield(response) {
 					return
 				}
-				response = &regattapb.ResponseOp_Range{}
+				response = &armadapb.ResponseOp_Range{}
 			}
 			i++
 			fill(k.Key, piter.ValueAndErr, response)
@@ -160,12 +160,12 @@ func iterOptionsForBounds(low, high []byte) (*pebble.IterOptions, error) { //nol
 type lazyValueOrErr func() ([]byte, error)
 
 // fillEntriesFunc fills proto.RangeResponse response.
-type fillEntriesFunc func(key []byte, value lazyValueOrErr, response *regattapb.ResponseOp_Range)
+type fillEntriesFunc func(key []byte, value lazyValueOrErr, response *armadapb.ResponseOp_Range)
 
 // sizeEntriesFunc estimates entry size.
 type sizeEntriesFunc func(key []byte, value lazyValueOrErr) uint64
 
-func iterFuncsFromReq(req *regattapb.RequestOp_Range) (fillEntriesFunc, sizeEntriesFunc) {
+func iterFuncsFromReq(req *armadapb.RequestOp_Range) (fillEntriesFunc, sizeEntriesFunc) {
 	switch {
 	case req.KeysOnly:
 		return addKeyOnly, sizeKeyOnly
@@ -177,9 +177,9 @@ func iterFuncsFromReq(req *regattapb.RequestOp_Range) (fillEntriesFunc, sizeEntr
 }
 
 // addKVPair adds a key/value pair from the provided iterator to the proto.RangeResponse.
-func addKVPair(key []byte, value lazyValueOrErr, response *regattapb.ResponseOp_Range) {
+func addKVPair(key []byte, value lazyValueOrErr, response *armadapb.ResponseOp_Range) {
 	val, _ := value()
-	kv := &regattapb.KeyValue{Key: make([]byte, len(key)), Value: make([]byte, len(val))}
+	kv := &armadapb.KeyValue{Key: make([]byte, len(key)), Value: make([]byte, len(val))}
 	copy(kv.Key, key)
 	copy(kv.Value, val)
 	response.Kvs = append(response.Kvs, kv)
@@ -193,8 +193,8 @@ func sizeKVPair(key []byte, value lazyValueOrErr) uint64 {
 }
 
 // addKeyOnly adds a key from the provided iterator to the proto.RangeResponse.
-func addKeyOnly(key []byte, _ lazyValueOrErr, response *regattapb.ResponseOp_Range) {
-	kv := &regattapb.KeyValue{Key: make([]byte, len(key))}
+func addKeyOnly(key []byte, _ lazyValueOrErr, response *armadapb.ResponseOp_Range) {
+	kv := &armadapb.KeyValue{Key: make([]byte, len(key))}
 	copy(kv.Key, key)
 	response.Kvs = append(response.Kvs, kv)
 	response.Count++
@@ -206,7 +206,7 @@ func sizeKeyOnly(key []byte, _ lazyValueOrErr) uint64 {
 }
 
 // addCountOnly increments number of keys from the provided iterator to the proto.RangeResponse.
-func addCountOnly(_ []byte, _ lazyValueOrErr, response *regattapb.ResponseOp_Range) {
+func addCountOnly(_ []byte, _ lazyValueOrErr, response *armadapb.ResponseOp_Range) {
 	response.Count++
 }
 
