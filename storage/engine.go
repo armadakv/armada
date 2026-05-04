@@ -94,6 +94,7 @@ func (e *Engine) Start() error {
 		return err
 	}
 	e.Manager.Start()
+	e.events.started.Store(true)
 	go e.events.dispatchEvents()
 	return nil
 }
@@ -102,7 +103,9 @@ func (e *Engine) Close() error {
 	close(e.stop)
 	e.Manager.Close()
 	e.NodeHost.Close()
-	<-e.events.donec
+	if e.events.started.Load() {
+		<-e.events.donec
+	}
 	return nil
 }
 

@@ -3,6 +3,8 @@
 package storage
 
 import (
+	"sync/atomic"
+
 	"github.com/armadakv/armada/raft/raftio"
 )
 
@@ -11,6 +13,7 @@ type events struct {
 	stopc    chan struct{}
 	donec    chan struct{}
 	engine   *Engine
+	started  atomic.Bool
 }
 
 func (e *events) dispatchEvents() {
