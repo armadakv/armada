@@ -23,19 +23,19 @@ const (
 	keyVersionHeaderPos = 0
 
 	// LatestVersion latest key version implemented.
-	LatestVersion = V1
+	LatestVersion = V2
 	// LatestVersionLen latest key version maximum length.
-	LatestVersionLen = V1KeyLen
+	LatestVersionLen = V2KeyLen
 	// UnknownVersion unknown key version (versions are numbered from 1).
 	UnknownVersion = 0
 )
 
 // LatestKeyLen computes the length of key of a latest version.
-var LatestKeyLen = V1Len
+var LatestKeyLen = V2Len
 
-var LatestMinKey = V1MinKey()
+var LatestMinKey = V2MinKey()
 
-var LatestMaxKey = V1MaxKey()
+var LatestMaxKey = V2MaxKey()
 
 var (
 	// ErrUnknownKeyVersion key version is not implemented in this build.
@@ -53,12 +53,15 @@ type Key struct {
 	KeyType Type
 	// Key data part of a Key - supported since V1.
 	Key []byte
+	// Seqno sequence number/raft index - supported since V2.
+	Seqno uint64
 }
 
 func (k *Key) reset() {
 	k.version = UnknownVersion
 	k.KeyType = TypeUnknown
 	k.Key = k.Key[0:0]
+	k.Seqno = 0
 }
 
 // Decoder the Key decoder.
@@ -97,6 +100,18 @@ func (d Decoder) Decode(key *Key) error {
 		key.Key = k.key
 		return nil
 	}
+	if header[keyVersionHeaderPos] == V2 {
+		k := keyV2{}
+		err := k.Decode(d.r)
+		if err != nil {
+			return err
+		}
+		key.version = V2
+		key.KeyType = k.keyType
+		key.Key = k.key
+		key.Seqno = k.seqno
+		return nil
+	}
 	return ErrUnknownKeyVersion
 }
 
@@ -131,6 +146,17 @@ func (e Encoder) Encode(key *Key) (int, error) {
 		}
 		return keyHeaderLen + n, nil
 	}
+	if key.version == V2 {
+		k := keyV2{}
+		k.keyType = key.KeyType
+		k.key = key.Key
+		k.seqno = key.Seqno
+		n, err := k.Encode(e.w)
+		if err != nil {
+			return keyHeaderLen, err
+		}
+		return keyHeaderLen + n, nil
+	}
 	return 0, ErrUnknownKeyVersion
 }
 
@@ -145,6 +171,15 @@ func DecodeBytes(raw []byte) (Key, error) {
 			version: V1,
 			KeyType: k.keyType,
 			Key:     k.key,
+		}, nil
+	}
+	if raw[keyVersionHeaderPos] == V2 {
+		k := v2DecodeRaw(raw[keyHeaderLen:])
+		return Key{
+			version: V2,
+			KeyType: k.keyType,
+			Key:     k.key,
+			Seqno:   k.seqno,
 		}, nil
 	}
 	return Key{}, ErrUnknownKeyVersion

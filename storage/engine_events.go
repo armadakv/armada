@@ -3,19 +3,24 @@
 package storage
 
 import (
+	"sync/atomic"
+
 	"github.com/armadakv/armada/raft/raftio"
 )
 
 type events struct {
 	eventsCh chan any
 	stopc    chan struct{}
+	donec    chan struct{}
 	engine   *Engine
+	started  atomic.Bool
 }
 
 func (e *events) dispatchEvents() {
+	defer close(e.donec)
 	for evt := range e.eventsCh {
 		e.engine.log.Infof("raft: %T %+v", evt, evt)
-		switch evt.(type) {
+		switch evt := evt.(type) {
 		case nodeHostShuttingDown:
 			close(e.stopc)
 			return
@@ -24,6 +29,7 @@ func (e *events) dispatchEvents() {
 		case nodeDeleted:
 			e.engine.Cluster.Notify()
 		case logCompacted:
+			e.engine.NotifyLogCompacted(evt.ShardID, evt.Index)
 		}
 	}
 }
@@ -279,6 +285,7 @@ func (e *events) SnapshotCompacted(info raftio.SnapshotInfo) {
 type logCompacted struct {
 	ShardID   uint64
 	ReplicaID uint64
+	Index     uint64
 }
 
 func (e *events) LogCompacted(info raftio.EntryInfo) {
@@ -288,6 +295,7 @@ func (e *events) LogCompacted(info raftio.EntryInfo) {
 	case e.eventsCh <- logCompacted{
 		ShardID:   info.ShardID,
 		ReplicaID: info.ReplicaID,
+		Index:     info.Index,
 	}:
 	}
 }

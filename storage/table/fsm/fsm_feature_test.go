@@ -13,7 +13,7 @@ import (
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/table/key"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
@@ -554,15 +554,56 @@ func testConsistency(t *testing.T, version int) {
 	var outputRecords []outputRecord
 	r.NoError(json.NewDecoder(outFile).Decode(&outputRecords))
 
+	// Iterate all raw pebble entries but skip entire user-key prefixes whose
+	// latest version is a tombstone (i.e. keys that have been logically deleted).
+	// Tombstone sentinel entries themselves are also skipped.
+	// All versions of live user keys and all system keys are compared against
+	// the golden output files in sorted order, matching the original behaviour.
+	//
+	// Background: with tombstone-based MVCC deletes the old data versions of
+	// deleted keys remain physically in pebble (that is the whole point of MVCC
+	// history retention).  Only the newest entry for a deleted key is the
+	// tombstone; older versions sit below it in seqno order.  We must skip the
+	// entire prefix for such keys so that neither the tombstone nor the historic
+	// data versions are compared against the golden files (which were generated
+	// when DeleteRange physically erased everything).
 	i := 0
 	iter, err := db.NewIter(nil)
 	r.NoError(err)
 	defer iter.Close()
-	for iter.First(); iter.Valid(); iter.Next() {
-		r.Equal(outputRecords[i].Key, iter.Key())
-		r.Equal(outputRecords[i].Value, iter.Value())
-		r.NoError(iter.Error())
-		i++
+	for iter.First(); iter.Valid(); {
+		rawKey := iter.Key()
+
+		k, decErr := key.DecodeBytes(rawKey)
+		if decErr != nil {
+			r.NoError(decErr)
+			return
+		}
+
+		if k.KeyType == key.TypeUser {
+			// Peek at the latest version (current position = highest seqno).
+			// If it is a tombstone the key is logically deleted — skip the
+			// entire prefix including any older data versions that follow.
+			if isTombstone(iter.Value()) {
+				currentKey := make([]byte, len(rawKey))
+				copy(currentKey, rawKey)
+				iterNextUserKey(iter, currentKey)
+				continue
+			}
+			// Live key: include this version in the comparison.
+			r.Equal(outputRecords[i].Key, iter.Key())
+			r.Equal(outputRecords[i].Value, iter.Value())
+			r.NoError(iter.Error())
+			i++
+			iter.Next()
+		} else {
+			// System / non-user key: include as-is.
+			r.Equal(outputRecords[i].Key, iter.Key())
+			r.Equal(outputRecords[i].Value, iter.Value())
+			r.NoError(iter.Error())
+			i++
+			iter.Next()
+		}
 	}
 	r.Len(outputRecords, i)
 	r.NoError(iter.Close())

@@ -11,8 +11,8 @@ import (
 
 	rp "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/regattapb"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,11 +23,11 @@ func (e errorReader) Get(key []byte) (value []byte, closer io.Closer, err error)
 }
 
 func (e errorReader) NewIter(o *pebble.IterOptions) (*pebble.Iterator, error) {
-	return &pebble.Iterator{}, nil
+	return nil, errors.New("error")
 }
 
 func (e errorReader) NewIterWithContext(ctx context.Context, o *pebble.IterOptions) (*pebble.Iterator, error) {
-	return &pebble.Iterator{}, nil
+	return nil, errors.New("error")
 }
 
 func (e errorReader) Close() error {
@@ -277,10 +277,15 @@ func Test_handleTxn(t *testing.T) {
 	r.NoError(err)
 	count := 0
 	for iter.First(); iter.Valid(); iter.Next() {
+		// Skip MVCC tombstone entries — they are internal deletion markers and
+		// are not visible to readers; only count live (non-tombstone) entries.
+		if isTombstone(iter.Value()) {
+			continue
+		}
 		count++
 		r.Equal("value", string(iter.Value()))
 	}
-	// just keys key_4 and key_5 should remain
+	// just keys key_4 and key_5 should remain as live entries
 	r.Equal(2, count)
 
 	// Check the system keys.

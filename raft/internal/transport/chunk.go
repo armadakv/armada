@@ -19,6 +19,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/armadakv/armada/vfs"
 
@@ -82,12 +83,14 @@ type Chunk struct {
 	tick      uint64
 	gcTick    uint64
 	mu        sync.Mutex
+	stopCh    chan struct{}
+	wg        sync.WaitGroup
 	validate  bool
 }
 
 // NewChunk creates and returns a new snapshot chunks instance.
 func NewChunk(onReceive func(pb.MessageBatch), confirm func(uint64, uint64, uint64), dir server.SnapshotDirFunc, did uint64, fs vfs.FS) *Chunk {
-	return &Chunk{
+	c := &Chunk{
 		did:       did,
 		validate:  true,
 		onReceive: onReceive,
@@ -98,7 +101,23 @@ func NewChunk(onReceive func(pb.MessageBatch), confirm func(uint64, uint64, uint
 		gcTick:    gcIntervalTick,
 		dir:       dir,
 		fs:        fs,
+		stopCh:    make(chan struct{}),
 	}
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				c.Tick()
+			case <-c.stopCh:
+				return
+			}
+		}
+	}()
+	return c
 }
 
 // Add adds a received trunk to chunks.
@@ -126,6 +145,8 @@ func (c *Chunk) Tick() {
 
 // Close closes the chunks instance.
 func (c *Chunk) Close() {
+	close(c.stopCh)
+	c.wg.Wait()
 	tracked := c.getTracked()
 	for key, td := range tracked {
 		func() {

@@ -14,7 +14,7 @@ import (
 	rl "github.com/armadakv/armada/log"
 	"github.com/armadakv/armada/regattaserver"
 	"github.com/armadakv/armada/storage"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )

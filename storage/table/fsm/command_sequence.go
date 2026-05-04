@@ -11,7 +11,7 @@ type commandSequence struct {
 }
 
 func (c commandSequence) handle(ctx *updateContext) (UpdateResult, *regattapb.CommandResult, error) {
-	res := &regattapb.CommandResult{Revision: ctx.index}
+	res := &regattapb.CommandResult{Revision: ctx.seqno()}
 	for _, cmd := range c.Sequence {
 		_, cmdRes, err := wrapCommand(cmd).handle(ctx)
 		if err != nil {

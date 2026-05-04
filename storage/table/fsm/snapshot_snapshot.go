@@ -14,9 +14,9 @@ import (
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/storage/errors"
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 type snapshotContext struct {
@@ -175,6 +175,7 @@ read:
 	old := s.fsm.pebble.Swap(db)
 	s.fsm.metrics.applied.Store(idx)
 	s.fsm.log.Info("snapshot recovery finished")
+	s.fsm.notifyRecovered()
 
 	if old != nil {
 		_ = old.Close()

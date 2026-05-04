@@ -88,7 +88,7 @@ func runChunkTest(t *testing.T,
 	}()
 	defer leaktest.AfterTest(t)()
 	handler := newTestMessageHandler()
-	trans, _, stopper, tt := newTestTransport(handler, false, fs)
+	trans, _, tt := newTestTransport(handler, false, fs)
 	defer func() {
 		if err := trans.env.Close(); err != nil {
 			t.Fatalf("failed to stop the env %v", err)
@@ -99,10 +99,11 @@ func runChunkTest(t *testing.T,
 			t.Fatalf("failed to close the transport module %v", err)
 		}
 	}()
-	defer stopper.Stop()
+
 	defer tt.cleanup()
 	chunks := NewChunk(trans.handleRequest,
 		trans.snapshotReceived, trans.dir, trans.nhConfig.GetDeploymentID(), fs)
+	defer chunks.Close()
 	ts := getTestChunk()
 	snapDir := chunks.dir(ts[0].ShardID, ts[0].ReplicaID)
 	if err := fs.MkdirAll(snapDir, 0o755); err != nil {

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -206,7 +206,7 @@ func (p *metrics) Collect(ch chan<- prometheus.Metric) {
 	total := p.collected.Total()
 	p.totalWriteAmplification.Set(total.WriteAmp())
 	p.totalWriteAmplification.Collect(ch)
-	p.totalBytesIn.Set(float64(total.BytesIn))
+	p.totalBytesIn.Set(float64(total.TableBytesIn))
 	p.totalBytesIn.Collect(ch)
 
 	compact := p.collected.Compact

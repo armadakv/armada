@@ -3,26 +3,18 @@
 package pebble
 
 import (
+	"bytes"
 	"fmt"
 	"time"
 
-	"github.com/cockroachdb/pebble"
-	"github.com/cockroachdb/pebble/bloom"
-	"github.com/cockroachdb/pebble/sstable"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/armadakv/armada/storage/table/key"
+	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/bloom"
+	"github.com/cockroachdb/pebble/v2/sstable"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 const (
-	// levels is number of Pebble levels.
-	levels = 7
-	// targetFileSizeBase base file size (in L0).
-	targetFileSizeBase = 16 * 1024 * 1024
-	// blockSize FS block size.
-	blockSize = 32 * 1024
-	// indexBlockSize is a size of index block within each sstable.
-	indexBlockSize = 256 * 1024
-	// targetFileSizeGrowFactor the factor of growth of targetFileSizeBase between levels.
-	targetFileSizeGrowFactor = 2
 	// writeBufferSize inmemory write buffer size.
 	writeBufferSize = 16 * 1024 * 1024
 	// maxWriteBufferNumber number of write buffers.
@@ -38,62 +30,74 @@ const (
 )
 
 func split(b []byte) int {
+	// For V2 keys, the seqno suffix (last V2SeqLen bytes) is the MVCC version.
+	// The split point is everything before the seqno (the null separator remains
+	// in the prefix), enabling SeekPrefixGE to find the latest version of a user key.
+	// Minimum meaningful V2 key: 4 (header) + 1 (keyType) + 0 (userKey) + 1 (sep) + 8 (seqno) = 14 bytes.
+	if len(b) > key.V2SeqLen+key.V2SepLen+5 && b[0] == key.V2 {
+		return len(b) - key.V2SeqLen
+	}
 	return len(b)
 }
 
 func DefaultOptions() *pebble.Options {
-	lvlOpts := make([]pebble.LevelOptions, levels)
-	sz := targetFileSizeBase
-	for l := int64(0); l < levels; l++ {
-		opt := pebble.LevelOptions{
-			BlockSize: blockSize,
-			Compression: func() pebble.Compression {
-				return pebble.SnappyCompression
-			},
-			FilterPolicy:   bloom.FilterPolicy(10),
-			FilterType:     pebble.TableFilter,
-			IndexBlockSize: indexBlockSize,
-			TargetFileSize: int64(sz),
-		}
-		sz *= targetFileSizeGrowFactor
-		opt.EnsureDefaults()
-		lvlOpts[l] = opt
-	}
-	// Do not create bloom filters for the last level (i.e. the largest level
-	// which contains data in the LSM store). This configuration reduces the size
-	// of the bloom filters by 10x. This is significant given that bloom filters
-	// require 1.25 bytes (10 bits) per key which can translate into 100s of megabytes of
-	// memory given typical key and value sizes. The downside is that bloom
-	// filters will only be usable on the higher levels, but that seems
-	// acceptable. We'll achieve 80-90% of the benefit of having bloom filters on every level for only 10% of the
-	// memory cost.
-	lvlOpts[len(lvlOpts)-1].FilterPolicy = nil
 	opts := &pebble.Options{
-		FormatMajorVersion:          pebble.FormatVirtualSSTables,
+		FormatMajorVersion:          pebble.FormatValueSeparation,
 		L0CompactionFileThreshold:   l0FileNumCompactionTrigger,
 		L0StopWritesThreshold:       l0StopWritesTrigger,
 		LBaseMaxBytes:               maxBytesForLevelBase,
-		Levels:                      lvlOpts,
 		MemTableSize:                writeBufferSize,
 		MemTableStopWritesThreshold: maxWriteBufferNumber,
-		DisableWAL:                  true,
 		MaxOpenFiles:                maxOpenFiles,
 		Comparer: &pebble.Comparer{
-			Compare:            pebble.DefaultComparer.Compare,
-			Equal:              pebble.DefaultComparer.Equal,
-			AbbreviatedKey:     pebble.DefaultComparer.AbbreviatedKey,
-			FormatKey:          pebble.DefaultComparer.FormatKey,
-			FormatValue:        pebble.DefaultComparer.FormatValue,
-			Separator:          pebble.DefaultComparer.Separator,
-			Split:              split,
-			Successor:          pebble.DefaultComparer.Successor,
-			ImmediateSuccessor: pebble.DefaultComparer.ImmediateSuccessor,
-			Name:               pebble.DefaultComparer.Name,
+			// ComparePointSuffixes and CompareRangeSuffixes: suffixes are
+			// 8-byte inverted big-endian seqnos, so plain bytes.Compare
+			// provides correct ordering (higher seqno → smaller bytes → sorts first).
+			ComparePointSuffixes: bytes.Compare,
+			CompareRangeSuffixes: bytes.Compare,
+			Compare:              pebble.DefaultComparer.Compare,
+			Equal:                pebble.DefaultComparer.Equal,
+			AbbreviatedKey:       pebble.DefaultComparer.AbbreviatedKey,
+			FormatKey:            pebble.DefaultComparer.FormatKey,
+			FormatValue:          pebble.DefaultComparer.FormatValue,
+			Separator:            pebble.DefaultComparer.Separator,
+			Split:                split,
+			Successor:            pebble.DefaultComparer.Successor,
+			ImmediateSuccessor:   pebble.DefaultComparer.ImmediateSuccessor,
+			Name:                 "armada.v2",
 		},
+	}
+	opts.Levels[0] = pebble.LevelOptions{
+		BlockSize:      32 << 10,  // 32 KB
+		IndexBlockSize: 256 << 10, // 256 KB
+		FilterPolicy:   bloom.FilterPolicy(10),
+	}
+	opts.Levels[0].EnsureL0Defaults()
+	for i := 1; i < len(opts.Levels); i++ {
+		l := &opts.Levels[i]
+		l.BlockSize = 32 << 10       // 32 KB
+		l.IndexBlockSize = 256 << 10 // 256 KB
+		l.FilterPolicy = bloom.FilterPolicy(10)
+		l.EnsureL1PlusDefaults(&opts.Levels[i-1])
+	}
+	opts.AllocatorSizeClasses = []int{
+		16384,
+		20480, 24576, 28672, 32768,
+		40960, 49152, 57344, 65536,
+		81920, 98304, 114688, 131072,
 	}
 	opts.EnsureDefaults()
 	opts.Experimental.EnableValueBlocks = func() bool { return true }
 	opts.Experimental.IngestSplit = func() bool { return true }
+	opts.Experimental.ValueSeparationPolicy = func() pebble.ValueSeparationPolicy {
+		return pebble.ValueSeparationPolicy{
+			Enabled:               true,
+			MinimumSize:           256,
+			MaxBlobReferenceDepth: 10,
+			RewriteMinimumAge:     5 * time.Minute,
+			TargetGarbageRatio:    0.2,
+		}
+	}
 	return opts
 }
 
@@ -157,7 +161,7 @@ func OpenDB(dbdir string, options ...Option) (*pebble.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error opening DB: %w", err)
 	}
-	err = db.RatchetFormatMajorVersion(pebble.FormatVirtualSSTables)
+	err = db.RatchetFormatMajorVersion(pebble.FormatValueSeparation)
 	if err != nil {
 		return nil, fmt.Errorf("error ratcheting DB: %w", err)
 	}

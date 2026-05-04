@@ -14,7 +14,7 @@ import (
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/storage/errors"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
 type checkpointContext struct {
@@ -178,6 +178,7 @@ func (c *checkpoint) recover(r io.Reader, stopc <-chan struct{}) error {
 	old := c.fsm.pebble.Swap(db)
 	c.fsm.metrics.applied.Store(idx)
 	c.fsm.log.Info("snapshot recovery finished")
+	c.fsm.notifyRecovered()
 
 	if old != nil {
 		_ = old.Close()

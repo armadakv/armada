@@ -6,7 +6,9 @@ import (
 	"context"
 	"io"
 	"iter"
+	"time"
 
+	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/client"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/regattapb"
@@ -65,9 +67,20 @@ func proposeTable[S any](t *ActiveTable, ctx context.Context, cmd *regattapb.Com
 	if err != nil {
 		return *new(S), 0, err
 	}
-	res, err := t.nh.SyncPropose(ctx, t.session, bytes)
-	if err != nil {
-		return *new(S), 0, err
+	var res sm.Result
+	for {
+		res, err = t.nh.SyncPropose(ctx, t.session, bytes)
+		if err == nil {
+			break
+		}
+		if !raft.IsTempError(err) {
+			return *new(S), 0, err
+		}
+		select {
+		case <-ctx.Done():
+			return *new(S), 0, err
+		case <-time.After(50 * time.Millisecond):
+		}
 	}
 	pr := &regattapb.CommandResult{}
 	if err := pr.UnmarshalVTUnsafe(res.Data); err != nil {
@@ -213,6 +226,12 @@ func (t *ActiveTable) Snapshot(ctx context.Context, writer io.Writer) (*fsm.Snap
 	return readTable[*fsm.SnapshotResponse](t, ctx, true, fsm.SnapshotRequest{Writer: writer, Stopper: ctx.Done()})
 }
 
+// IncrementalSnapshot streams only the changes (puts and deletes) with seqno > sinceIndex to the provided writer.
+// The caller must ensure sinceIndex is above the table's GC horizon, otherwise the delta may be incomplete.
+func (t *ActiveTable) IncrementalSnapshot(ctx context.Context, writer io.Writer, sinceIndex uint64) (*fsm.SnapshotResponse, error) {
+	return readTable[*fsm.SnapshotResponse](t, ctx, true, fsm.IncrementalSnapshotRequest{Writer: writer, Stopper: ctx.Done(), SinceIndex: sinceIndex})
+}
+
 // LocalIndex returns local index.
 func (t *ActiveTable) LocalIndex(ctx context.Context, linearizable bool) (*fsm.IndexResponse, error) {
 	return readTable[*fsm.IndexResponse](t, ctx, linearizable, fsm.LocalIndexRequest{})
@@ -221,6 +240,13 @@ func (t *ActiveTable) LocalIndex(ctx context.Context, linearizable bool) (*fsm.I
 // LeaderIndex returns leader index.
 func (t *ActiveTable) LeaderIndex(ctx context.Context, linearizable bool) (*fsm.IndexResponse, error) {
 	return readTable[*fsm.IndexResponse](t, ctx, linearizable, fsm.LeaderIndexRequest{})
+}
+
+// GCHorizon returns the current GC horizon of the table's FSM. Any MVCC
+// revision strictly below this value has been (or will be) reclaimed by GC.
+// Reads at a revision below the horizon may return ErrCompacted.
+func (t *ActiveTable) GCHorizon(ctx context.Context) (*fsm.IndexResponse, error) {
+	return readTable[*fsm.IndexResponse](t, ctx, false, fsm.GCHorizonRequest{})
 }
 
 // Reset resets the leader index to 0.

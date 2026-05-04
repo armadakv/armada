@@ -12,8 +12,106 @@ import (
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util/iterx"
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
+
+// commandIncrementalSnapshot streams only the changes (puts and deletes) with
+// seqno > sinceIndex into w, encoded as proto Commands — identical wire format
+// to commandSnapshot so the same chunked framing on the receiver side works.
+//
+// The function walks the raw physical V2 key space (all MVCC versions) and for
+// each distinct user key emits the latest version whose seqno > sinceIndex:
+//   - live value  → Command_PUT
+//   - tombstone   → Command_DELETE
+//
+// Keys whose latest version has seqno <= sinceIndex are skipped entirely —
+// they have not changed since the follower's last snapshot.
+//
+// System keys are always skipped; the caller is responsible for checking that
+// sinceIndex > gcHorizon before calling (otherwise compacted versions may be
+// missing and the delta would be incomplete).
+func commandIncrementalSnapshot(reader pebble.Reader, tableName string, sinceIndex uint64, w io.Writer, stopc <-chan struct{}) (uint64, error) {
+	iter, err := reader.NewIter(nil)
+	if err != nil {
+		return 0, err
+	}
+	defer iter.Close()
+
+	idx, err := readLocalIndex(reader, sysLocalIndex)
+	if err != nil {
+		return 0, err
+	}
+
+	var buffer []byte
+	for iter.First(); iter.Valid(); {
+		select {
+		case <-stopc:
+			return 0, sm.ErrSnapshotStopped
+		default:
+			k, err := key.DecodeBytes(iter.Key())
+			if err != nil {
+				return 0, err
+			}
+
+			// Only consider user keys; advance past all system keys.
+			if k.KeyType != key.TypeUser {
+				iter.Next()
+				continue
+			}
+
+			currentKey := make([]byte, len(iter.Key()))
+			copy(currentKey, iter.Key())
+
+			// The seqno of this physical key is the MVCC version (= leaderIndex
+			// at the time of the write). Because higher seqnos sort first within
+			// a prefix, iter.First() / SeekGE always lands on the latest version,
+			// so the very first key we see for this user-key prefix is the one
+			// we need to inspect.
+			seqno := key.DecodeV2Seqno(iter.Key())
+
+			if seqno > sinceIndex {
+				// This key changed after sinceIndex — emit it.
+				if isTombstone(iter.Value()) {
+					buffer, err = writeDeleteCommand(tableName, k.Key, buffer)
+				} else {
+					buffer, err = writeCommand(tableName, k.Key, iter.Value(), buffer)
+				}
+				if err != nil {
+					return 0, err
+				}
+				if _, err := w.Write(buffer); err != nil {
+					return 0, err
+				}
+			}
+
+			// Skip all remaining MVCC versions of this user key.
+			if !iterNextUserKey(iter, currentKey) {
+				break
+			}
+		}
+	}
+	return idx, nil
+}
+
+// writeDeleteCommand writes a DELETE proto.Command for key into (optionally provided) buffer.
+func writeDeleteCommand(tableName string, userKey []byte, buffer []byte) ([]byte, error) {
+	cmd := regattapb.CommandFromVTPool()
+	defer cmd.ReturnToVTPool()
+	cmd.Table = []byte(tableName)
+	cmd.Type = regattapb.Command_DELETE
+	cmd.Kv = &regattapb.KeyValue{
+		Key: userKey,
+	}
+	size := cmd.SizeVT()
+	if cap(buffer) < size {
+		buffer = make([]byte, size*2)
+	}
+	n, err := cmd.MarshalToSizedBufferVT(buffer[:size])
+	if err != nil {
+		return buffer, err
+	}
+	return buffer[:n], err
+}
 
 const maxRangeSize uint64 = (4 * 1024 * 1024) - 1024 // 4MiB - 1KiB sentinel.
 
@@ -30,7 +128,7 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 	}
 
 	var buffer []byte
-	for iter.First(); iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); {
 		select {
 		case <-stopc:
 			return 0, sm.ErrSnapshotStopped
@@ -40,6 +138,13 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 				return 0, err
 			}
 			if k.KeyType == key.TypeUser {
+				// Skip tombstoned keys — they have been deleted and must not appear in snapshots.
+				currentKey := make([]byte, len(iter.Key()))
+				copy(currentKey, iter.Key())
+				if isTombstone(iter.Value()) {
+					iterNextUserKey(iter, currentKey)
+					continue
+				}
 				buffer, err = writeCommand(tableName, k.Key, iter.Value(), buffer)
 				if err != nil {
 					return 0, err
@@ -47,6 +152,12 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 				if _, err := w.Write(buffer); err != nil {
 					return 0, err
 				}
+				// Skip older MVCC versions of this user key (latest version first).
+				// iterNextUserKey is used instead of NextPrefix because NextPrefix
+				// is disallowed when the iterator has a versioned MVCC upper bound.
+				iterNextUserKey(iter, currentKey)
+			} else {
+				iter.Next()
 			}
 		}
 	}
@@ -109,7 +220,7 @@ func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatt
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
 
-	err := encodeUserKey(keyBuf, req.Key)
+	err := encodeUserKey(keyBuf, req.Key, ^uint64(0))
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +233,14 @@ func singleLookup(reader pebble.Reader, req *regattapb.RequestOp_Range) (*regatt
 		_ = iter.Close()
 	}()
 	found := iter.SeekPrefixGE(keyBuf.Bytes())
+	// SeekPrefixGE with the V2 split function lands on the latest version of the key
+	// (highest seqno sorts first due to bit-inversion encoding).
 	if !found {
+		return &regattapb.ResponseOp_Range{}, nil
+	}
+
+	// If the latest version is a tombstone the key has been deleted.
+	if isTombstone(iter.Value()) {
 		return &regattapb.ResponseOp_Range{}, nil
 	}
 
@@ -166,6 +284,15 @@ type SnapshotRequest struct {
 	Stopper <-chan struct{}
 }
 
+// IncrementalSnapshotRequest to write an incremental Command snapshot into provided writer.
+// Only changes (puts and deletes) with seqno > SinceIndex are emitted.
+// The caller must ensure SinceIndex > gcHorizon, otherwise the delta may be incomplete.
+type IncrementalSnapshotRequest struct {
+	Writer     io.Writer
+	Stopper    <-chan struct{}
+	SinceIndex uint64
+}
+
 // SnapshotResponse returns local index to which the snapshot was created.
 type SnapshotResponse struct {
 	Index uint64
@@ -189,3 +316,8 @@ type PathRequest struct{}
 type PathResponse struct {
 	Path string
 }
+
+// GCHorizonRequest reads the current GC horizon from the FSM. The returned
+// IndexResponse.Index is the highest Raft index at which a Command_GC has been
+// applied; any MVCC revision strictly below this value may have been reclaimed.
+type GCHorizonRequest struct{}

@@ -9,7 +9,7 @@ import (
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/regattapb"
 	"github.com/armadakv/armada/util"
-	"github.com/cockroachdb/pebble/vfs"
+	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	pb "google.golang.org/protobuf/proto"
@@ -26,8 +26,9 @@ const (
 )
 
 var (
-	one = uint64(1)
-	two = uint64(2)
+	one   = uint64(1)
+	two   = uint64(2)
+	three = uint64(3)
 )
 
 func TestSM_Open(t *testing.T) {
@@ -396,7 +397,7 @@ func TestSM_Update(t *testing.T) {
 					{
 						Index: 2,
 						Cmd: mustMarshallProto(&regattapb.Command{
-							LeaderIndex: &one,
+							LeaderIndex: &two,
 							Table:       []byte("test"),
 							Type:        regattapb.Command_PUT,
 							Kv: &regattapb.KeyValue{
@@ -408,7 +409,7 @@ func TestSM_Update(t *testing.T) {
 					{
 						Index: 3,
 						Cmd: mustMarshallProto(&regattapb.Command{
-							LeaderIndex: &one,
+							LeaderIndex: &three,
 							Table:       []byte("test"),
 							Type:        regattapb.Command_DELETE,
 							Kv:          &regattapb.KeyValue{Key: []byte("test")},
@@ -455,7 +456,7 @@ func TestSM_Update(t *testing.T) {
 					},
 				},
 			},
-			wantLeaderIndex: 1,
+			wantLeaderIndex: 3,
 		},
 		{
 			name: "successful delete all range",
@@ -479,7 +480,7 @@ func TestSM_Update(t *testing.T) {
 					{
 						Index: 2,
 						Cmd: mustMarshallProto(&regattapb.Command{
-							LeaderIndex: &one,
+							LeaderIndex: &two,
 							Table:       []byte("test"),
 							Type:        regattapb.Command_PUT,
 							Kv: &regattapb.KeyValue{
@@ -491,7 +492,7 @@ func TestSM_Update(t *testing.T) {
 					{
 						Index: 3,
 						Cmd: mustMarshallProto(&regattapb.Command{
-							LeaderIndex: &one,
+							LeaderIndex: &three,
 							Table:       []byte("test"),
 							Type:        regattapb.Command_DELETE,
 							Kv:          &regattapb.KeyValue{Key: []byte("test")},
@@ -538,7 +539,7 @@ func TestSM_Update(t *testing.T) {
 					},
 				},
 			},
-			wantLeaderIndex: 1,
+			wantLeaderIndex: 3,
 		},
 		{
 			name: "successful delete single with count",
@@ -562,7 +563,7 @@ func TestSM_Update(t *testing.T) {
 					{
 						Index: 2,
 						Cmd: mustMarshallProto(&regattapb.Command{
-							LeaderIndex: &one,
+							LeaderIndex: &two,
 							Table:       []byte("test"),
 							Type:        regattapb.Command_DELETE,
 							Kv:          &regattapb.KeyValue{Key: []byte("test1")},
@@ -597,7 +598,7 @@ func TestSM_Update(t *testing.T) {
 					},
 				},
 			},
-			wantLeaderIndex: 1,
+			wantLeaderIndex: 2,
 		},
 		{
 			name: "successful delete all range with count",
@@ -621,7 +622,7 @@ func TestSM_Update(t *testing.T) {
 					{
 						Index: 2,
 						Cmd: mustMarshallProto(&regattapb.Command{
-							LeaderIndex: &one,
+							LeaderIndex: &two,
 							Table:       []byte("test"),
 							Type:        regattapb.Command_PUT,
 							Kv: &regattapb.KeyValue{
@@ -633,7 +634,7 @@ func TestSM_Update(t *testing.T) {
 					{
 						Index: 3,
 						Cmd: mustMarshallProto(&regattapb.Command{
-							LeaderIndex: &one,
+							LeaderIndex: &three,
 							Table:       []byte("test"),
 							Type:        regattapb.Command_DELETE,
 							Kv:          &regattapb.KeyValue{Key: []byte{0}},
@@ -681,7 +682,7 @@ func TestSM_Update(t *testing.T) {
 					},
 				},
 			},
-			wantLeaderIndex: 1,
+			wantLeaderIndex: 3,
 		},
 	}
 	for _, tt := range tests {

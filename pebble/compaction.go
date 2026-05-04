@@ -8,7 +8,7 @@ import (
 
 	"github.com/benbjohnson/clock"
 
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 )
 
 type ConcurrencyLimitScheduler struct {

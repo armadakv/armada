@@ -98,13 +98,21 @@ func (t TLSInfo) baseConfig() (*tls.Config, error) {
 		}
 	}
 	if verifyCertificate != nil {
-		cfg.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		verify := func(verifiedChains [][]*x509.Certificate) error {
 			for _, chains := range verifiedChains {
 				if len(chains) != 0 {
 					return verifyCertificate(chains[0])
 				}
 			}
 			return errors.New("client certificate authentication failed")
+		}
+		cfg.VerifyPeerCertificate = func(_ [][]byte, verifiedChains [][]*x509.Certificate) error {
+			return verify(verifiedChains)
+		}
+		// VerifyConnection is also set so that resumed TLS sessions (which skip
+		// VerifyPeerCertificate) still run the custom certificate check.
+		cfg.VerifyConnection = func(cs tls.ConnectionState) error {
+			return verify(cs.VerifiedChains)
 		}
 	}
 

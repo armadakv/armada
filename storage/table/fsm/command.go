@@ -7,7 +7,7 @@ import (
 
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/regattapb"
-	"github.com/cockroachdb/pebble"
+	"github.com/cockroachdb/pebble/v2"
 	pb "google.golang.org/protobuf/proto"
 )
 
@@ -16,6 +16,17 @@ type updateContext struct {
 	db          *pebble.DB
 	index       uint64
 	leaderIndex *uint64
+}
+
+// seqno returns the sequence number to use when encoding MVCC keys.
+// On the leader, leaderIndex and index are identical. On followers, the
+// leaderIndex is used so that every region stamps the same seqno into the
+// same logical write, giving a consistent MVCC version across the cluster.
+func (c *updateContext) seqno() uint64 {
+	if c.leaderIndex != nil {
+		return *c.leaderIndex
+	}
+	return c.index
 }
 
 func (c *updateContext) EnsureIndexed() error {
@@ -85,6 +96,8 @@ func wrapCommand(cmd *regattapb.Command) command {
 		return commandSequence{cmd}
 	case regattapb.Command_DUMMY:
 		return commandDummy{}
+	case regattapb.Command_GC:
+		return commandGC{cmd}
 	}
 	panic("unknown command type")
 }

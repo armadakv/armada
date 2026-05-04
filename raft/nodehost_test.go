@@ -659,14 +659,14 @@ func runNodeHostTestDC(t *testing.T, f func(), removeDir bool, fs vfs.FS) {
 	reportLeakedFD(fs, t)
 }
 
-func TestTCPTransportIsUsedByDefault(t *testing.T) {
+func TestQUICTransportIsUsedByDefault(t *testing.T) {
 	fs := vfs.Default
 	to := &testOption{
 		tf: func(nh *NodeHost) {
 			tt := nh.transport.(*transport.Transport)
-			if tt.GetTrans().Name() != transport.TCPTransportName {
+			if tt.GetTrans().Name() != transport.QUICTransportName {
 				t.Errorf("transport type name %s, expect %s",
-					tt.GetTrans().Name(), transport.TCPTransportName)
+					tt.GetTrans().Name(), transport.QUICTransportName)
 			}
 		},
 		noElection: true,
@@ -1565,41 +1565,51 @@ func TestInvalidContextDeadlineIsReported(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to get regular session")
 			}
+			// isDeadlineTooSmall returns true for both ErrTimeoutTooSmall (deadline
+			// is still in the future but smaller than 1 RTT) and ErrInvalidDeadline
+			// (deadline has already passed by the time the call is made). Both
+			// indicate that the caller-provided deadline is too tight, which is
+			// what this test is verifying. On slow CI runners (e.g. macOS) the
+			// 8 ms window may expire before the function body executes, producing
+			// ErrInvalidDeadline rather than ErrTimeoutTooSmall.
+			isDeadlineTooSmall := func(err error) bool {
+				return err == ErrTimeoutTooSmall || err == ErrInvalidDeadline
+			}
 			// 8 * time.Millisecond is smaller than the smallest possible RTTMillisecond
 			ctx, cancel := context.WithTimeout(context.Background(), 8*time.Millisecond)
 			defer cancel()
 			cs := nh.GetNoOPSession(1)
 			_, err = nh.SyncPropose(ctx, cs, make([]byte, 1))
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 			_, err = nh.SyncRead(ctx, 1, nil)
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 			_, err = nh.SyncGetSession(ctx, 1)
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 			err = nh.SyncCloseSession(ctx, rcs)
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 			_, err = nh.SyncRequestSnapshot(ctx, 1, DefaultSnapshotOption)
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 			err = nh.SyncRequestDeleteReplica(ctx, 1, 1, 0)
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 			err = nh.SyncRequestAddReplica(ctx, 1, 100, "a1.com:12345", 0)
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 			err = nh.SyncRequestAddNonVoting(ctx, 1, 100, "a1.com:12345", 0)
-			if err != ErrTimeoutTooSmall {
-				t.Errorf("failed to return ErrTimeoutTooSmall, %v", err)
+			if !isDeadlineTooSmall(err) {
+				t.Errorf("failed to return ErrTimeoutTooSmall or ErrInvalidDeadline, %v", err)
 			}
 		},
 	}

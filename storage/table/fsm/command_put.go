@@ -20,7 +20,7 @@ func (c commandPut) handle(ctx *updateContext) (UpdateResult, *regattapb.Command
 		return ResultFailure, nil, err
 	}
 	return ResultSuccess, &regattapb.CommandResult{
-		Revision:  ctx.index,
+		Revision:  ctx.seqno(),
 		Responses: []*regattapb.ResponseOp{wrapResponseOp(resp)},
 	}, nil
 }
@@ -29,7 +29,7 @@ func handlePut(ctx *updateContext, put *regattapb.RequestOp_Put) (*regattapb.Res
 	resp := &regattapb.ResponseOp_Put{}
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
-	if err := encodeUserKey(keyBuf, put.Key); err != nil {
+	if err := encodeUserKey(keyBuf, put.Key, ctx.seqno()); err != nil {
 		return nil, err
 	}
 	if put.PrevKv {
@@ -71,7 +71,7 @@ func (c commandPutBatch) handle(ctx *updateContext) (UpdateResult, *regattapb.Co
 		res = append(res, wrapResponseOp(put))
 	}
 	return ResultSuccess, &regattapb.CommandResult{
-		Revision:  ctx.index,
+		Revision:  ctx.seqno(),
 		Responses: res,
 	}, nil
 }

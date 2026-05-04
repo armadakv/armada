@@ -21,6 +21,28 @@ func TestDecoder_Decode(t *testing.T) {
 		wantKey Key
 	}{
 		{
+			name: "Decode - V2 User key with seqno=1",
+			// header [0x02 0x00 0x00 0x00] + keyType(User) + "test" + 0x00 separator + encoded seqno=1 [FF FF FF FF FF FF FF FE]
+			fields: fields{r: bytes.NewBuffer(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe))},
+			wantKey: Key{
+				version: V2,
+				KeyType: TypeUser,
+				Key:     []byte("test"),
+				Seqno:   1,
+			},
+		},
+		{
+			name: "Decode - V2 User key with seqno=0",
+			// seqno=0 encoded as all 0xFF; null separator before seqno
+			fields: fields{r: bytes.NewBuffer(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff))},
+			wantKey: Key{
+				version: V2,
+				KeyType: TypeUser,
+				Key:     []byte("test"),
+				Seqno:   0,
+			},
+		},
+		{
 			name:   "Decode - V1 System key",
 			fields: fields{r: bytes.NewBuffer(append([]byte{V1, 0x0, 0x0, 0x0, byte(TypeSystem)}, []byte("test")...))},
 			wantKey: Key{
@@ -122,7 +144,34 @@ func TestEncoder_Encode(t *testing.T) {
 				KeyType: TypeUser,
 				Key:     []byte("test"),
 			}},
-			wantWriter: append([]byte{LatestVersion, 0x0, 0x0, 0x0, byte(TypeUser)}, []byte("test")...),
+			// LatestVersion is now V2: header [0x02 0x00 0x00 0x00] + keyType + userKey + 0x00 sep + seqno(8B).
+			// seqno=0 → ^uint64(0)=MaxUint64 big-endian → [FF FF FF FF FF FF FF FF].
+			wantWriter: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
+		},
+		{
+			name:   "Encode - V2 User key with seqno",
+			fields: fields{w: bytes.NewBuffer(make([]byte, 0, V2KeyLen))},
+			args: args{key: &Key{
+				version: V2,
+				KeyType: TypeUser,
+				Key:     []byte("test"),
+				Seqno:   1,
+			}},
+			// seqno=1 → ^uint64(1)=0xFFFFFFFFFFFFFFFE big-endian → [FF FF FF FF FF FF FF FE].
+			// null separator (0x00) sits between user key and seqno.
+			wantWriter: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe),
+		},
+		{
+			name:   "Encode - V2 System key",
+			fields: fields{w: bytes.NewBuffer(make([]byte, 0, V2KeyLen))},
+			args: args{key: &Key{
+				version: V2,
+				KeyType: TypeSystem,
+				Key:     []byte("index"),
+				Seqno:   0,
+			}},
+			// null separator (0x00) sits between user key and seqno.
+			wantWriter: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeSystem)}, append([]byte("index"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
 		},
 	}
 	for _, tt := range tests {
@@ -216,6 +265,30 @@ func TestDecodeRaw(t *testing.T) {
 				version: V1,
 				KeyType: TypeUser,
 				Key:     []byte("test"),
+			},
+			wantErr: require.NoError,
+		},
+		{
+			name: "v2 User key with seqno=1",
+			// null separator (0x00) between user key and seqno
+			args: args{raw: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)},
+			want: Key{
+				version: V2,
+				KeyType: TypeUser,
+				Key:     []byte("test"),
+				Seqno:   1,
+			},
+			wantErr: require.NoError,
+		},
+		{
+			name: "v2 System key with seqno=0",
+			// null separator (0x00) between user key and seqno
+			args: args{raw: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeSystem)}, append([]byte("index"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)},
+			want: Key{
+				version: V2,
+				KeyType: TypeSystem,
+				Key:     []byte("index"),
+				Seqno:   0,
 			},
 			wantErr: require.NoError,
 		},
