@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"

@@ -15,8 +15,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/armadakv/armada/raft/client"
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/raft/client"
 	"github.com/armadakv/armada/replication/snapshot"
 	"github.com/armadakv/armada/storage"
 	serrors "github.com/armadakv/armada/storage/errors"

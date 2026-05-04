@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	gvfs "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/armadaserver"
+	gvfs "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/storage"
 	lvfs "github.com/armadakv/armada/vfs"
 	"github.com/benbjohnson/clock"

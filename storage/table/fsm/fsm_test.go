@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"testing"
 
-	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/armadapb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/util"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"

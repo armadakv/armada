@@ -14,9 +14,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"

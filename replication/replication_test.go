@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/armadakv/armada/raft"
-	"github.com/armadakv/armada/raft/raftpb"
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/armadaserver"
+	"github.com/armadakv/armada/raft"
+	"github.com/armadakv/armada/raft/raftpb"
 	"github.com/armadakv/armada/replication/snapshot"
 	"github.com/armadakv/armada/storage"
 	"github.com/armadakv/armada/vfs"

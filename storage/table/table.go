@@ -8,10 +8,10 @@ import (
 	"iter"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/client"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/armadapb"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/armadakv/armada/storage/table/key"

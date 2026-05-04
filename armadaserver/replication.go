@@ -12,9 +12,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftpb"
-	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/replication/snapshot"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table"

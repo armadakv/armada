@@ -8,8 +8,8 @@ import (
 	"io"
 	"iter"
 
-	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/armadapb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util/iterx"
 	"github.com/cockroachdb/pebble/v2"

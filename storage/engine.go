@@ -9,9 +9,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
-	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"

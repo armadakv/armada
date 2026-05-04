@@ -12,10 +12,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	ap "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
-	"github.com/armadakv/armada/armadapb"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table/fsm"

@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/armadaserver"
 	rl "github.com/armadakv/armada/log"
 	dbl "github.com/armadakv/armada/raft/logger"
-	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage/table"
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"

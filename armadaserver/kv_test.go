@@ -8,8 +8,8 @@ import (
 	"iter"
 	"testing"
 
-	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/util/iterx"
 	"github.com/stretchr/testify/mock"

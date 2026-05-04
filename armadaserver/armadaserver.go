@@ -7,9 +7,9 @@ import (
 	"io"
 	"iter"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftpb"
-	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table"
 )
 

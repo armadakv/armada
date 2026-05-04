@@ -9,9 +9,9 @@ import (
 	"path"
 	"testing"
 
+	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
 	sm "github.com/armadakv/armada/raft/statemachine"
-	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"

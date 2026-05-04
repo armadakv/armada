@@ -11,8 +11,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	rl "github.com/armadakv/armada/log"
 	"github.com/armadakv/armada/armadaserver"
+	rl "github.com/armadakv/armada/log"
 	"github.com/armadakv/armada/storage"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/spf13/viper"

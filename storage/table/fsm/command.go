@@ -5,8 +5,8 @@ package fsm
 import (
 	"encoding/binary"
 
-	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/armadapb"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/cockroachdb/pebble/v2"
 	pb "google.golang.org/protobuf/proto"
 )
