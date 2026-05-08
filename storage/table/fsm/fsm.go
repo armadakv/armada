@@ -5,14 +5,12 @@ package fsm
 import (
 	"bytes"
 	"encoding/binary"
-	stderrors "errors"
 	"fmt"
 	"hash/fnv"
 	"io"
 	"os"
 	"path/filepath"
 	"sync/atomic"
-	"time"
 
 	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
@@ -45,11 +43,6 @@ var (
 		KeyType: key.TypeUser,
 		Key:     key.LatestMaxKey,
 	})
-)
-
-const (
-	// maxBatchSize maximum size of inmemory batch before commit.
-	maxBatchSize = 16 * 1024 * 1024
 )
 
 // UpdateResult if operation succeeded or not, both values mean that operation finished, value just indicates with which result.
@@ -231,136 +224,6 @@ func (p *FSM) openDB(dbdir string) (*pebble.DB, error) {
 	)
 }
 
-// runGC performs an explicit MVCC garbage collection sweep up to the given
-// raft index. It iterates every physical key in the user keyspace and deletes:
-//   - any version with seqno < gcIndex that is shadowed by a newer version
-//     of the same logical user key (i.e. the same key prefix), and
-//   - any tombstone version with seqno < gcIndex that has no newer live
-//     version above gcIndex.
-//
-// Deletions are batched; when the batch reaches maxBatchSize it is committed
-// and a new one is opened. After all obsolete versions are removed, pebble's
-// Compact is called over the full user keyspace so the deleted entries are
-// physically reclaimed from disk.
-func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
-	if gcIndex == 0 {
-		return nil
-	}
-
-	// Scan the entire user keyspace using a snapshot so the view is stable
-	// for the duration of the sweep.
-	snap := db.NewSnapshot()
-	defer snap.Close()
-
-	// The MVCC seqno block property filter lets pebble skip entire SST blocks
-	// whose recorded seqno interval does not intersect [0, gcIndex). Blocks
-	// where every key has seqno >= gcIndex contain nothing the GC can touch and
-	// are skipped without even being opened, dramatically reducing I/O for
-	// databases with mostly-recent data.
-	seqnoFilter := rp.NewMVCCSeqnoFilter(gcIndex)
-	iter, err := snap.NewIter(&pebble.IterOptions{
-		LowerBound:      mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: key.LatestMinKey}),
-		UpperBound:      incrementRightmostByte(append([]byte(nil), maxUserKey...)),
-		PointKeyFilters: []pebble.BlockPropertyFilter{seqnoFilter},
-	})
-	if err != nil {
-		return err
-	}
-	defer iter.Close()
-
-	batch := db.NewBatch(pebble.WithInitialSizeBytes(maxBatchSize))
-
-	// lastPrefix holds the user-key prefix (physical key minus the seqno
-	// suffix) of the most recently visited entry. Because pebble iterates in
-	// ascending key order and within the same prefix in descending seqno
-	// order (latest first), the first time we see a prefix is the newest
-	// version — all subsequent visits to the same prefix are older versions
-	// and are therefore shadowed.
-	var lastPrefix []byte
-	var lastPrefixIsTombstone bool
-
-	commitBatch := func() error {
-		if batch.Count() == 0 {
-			return nil
-		}
-		if err := batch.Commit(pebble.NoSync); err != nil {
-			return err
-		}
-		batch = db.NewBatch(pebble.WithInitialSizeBytes(maxBatchSize))
-		return nil
-	}
-
-	for iter.First(); iter.Valid(); iter.Next() {
-		physKey := iter.Key()
-
-		// Decode the logical key to get keyType and seqno.
-		k, err := key.DecodeBytes(physKey)
-		if err != nil {
-			return err
-		}
-		// Only GC user keys; system keys have no MVCC versions.
-		if k.KeyType != key.TypeUser {
-			continue
-		}
-
-		// Prefix = everything except the trailing seqno bytes.
-		prefixLen := len(physKey) - key.V2SeqLen
-		prefix := physKey[:prefixLen]
-
-		sameAsLast := bytes.Equal(lastPrefix, prefix)
-
-		if k.Seqno >= gcIndex {
-			// This version is at or above the safe horizon — always keep it.
-			// Update prefix tracking. lastPrefixIsTombstone is intentionally
-			// not set here — it is only meaningful for the first version below
-			// gcIndex (the else branch below), where it decides whether to keep
-			// or discard a live-but-old value.
-			if !sameAsLast {
-				lastPrefix = append(lastPrefix[:0], prefix...)
-			}
-			continue
-		}
-
-		// Version is below gcIndex.
-		if sameAsLast {
-			// Shadowed by the newer version we already decided to keep (or
-			// already GC'd). Discard regardless.
-			physKeyCopy := make([]byte, len(physKey))
-			copy(physKeyCopy, physKey)
-			if err := batch.Delete(physKeyCopy, nil); err != nil {
-				return err
-			}
-		} else {
-			// First (newest) version of this prefix below gcIndex.
-			lastPrefix = append(lastPrefix[:0], prefix...)
-			lastPrefixIsTombstone = isTombstone(iter.Value())
-
-			if lastPrefixIsTombstone {
-				// Tombstone with no live version above gcIndex — discard.
-				physKeyCopy := make([]byte, len(physKey))
-				copy(physKeyCopy, physKey)
-				if err := batch.Delete(physKeyCopy, nil); err != nil {
-					return err
-				}
-			}
-			// Live value below gcIndex with no newer version — keep it.
-		}
-
-		if uint64(batch.Len()) >= maxBatchSize {
-			if err := commitBatch(); err != nil {
-				return err
-			}
-			time.Sleep(gcThrottleSleep)
-		}
-	}
-
-	if err := commitBatch(); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // Lookup locally looks up the data.
 func (p *FSM) Lookup(l interface{}) (interface{}, error) {
 	switch req := l.(type) {
@@ -534,57 +397,6 @@ func (p *FSM) notifyRecovered() {
 	gcH, _ := readLocalIndex(p.pebble.Load(), sysGCHorizon)
 	p.gcHorizon.Store(gcH)
 	p.signalGCWorker()
-}
-
-// signalGCWorker sends a non-blocking signal to the GC worker to start a sweep.
-func (p *FSM) signalGCWorker() {
-	select {
-	case p.gcCh <- struct{}{}:
-	default:
-	}
-}
-
-const (
-	gcWorkerPeriod  = 10 * time.Minute
-	gcThrottleSleep = 5 * time.Millisecond // pause between batch commits
-	gcThrottleBatch = 512                  // keys processed per batch before sleeping
-)
-
-// startGCWorker launches the background goroutine that performs throttled
-// MVCC GC sweeps. It is started by Open() and stopped by Close().
-func (p *FSM) startGCWorker() {
-	go func() {
-		defer close(p.gcDone)
-		ticker := time.NewTicker(gcWorkerPeriod)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-p.gcStop:
-				return
-			case <-p.gcCh:
-				p.runGCSweep()
-			case <-ticker.C:
-				p.runGCSweep()
-			}
-		}
-	}()
-}
-
-// runGCSweep runs a single throttled MVCC GC sweep using the current gcHorizon.
-func (p *FSM) runGCSweep() {
-	horizon := p.gcHorizon.Load()
-	if horizon == 0 {
-		return
-	}
-	db := p.pebble.Load()
-	if db == nil {
-		return
-	}
-	if err := p.runGC(db, horizon); err != nil {
-		if !stderrors.Is(err, pebble.ErrClosed) {
-			p.log.Warnf("GC sweep at horizon %d failed: %v", horizon, err)
-		}
-	}
 }
 
 // GetHash gets the DB hash for test comparison.

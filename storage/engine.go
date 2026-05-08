@@ -18,6 +18,7 @@ import (
 	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/armada/util/iterx"
 	"github.com/armadakv/armada/version"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
@@ -65,7 +66,18 @@ func New(cfg Config) (*Engine, error) {
 		},
 	)
 	e.LogReader = &logreader.Simple{LogQuerier: nh}
+	e.disk = newDiskMetrics(cfg.NodeHostDir, cfg.WALDir, cfg.Table.DataDir)
 	return e, nil
+}
+
+// Describe implements prometheus.Collector.
+func (e *Engine) Describe(ch chan<- *prometheus.Desc) {
+	e.disk.Describe(ch)
+}
+
+// Collect implements prometheus.Collector.
+func (e *Engine) Collect(ch chan<- prometheus.Metric) {
+	e.disk.Collect(ch)
 }
 
 type Engine struct {
@@ -78,6 +90,7 @@ type Engine struct {
 	LogReader  logreader.Interface
 	Cluster    *cluster.Cluster
 	tableStore *kv.RaftStore
+	disk       *diskMetrics
 }
 
 func (e *Engine) Start() error {
