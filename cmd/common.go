@@ -1,5 +1,8 @@
 // Copyright JAMF Software, LLC
 
+// Package cmd contains the Cobra CLI commands for Armada.
+// It defines the root command and the "leader", "follower", "backup", "restore", "version",
+// and "docs" sub-commands, wiring together configuration, logging, and server startup.
 package cmd
 
 import (

@@ -1,9 +1,9 @@
 # Contributing
 
-Armada is still rough around the edges and there are A LOT of things left to be implemented.
-If you like this project and would like to contribute, ask questions, or just reach out, we encourage you to do so!
-**Feel free to reach out in [GitHub discussions](https://github.com/armadakv/armada/discussions),
-raise an issue, or open a pull request**.
+Armada welcomes contributions of all kinds — bug reports, feature requests, documentation
+improvements, and code changes. If you would like to get involved, feel free to reach out
+in [GitHub Discussions](https://github.com/armadakv/armada/discussions),
+raise an issue, or open a pull request.
 
 ## Request For Comments
 
@@ -33,9 +33,53 @@ The pull request should be tagged with the label `proposal`.
 
 ## Testing prerequisites
 
-* [Docker](https://www.docker.com)
-* [kind](https://kind.sigs.k8s.io/)
-* [gRPC curl](https://github.com/fullstorydev/grpcurl)
+* [Docker](https://www.docker.com) and [kind](https://kind.sigs.k8s.io/) — used for manual integration testing
+* [gRPC curl](https://github.com/fullstorydev/grpcurl) — useful for testing the gRPC API interactively
+
+## Development Workflow
+
+### Build
+
+```bash
+# Build only the armada binary (fast iteration)
+make armada
+
+# Regenerate protobuf outputs and build the binary (full build)
+make build
+
+# Regenerate protobuf outputs only
+make proto
+```
+
+### Test
+
+```bash
+# Run the full test suite with race detection and coverage
+make test
+
+# Run tests for a single package
+go test ./storage/table/...
+
+# Run a single named test
+go test ./storage/table/... -run '^TestTableManager$'
+```
+
+### Lint
+
+```bash
+# Run the linter (runs make proto first)
+make check
+```
+
+### Run locally
+
+```bash
+# Start a single-node leader cluster in development mode
+make run
+
+# Start a follower connected to the local leader (requires make run to be running)
+make run-follower
+```
 
 ## Running Documentation Site Locally
 

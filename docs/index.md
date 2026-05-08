@@ -63,7 +63,7 @@ Armada was built because we were unable to find a distributed system
 offering all the aforementioned features. The original story behind the project can be found in the JAMF blog post
 [The story of Regatta](https://medium.com/jamf-engineering/the-story-of-regatta-4652f71a350f).
 
-> **Important:**
-Armada is under heavy development. This means the API may change
-and there are a lot of things to be implemented. If you would like to
+> **Note:**
+Armada has not yet reached the 1.0 milestone. The API may change before 1.0 is released.
+Backward-incompatible changes will always be flagged in the release notes. If you would like to
 help, do not hesitate and check the [Contributing](contributing.md) page!

@@ -1,5 +1,7 @@
 // Copyright JAMF Software, LLC
 
+// Package kv defines the versioned key-value pair types and the core KV interfaces
+// used throughout the Armada storage layer.
 package kv
 
 import (

@@ -1,5 +1,9 @@
 // Copyright JAMF Software, LLC
 
+// Package fsm implements the Raft finite state machine for Armada tables.
+// It applies committed Raft log entries as MVCC writes to a Pebble-backed key-value store,
+// tracking both the local Raft apply index and the source leader index for cross-cluster
+// revision consistency.
 package fsm
 
 import (

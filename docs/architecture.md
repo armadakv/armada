@@ -35,6 +35,12 @@ are available. This is not only useful for disaster scenarios but also enables t
 
 ![Armada Raft](static/raft.png "Armada Raft")
 
+### Raft Library
+
+Armada uses a custom Raft implementation located in the `raft/` package. This implementation was developed
+as a replacement for the `lni/dragonboat` library (see [proposal 003](proposals/003-replace-raft-lib.md))
+and provides Armada with full control over transport, log storage, snapshots, and configuration.
+
 ## Tables
 
 Armada supports the notion of tables throughout its API. The tables could be imagined as sort of keyspaces or schemas.
@@ -42,13 +48,53 @@ Armada supports the notion of tables throughout its API. The tables could be ima
 cross-location replication*. That said, all the API guarantees regarding consistency are always scoped to a single table.
 There is no guarantee of data consistency within multiple tables.
 
+## Storage
+
+Each table's data is stored in a [Pebble](https://github.com/cockroachdb/pebble) key-value store — a
+high-performance LSM-tree-based engine descended from RocksDB. Pebble is used as the state machine
+backend for every Raft group.
+
+### MVCC Versioning
+
+Armada assigns a monotonically increasing **revision** to every write. This revision is embedded in
+the storage key alongside the user key, providing multi-version concurrency control (MVCC). Each write
+increments the revision and older versions are retained until compaction.
+
+### Local Index vs. Leader Index
+
+Each cluster maintains two distinct sequence numbers for every table:
+
+* **Local Raft index** — the index of the Raft log entry as applied in *this* cluster's Raft group.
+* **Source leader index** — the Raft log index on the *leader* cluster that produced the logical write.
+
+In a follower cluster the leader index is replicated alongside the command and stored in the Pebble state machine.
+This ensures that the same logical write always carries the same MVCC revision across all regions, even though
+the local Raft indices differ. As a result, a follower may return a slightly older MVCC revision than the leader
+for recently written data, but reads that observe revision *N* on the leader will observe the same data at
+revision *N* on any follower that has caught up to that point.
+
 ## APIs
 
 Armada exposes several gRPC APIs and a REST API:
 
 * [Armada gRPC API](api.md/#regatta-proto) is the user-facing API handling all read and write requests.
+* [Cluster gRPC API](api.md/#regatta-proto) (`regatta.v1.Cluster`) exposes cluster membership and server
+  status, including the current server configuration via `Cluster/Status`.
 * [Replication gRPC API](api.md/#replication-proto) is enabled only in the leader cluster and is
   responsible for responding to the asynchronous replication requests from follower clusters. Raft log
   is replicated via this API from the leader cluster to follower clusters.
 * [Maintenance gRPC API](api.md/#maintenance-proto) creates backups and restores from them.
 * REST API exposes endpoints for [metrics and observability](operations_guide/metrics_and_observability.md).
+
+## Configuration System
+
+Armada is configured via [Viper](https://github.com/spf13/viper), which supports layered configuration:
+
+1. **Configuration files** — searched in `/etc/armada/`, `/config`, `$HOME/.armada/`, and the working
+   directory. Supported formats: YAML, TOML, JSON.
+2. **Environment variables** — all Viper keys can be set as environment variables (dots replaced with
+   underscores, e.g. `RAFT_ADDRESS`).
+3. **CLI flags** — Cobra flags bound to Viper keys take the highest precedence.
+
+Sensitive values such as `--maintenance.token` and `--tables.token` are intentionally redacted from
+the `Cluster/Status` API response.

@@ -1,5 +1,9 @@
 // Copyright JAMF Software, LLC
 
+// Package storage is the core runtime engine for Armada.
+// It wraps the Raft node host, the gossip-based cluster registry, a Raft-backed
+// metadata store, and the per-table state machine manager into a single Engine that
+// the server layers (armadaserver, replication) build on top of.
 package storage
 
 import (

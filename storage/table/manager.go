@@ -1,5 +1,8 @@
 // Copyright JAMF Software, LLC
 
+// Package table manages the lifecycle of Armada tables.
+// Each table is backed by its own Raft consensus group and a Pebble-based state machine.
+// The Manager is responsible for starting, stopping, and coordinating per-table Raft replicas.
 package table
 
 import (
