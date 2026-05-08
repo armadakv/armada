@@ -37,9 +37,13 @@ are available. This is not only useful for disaster scenarios but also enables t
 
 ### Raft Library
 
-Armada uses a custom Raft implementation located in the `raft/` package. This implementation was developed
-as a replacement for the `lni/dragonboat` library (see [proposal 003](proposals/003-replace-raft-lib.md))
-and provides Armada with full control over transport, log storage, snapshots, and configuration.
+The `raft/` package is a fork of [dragonboat](https://github.com/lni/dragonboat) by Lei Ni
+(copyright 2017-2021 Lei Ni and other contributors, Apache 2.0 licensed). It was forked to give Armada
+full control over transport, log storage, snapshots, and configuration, while preserving the battle-tested
+multi-group Raft core. The fork diverges from upstream in transport (QUIC-based, replacing the original
+TCP transport), snapshot management, and configuration surface. See
+[proposal 003](proposals/003-replace-raft-lib.md) for the motivation behind forking rather than keeping
+upstream dragonboat as a dependency.
 
 ## Tables
 

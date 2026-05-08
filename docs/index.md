@@ -63,6 +63,9 @@ Armada was built because we were unable to find a distributed system
 offering all the aforementioned features. The original story behind the project can be found in the JAMF blog post
 [The story of Regatta](https://medium.com/jamf-engineering/the-story-of-regatta-4652f71a350f).
 
+Armada is the spiritual successor to the **Regatta** project. See [Regatta and Armada](regatta.md) for the
+history of the project, the relationship between the two, and guidance on migrating from Regatta to Armada.
+
 > **Note:**
 Armada has not yet reached the 1.0 milestone. The API may change before 1.0 is released.
 Backward-incompatible changes will always be flagged in the release notes. If you would like to

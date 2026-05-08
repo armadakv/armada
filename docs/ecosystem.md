@@ -1,5 +1,8 @@
 # Ecosystem
-Here you can find libraries, projects and SDKs related to the Armada project
+Here you can find libraries, projects and SDKs related to the Armada project.
+
+The `regatta-` prefixes in some tool and library names are a legacy of Armada's origins as a
+fork of the Regatta project. See [Regatta and Armada](regatta.md) for the full story.
 
 ## CLIs
 * [regatta-client](https://github.com/Tantalor93/regatta-client) — unofficial CLI for querying and manipulating the Armada store.
