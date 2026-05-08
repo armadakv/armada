@@ -1,5 +1,9 @@
 // Copyright JAMF Software, LLC
 
+// Package armadaserver provides the gRPC server implementations for all Armada APIs,
+// including the user-facing KV, Tables, and Cluster services, the cross-cluster Replication
+// and Snapshot services, the Maintenance (backup/restore/reset) service, and the REST server
+// for metrics, health checks, and pprof profiling.
 package armadaserver
 
 import (

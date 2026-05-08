@@ -1,5 +1,10 @@
 // Copyright JAMF Software, LLC
 
+// Package replication implements cross-cluster, pull-based replication for Armada.
+// A Manager owns one replication Worker per leased table. Each Worker polls the leader
+// cluster's Log.Replicate RPC, converts the received entries into logical commands, and
+// re-proposes them into the follower's own Raft group so that the same MVCC revision is
+// applied consistently across all regions.
 package replication
 
 import (

@@ -11,6 +11,10 @@ import "replication.proto";
 // Maintenance service provides methods for maintenance purposes.
 service Maintenance {
   rpc Backup(BackupRequest) returns (stream replication.v1.SnapshotChunk);
+  // Restore streams backup data to the server to restore one or more tables from a backup.
+  // The stream must begin with a RestoreMessage containing RestoreInfo, followed by one or more
+  // RestoreMessages containing SnapshotChunk data. This is a destructive operation — existing
+  // table data is replaced by the backup.
   rpc Restore(stream RestoreMessage) returns (RestoreResponse);
   rpc Reset(ResetRequest) returns (ResetResponse);
 }

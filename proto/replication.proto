@@ -25,7 +25,9 @@ message MetadataResponse {
 
 message Table {
   enum Type {
+    // REPLICATED indicates a table that is replicated from the leader cluster to this follower cluster.
     REPLICATED = 0;
+    // LOCAL indicates a table that exists only in this cluster and is not replicated from a leader.
     LOCAL = 1;
   }
   string name = 1;

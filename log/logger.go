@@ -1,5 +1,8 @@
 // Copyright JAMF Software, LLC
 
+// Package log configures structured logging for Armada using the Uber zap library.
+// It provides helpers to build a zap.Logger from the configured log level and format,
+// and bridges the internal Raft library's logger interface to zap.
 package log
 
 import (

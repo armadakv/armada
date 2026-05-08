@@ -37,7 +37,12 @@ grpcurl -insecure "-d={
 To query key-value pairs in a given range, supply the `key` and `range_end` fields.
 All pairs whose keys belong to the right-open interval `[key, range_end)` will be returned.
 
-If table is smaller tha 4MB in size:
+> **Note:** `Range` collects the entire result set in a single response. It has a default maximum
+> response size of 4 MB. For tables or ranges larger than that, use `IterateRange` instead —
+> it is a server-streaming RPC that pages the results back in chunks, making it suitable for
+> arbitrarily large datasets.
+
+If table is smaller than 4MB in size:
 ```bash
 grpcurl -insecure "-d={
     \"table\": \"$(echo -n "armada-test" | base64)\",
@@ -56,7 +61,7 @@ grpcurl -insecure "-d={
 
 `range_end` set to `\0` lists every key-value pair with a key greater than or equal to the provided `key`.
 
-If table is smaller tha 4MB in size:
+If table is smaller than 4MB in size:
 ```bash
 grpcurl -insecure "-d={
     \"table\": \"$(echo -n "armada-test" | base64)\",
@@ -75,7 +80,7 @@ grpcurl -insecure "-d={
 
 `key` set to `\0` lists every key-value pair with a key smaller than the provided `range_end`.
 
-If table is smaller tha 4MB in size:
+If table is smaller than 4MB in size:
 ```bash
 grpcurl -insecure "-d={
     \"table\": \"$(echo -n "armada-test" | base64)\",
@@ -96,7 +101,7 @@ grpcurl -insecure "-d={
 
 When `key` and `range_end` are both set to `\0`, then all key-value pairs are returned.
 
-If table is smaller tha 4MB in size:
+If table is smaller than 4MB in size:
 ```bash
 grpcurl -insecure "-d={
     \"table\": \"$(echo -n "armada-test" | base64)\",

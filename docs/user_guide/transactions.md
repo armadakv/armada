@@ -3,7 +3,7 @@
 See [Txn Request API](../api.md#regatta-v1-TxnRequest) and [Txn Response API](../api.md#regatta-v1-TxnResponse)
 for the complete gRPC API documentation for retrieving records from Armada.
 
-A Armada transaction is an atomic *if/then/else* construct over the key-value store.
+An Armada transaction is an atomic *if/then/else* construct over the key-value store.
 It provides a primitive grouping of requests whose execution is guarded,
 **supporting the protection of data from concurrent modification**.
 
@@ -90,9 +90,6 @@ message Compare {
   bytes range_end = 64;
 }
 ```
-
-> In future, `CompareTarget` will support comparing against version,
-> create revision, modification revision, and lease ID of a given record.
 
 * `CompareResult` - logical operation to be performed on the `CompareTarget`.
     It must be one of `EQUAL`, `GREATER`, `LESS`, or `NOT_EQUAL`. Testing for existence of a

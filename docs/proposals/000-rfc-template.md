@@ -1,4 +1,4 @@
-Proposal status: Accepted
+Proposal status: Draft | Under Review | Accepted | Rejected
 
 ## Summary
 

@@ -8,7 +8,7 @@
 [![Contributors](https://img.shields.io/github/contributors/armadakv/armada)](https://github.com/armadakv/armada/graphs/contributors)
 [![License](https://img.shields.io/github/license/armadakv/armada)](LICENSE)
 
-**Armada** is a distributed ETCD inspired key-value store. Armada is designed to operate eiter as a standalone node,
+**Armada** is a distributed ETCD inspired key-value store. Armada is designed to operate either as a standalone node,
 standalone cluster or in Leader - Follower mode suited for distributing data in distant locations. e.g. in different
 cloud regions.
 While Armada maintains many of ETCD features there are some notable differences:
@@ -40,6 +40,7 @@ see the [documentation page](https://armadakv.io).
 ## Contributing
 
 Armada is in active development and contributors are welcome! For guidance on development, see the page
-[Contributing](...).
+[Contributing](docs/contributing.md).
 Feel free to ask questions and engage in [GitHub Discussions](https://github.com/armadakv/armada/discussions)!
+
 

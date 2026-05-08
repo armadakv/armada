@@ -1,5 +1,6 @@
 // Copyright JAMF Software, LLC
 
+// Package util provides general-purpose helper utilities shared across Armada packages.
 package util
 
 import (

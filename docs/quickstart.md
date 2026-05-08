@@ -69,9 +69,10 @@ grpcurl -plaintext -d "{\"name\": \"armada-test\"}" 127.0.0.1:8443 regatta.v1.Ta
 ## Deploy to Kubernetes from Helm Chart
 
 To easily deploy Armada to Kubernetes, the official [Armada Helm Chart](https://github.com/armadakv/armada-helm) can be used.
-The Helm repository and chart name still use the original `regatta` naming.
+The Helm repository and chart name still use the original `regatta` naming (this will be updated in a future release).
 
 ```bash
+# The repo is added as "regatta" — this is the legacy chart name, not a separate product
 helm repo add regatta https://armadakv.github.io/armada-helm
 helm repo update
 helm install armada regatta/regatta

@@ -1,5 +1,8 @@
 // Copyright JAMF Software, LLC
 
+// Package security provides helpers for building TLS configurations used by Armada's
+// gRPC and HTTP servers and clients, including mutual TLS, CA-based client certificate
+// verification, and allowed-CN / allowed-hostname enforcement.
 package security
 
 import (
