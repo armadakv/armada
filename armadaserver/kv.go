@@ -3,6 +3,7 @@
 package armadaserver
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,83 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// keyContainsNullByte reports whether a user key contains a null (0x00) byte.
+// Null bytes are forbidden because the V2 physical-key encoding uses a 0x00
+// separator between the user-key bytes and the MVCC sequence number; allowing
+// null bytes would make the physical-key prefix ambiguous and break GC range
+// deletions.
+func keyContainsNullByte(k []byte) bool {
+	return bytes.IndexByte(k, 0) >= 0
+}
+
+// rangeEndContainsNullByte is like keyContainsNullByte but allows the
+// single-byte \x00 sentinel, which is the conventional "all keys >= key"
+// wildcard for range_end fields.
+func rangeEndContainsNullByte(k []byte) bool {
+	if len(k) == 1 && k[0] == 0 {
+		return false
+	}
+	return bytes.IndexByte(k, 0) >= 0
+}
+
+// rangeKeyContainsNullByte is like keyContainsNullByte but allows the
+// single-byte \x00 sentinel as a range start key, which represents
+// "start from the beginning of the keyspace" in a range scan.
+func rangeKeyContainsNullByte(k []byte) bool {
+	if len(k) == 1 && k[0] == 0 {
+		return false
+	}
+	return bytes.IndexByte(k, 0) >= 0
+}
+
+// validateTxnKeys checks all keys embedded in a TxnRequest for null bytes.
+func validateTxnKeys(req *armadapb.TxnRequest) error {
+	for _, cmp := range req.Compare {
+		if keyContainsNullByte(cmp.Key) {
+			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
+		}
+		if rangeEndContainsNullByte(cmp.RangeEnd) {
+			return status.Errorf(codes.InvalidArgument, "range_end must not contain null bytes")
+		}
+	}
+	for _, op := range req.Success {
+		if err := validateRequestOpKeys(op); err != nil {
+			return err
+		}
+	}
+	for _, op := range req.Failure {
+		if err := validateRequestOpKeys(op); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateRequestOpKeys(op *armadapb.RequestOp) error {
+	if r := op.GetRequestRange(); r != nil {
+		if rangeKeyContainsNullByte(r.Key) {
+			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
+		}
+		if rangeEndContainsNullByte(r.RangeEnd) {
+			return status.Errorf(codes.InvalidArgument, "range_end must not contain null bytes")
+		}
+	}
+	if p := op.GetRequestPut(); p != nil {
+		if keyContainsNullByte(p.Key) {
+			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
+		}
+	}
+	if d := op.GetRequestDeleteRange(); d != nil {
+		if keyContainsNullByte(d.Key) {
+			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
+		}
+		if rangeEndContainsNullByte(d.RangeEnd) {
+			return status.Errorf(codes.InvalidArgument, "range_end must not contain null bytes")
+		}
+	}
+	return nil
+}
 
 // KVServer implements KV service from proto/regatta.proto.
 type KVServer struct {
@@ -43,8 +121,16 @@ func (s *KVServer) Range(ctx context.Context, req *armadapb.RangeRequest) (*arma
 		return nil, status.Error(codes.InvalidArgument, "table must be set")
 	}
 
-	if len(req.GetKey()) == 0 {
+	if len(req.GetKey()) == 0 && len(req.GetRangeEnd()) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "key must be set")
+	}
+
+	if rangeKeyContainsNullByte(req.GetKey()) {
+		return nil, status.Error(codes.InvalidArgument, "key must not contain null bytes")
+	}
+
+	if rangeEndContainsNullByte(req.GetRangeEnd()) {
+		return nil, status.Error(codes.InvalidArgument, "range_end must not contain null bytes")
 	}
 
 	val, err := s.Storage.Range(ctx, req)
@@ -82,6 +168,14 @@ func (s *KVServer) IterateRange(req *armadapb.RangeRequest, srv armadapb.KV_Iter
 
 	if len(req.GetKey()) == 0 {
 		return status.Error(codes.InvalidArgument, "key must be set")
+	}
+
+	if keyContainsNullByte(req.GetKey()) {
+		return status.Error(codes.InvalidArgument, "key must not contain null bytes")
+	}
+
+	if rangeEndContainsNullByte(req.GetRangeEnd()) {
+		return status.Error(codes.InvalidArgument, "range_end must not contain null bytes")
 	}
 
 	ctx := srv.Context()
@@ -123,6 +217,10 @@ func (s *KVServer) Put(ctx context.Context, req *armadapb.PutRequest) (*armadapb
 		return nil, status.Errorf(codes.InvalidArgument, "key must be set")
 	}
 
+	if keyContainsNullByte(req.GetKey()) {
+		return nil, status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
+	}
+
 	r, err := s.Storage.Put(ctx, req)
 	if err != nil {
 		if errors.Is(err, serrors.ErrTableNotFound) {
@@ -146,6 +244,14 @@ func (s *KVServer) DeleteRange(ctx context.Context, req *armadapb.DeleteRangeReq
 		return nil, status.Errorf(codes.InvalidArgument, "key must be set")
 	}
 
+	if keyContainsNullByte(req.GetKey()) {
+		return nil, status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
+	}
+
+	if rangeEndContainsNullByte(req.GetRangeEnd()) {
+		return nil, status.Errorf(codes.InvalidArgument, "range_end must not contain null bytes")
+	}
+
 	r, err := s.Storage.Delete(ctx, req)
 	if err != nil {
 		if errors.Is(err, serrors.ErrTableNotFound) {
@@ -166,6 +272,10 @@ func (s *KVServer) DeleteRange(ctx context.Context, req *armadapb.DeleteRangeReq
 func (s *KVServer) Txn(ctx context.Context, req *armadapb.TxnRequest) (*armadapb.TxnResponse, error) {
 	if len(req.GetTable()) == 0 {
 		return nil, status.Errorf(codes.InvalidArgument, "table must be set")
+	}
+
+	if err := validateTxnKeys(req); err != nil {
+		return nil, err
 	}
 
 	r, err := s.Storage.Txn(ctx, req)

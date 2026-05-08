@@ -533,6 +533,100 @@ func TestKVServer_Txn(t *testing.T) {
 	r.NoError(err)
 }
 
+func TestKVServer_NullByteValidation(t *testing.T) {
+	nullKey := []byte("foo\x00bar")
+	nullRangeEnd := []byte("zoo\x00bar")
+	wildcardRangeEnd := []byte{0}
+	wantErr := status.Errorf(codes.InvalidArgument, "key must not contain null bytes").Error()
+	wantRangeEndErr := status.Errorf(codes.InvalidArgument, "range_end must not contain null bytes").Error()
+
+	storage := &mockKVService{}
+	kv := KVServer{Storage: storage}
+
+	t.Run("Range key", func(t *testing.T) {
+		_, err := kv.Range(context.Background(), &armadapb.RangeRequest{Table: table1Name, Key: nullKey})
+		require.EqualError(t, err, wantErr)
+	})
+
+	t.Run("Range range_end", func(t *testing.T) {
+		_, err := kv.Range(context.Background(), &armadapb.RangeRequest{Table: table1Name, Key: key1Name, RangeEnd: nullRangeEnd})
+		require.EqualError(t, err, wantRangeEndErr)
+	})
+
+	t.Run("Range wildcard range_end allowed", func(t *testing.T) {
+		storage.On("Range", mock.Anything, mock.Anything).Return(&armadapb.RangeResponse{}, nil).Once()
+		_, err := kv.Range(context.Background(), &armadapb.RangeRequest{Table: table1Name, Key: key1Name, RangeEnd: wildcardRangeEnd})
+		require.NoError(t, err)
+	})
+
+	t.Run("Range wildcard start key allowed", func(t *testing.T) {
+		wildcardKey := []byte{0}
+		storage.On("Range", mock.Anything, mock.Anything).Return(&armadapb.RangeResponse{}, nil).Once()
+		_, err := kv.Range(context.Background(), &armadapb.RangeRequest{Table: table1Name, Key: wildcardKey, RangeEnd: wildcardRangeEnd})
+		require.NoError(t, err)
+	})
+
+	t.Run("Range empty key with range_end allowed (scan all)", func(t *testing.T) {
+		storage.On("Range", mock.Anything, mock.Anything).Return(&armadapb.RangeResponse{}, nil).Once()
+		_, err := kv.Range(context.Background(), &armadapb.RangeRequest{Table: table1Name, Key: []byte{}, RangeEnd: wildcardRangeEnd})
+		require.NoError(t, err)
+	})
+
+	t.Run("Range empty key without range_end rejected", func(t *testing.T) {
+		_, err := kv.Range(context.Background(), &armadapb.RangeRequest{Table: table1Name, Key: []byte{}})
+		require.ErrorContains(t, err, "key must be set")
+	})
+
+	t.Run("Put key", func(t *testing.T) {
+		_, err := kv.Put(context.Background(), &armadapb.PutRequest{Table: table1Name, Key: nullKey})
+		require.EqualError(t, err, wantErr)
+	})
+
+	t.Run("DeleteRange key", func(t *testing.T) {
+		_, err := kv.DeleteRange(context.Background(), &armadapb.DeleteRangeRequest{Table: table1Name, Key: nullKey})
+		require.EqualError(t, err, wantErr)
+	})
+
+	t.Run("DeleteRange range_end", func(t *testing.T) {
+		_, err := kv.DeleteRange(context.Background(), &armadapb.DeleteRangeRequest{Table: table1Name, Key: key1Name, RangeEnd: nullRangeEnd})
+		require.EqualError(t, err, wantRangeEndErr)
+	})
+
+	t.Run("DeleteRange wildcard range_end allowed", func(t *testing.T) {
+		storage.On("Delete", mock.Anything, mock.Anything).Return(&armadapb.DeleteRangeResponse{}, nil).Once()
+		_, err := kv.DeleteRange(context.Background(), &armadapb.DeleteRangeRequest{Table: table1Name, Key: key1Name, RangeEnd: wildcardRangeEnd})
+		require.NoError(t, err)
+	})
+
+	t.Run("Txn compare key", func(t *testing.T) {
+		_, err := kv.Txn(context.Background(), &armadapb.TxnRequest{
+			Table:   table1Name,
+			Compare: []*armadapb.Compare{{Key: nullKey}},
+		})
+		require.EqualError(t, err, wantErr)
+	})
+
+	t.Run("Txn success op put key", func(t *testing.T) {
+		_, err := kv.Txn(context.Background(), &armadapb.TxnRequest{
+			Table: table1Name,
+			Success: []*armadapb.RequestOp{
+				{Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{Key: nullKey}}},
+			},
+		})
+		require.EqualError(t, err, wantErr)
+	})
+
+	t.Run("Txn failure op delete range_end", func(t *testing.T) {
+		_, err := kv.Txn(context.Background(), &armadapb.TxnRequest{
+			Table: table1Name,
+			Failure: []*armadapb.RequestOp{
+				{Request: &armadapb.RequestOp_RequestDeleteRange{RequestDeleteRange: &armadapb.RequestOp_DeleteRange{Key: key1Name, RangeEnd: nullRangeEnd}}},
+			},
+		})
+		require.EqualError(t, err, wantRangeEndErr)
+	})
+}
+
 func TestForwardingKVServer_Put(t *testing.T) {
 	r := require.New(t)
 	client := &mockClient{}

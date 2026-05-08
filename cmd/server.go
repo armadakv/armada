@@ -15,6 +15,7 @@ import (
 	rl "github.com/armadakv/armada/log"
 	"github.com/armadakv/armada/storage"
 	"github.com/cockroachdb/pebble/v2/vfs"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
@@ -113,6 +114,7 @@ func startEngine(config storage.Config) (*storage.Engine, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create engine: %w", err)
 	}
+	prometheus.MustRegister(engine)
 	if err := engine.Start(); err != nil {
 		return nil, fmt.Errorf("failed to start engine: %w", err)
 	}
