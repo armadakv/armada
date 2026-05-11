@@ -1,3 +1,9 @@
+---
+title: "armada version"
+section: "operations_guide"
+subsection: "cli"
+order: 6
+---
 ## armada version
 
 Print current version.

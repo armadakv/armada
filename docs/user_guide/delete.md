@@ -1,3 +1,10 @@
+---
+title: "Deleting Records"
+description: "How to delete key-value records and ranges in ArmadaKV."
+section: "user_guide"
+order: 4
+---
+
 # Deleting Records
 
 See [Delete Range Request API](../api.md#regatta-v1-DeleteRangeRequest) and [Delete Range Response API](../api.md#regatta-v1-DeleteRangeResponse)

@@ -1,3 +1,10 @@
+---
+title: "Updating Records"
+description: "How to insert and update key-value records in ArmadaKV using the Put API."
+section: "user_guide"
+order: 3
+---
+
 # Updating Records
 
 See [Put Request API](../api.md#regatta-v1-PutRequest) and [Put Response API](../api.md#regatta-v1-PutResponse)

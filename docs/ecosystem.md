@@ -1,3 +1,10 @@
+---
+title: "Ecosystem"
+description: "Libraries, SDKs, and community projects built around ArmadaKV."
+section: "overview"
+order: 5
+---
+
 # Ecosystem
 Here you can find libraries, projects and SDKs related to the Armada project.
 

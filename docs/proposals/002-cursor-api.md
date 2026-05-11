@@ -1,3 +1,10 @@
+---
+title: "RFC 002: Cursor API"
+description: "Proposal to add a cursor-based streaming API for querying large datasets."
+section: "proposals"
+order: 4
+---
+
 Proposal status: Implemented
 
 ## Summary

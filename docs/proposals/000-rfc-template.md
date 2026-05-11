@@ -1,4 +1,11 @@
-Proposal status: Draft | Under Review | Accepted | Rejected
+---
+title: "RFC Template"
+description: "Template for writing ArmadaKV design proposals and RFCs."
+section: "proposals"
+order: 2
+---
+
+Proposal status: Accepted
 
 ## Summary
 

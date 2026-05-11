@@ -1,3 +1,9 @@
+---
+title: "armada"
+section: "operations_guide"
+subsection: "cli"
+order: 1
+---
 ## armada
 
 Armada is a read-optimized distributed key-value store.

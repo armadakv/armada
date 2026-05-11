@@ -1,3 +1,10 @@
+---
+title: "Retrieving Records"
+description: "How to perform exact lookups, prefix searches, and range queries in ArmadaKV."
+section: "user_guide"
+order: 2
+---
+
 # Retrieving Records
 
 See [Range Request API](../api.md#regatta-v1-RangeRequest) and [Range Response API](../api.md#regatta-v1-RangeResponse)

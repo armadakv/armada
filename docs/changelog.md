@@ -1,3 +1,10 @@
+---
+title: "Changelog"
+description: "Release notes and version history for ArmadaKV."
+section: "overview"
+order: 6
+---
+
 # Changelog
 ## v0.5.2 (unreleased)
 

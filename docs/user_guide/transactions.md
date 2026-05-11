@@ -1,3 +1,10 @@
+---
+title: "Transactions"
+description: "How to use compare-and-swap and multi-key atomic operations in ArmadaKV."
+section: "user_guide"
+order: 5
+---
+
 # Transactions
 
 See [Txn Request API](../api.md#regatta-v1-TxnRequest) and [Txn Response API](../api.md#regatta-v1-TxnResponse)

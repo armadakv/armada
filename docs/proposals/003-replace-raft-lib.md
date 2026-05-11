@@ -1,3 +1,10 @@
+---
+title: "RFC 003: Replace Raft Library"
+description: "Proposal to replace the dragonboat Raft library with hashicorp/raft."
+section: "proposals"
+order: 5
+---
+
 Accepted
 
 ## Summary
