@@ -1,3 +1,13 @@
+---
+title: "User Guide"
+subtitle: "Interacting with ArmadaKV via gRPC"
+description: "Learn how to read, write, and delete data in ArmadaKV using the gRPC API."
+section: "user_guide"
+section_label: "User Guide"
+section_order: 2
+order: 1
+---
+
 # User Guide
 
 Throughout this documentation, we are using [gRPCurl](https://github.com/fullstorydev/grpcurl)

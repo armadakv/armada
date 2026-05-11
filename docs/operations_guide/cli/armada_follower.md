@@ -1,3 +1,9 @@
+---
+title: "armada follower"
+section: "operations_guide"
+subsection: "cli"
+order: 3
+---
 ## armada follower
 
 Start Armada in follower mode.

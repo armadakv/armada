@@ -1,3 +1,10 @@
+---
+title: "Contributing"
+description: "How to contribute to ArmadaKV — code, docs, questions, and community guidelines."
+section: "overview"
+order: 7
+---
+
 # Contributing
 
 Armada welcomes contributions of all kinds — bug reports, feature requests, documentation

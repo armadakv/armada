@@ -1,3 +1,9 @@
+---
+title: "armada leader"
+section: "operations_guide"
+subsection: "cli"
+order: 2
+---
 ## armada leader
 
 Start Armada in leader mode.

@@ -1,3 +1,10 @@
+---
+title: "RFC 001: Range Empty Semantics"
+description: "Proposal to change Range API semantics when no results are found."
+section: "proposals"
+order: 3
+---
+
 Proposal status: Implemented
 
 ## Summary

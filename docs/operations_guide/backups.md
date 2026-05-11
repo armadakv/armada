@@ -1,3 +1,10 @@
+---
+title: "Backups"
+description: "How to create and restore ArmadaKV backups using the Maintenance gRPC API and built-in CLI commands."
+section: "operations_guide"
+order: 3
+---
+
 # Backups
 
 Armada supports creating backups and restoring from them through the [Maintenance gRPC API](../api.md#maintenance-proto)

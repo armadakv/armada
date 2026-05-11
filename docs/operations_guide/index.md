@@ -1,3 +1,13 @@
+---
+title: "Operations Guide"
+subtitle: "Deploying and operating ArmadaKV"
+description: "Guides for deploying, configuring, and operating ArmadaKV in production environments."
+section: "operations_guide"
+section_label: "Operations Guide"
+section_order: 3
+order: 1
+---
+
 # Operations Guide
 
 This guide covers everything needed to deploy, configure, and operate an Armada cluster.

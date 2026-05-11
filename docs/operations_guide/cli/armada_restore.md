@@ -1,3 +1,9 @@
+---
+title: "armada restore"
+section: "operations_guide"
+subsection: "cli"
+order: 5
+---
 ## armada restore
 
 Restore Armada from local files.

@@ -1,3 +1,10 @@
+---
+title: "Deploying to Kubernetes"
+description: "How to deploy ArmadaKV leader and follower clusters to Kubernetes using the official Helm Chart."
+section: "operations_guide"
+order: 2
+---
+
 # Deploying Armada to Kubernetes
 
 In order to run Armada cluster, TLS certificates and keys must be generated for the gRPC APIs.

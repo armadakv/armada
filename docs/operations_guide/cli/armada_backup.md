@@ -1,3 +1,9 @@
+---
+title: "armada backup"
+section: "operations_guide"
+subsection: "cli"
+order: 4
+---
 ## armada backup
 
 Backup Armada to local files.

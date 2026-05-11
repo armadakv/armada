@@ -1,3 +1,13 @@
+---
+title: "Introduction"
+subtitle: "A distributed, eventually consistent key-value store built for Kubernetes"
+description: "Overview of ArmadaKV — a distributed key-value store designed for high read throughput and global data distribution."
+section: "overview"
+section_label: "Overview"
+section_order: 1
+order: 1
+---
+
 # Armada
 
 **Armada** is a distributed, eventually consistent key-value store built for Kubernetes.

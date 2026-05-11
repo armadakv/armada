@@ -1,3 +1,11 @@
+---
+title: "Quickstart"
+subtitle: "Get Armada running in minutes"
+description: "Step-by-step guide to running ArmadaKV from source, Docker, or Kubernetes Helm Charts."
+section: "overview"
+order: 2
+---
+
 # Running Armada
 
 There are multiple possibilities for how to run Armada -- building Armada from source and executing the binary,

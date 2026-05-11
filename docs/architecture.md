@@ -1,3 +1,11 @@
+---
+title: "Architecture"
+subtitle: "Hub-and-spoke topology with Raft consensus"
+description: "Deep dive into ArmadaKV's distributed architecture — topology, Raft replication, tables, and APIs."
+section: "overview"
+order: 3
+---
+
 # Architecture
 
 Armada is designed as a "geographically distributed [etcd](https://etcd.io)", providing etcd-like gRPC API in every location

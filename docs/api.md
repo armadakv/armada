@@ -1,3 +1,11 @@
+---
+title: "API Reference"
+subtitle: "Complete gRPC API documentation"
+description: "Full reference for ArmadaKV's gRPC APIs: KV, Replication, Maintenance, and Tables."
+section: "overview"
+order: 4
+---
+
 # gRPC API Documentation
 <details open markdown="block">
   <summary>
