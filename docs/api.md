@@ -558,7 +558,7 @@ Examples:
 
 ### Service: Log
 
-Log service provides methods to replicate data from Regatta leader's log to Regatta followers' logs.
+Log service provides methods to replicate data from Armada leader's log to Armada followers' logs.
 
 | Method | Request | Response | Description |
 | ------ | ------- | -------- | ----------- |
@@ -567,7 +567,7 @@ Log service provides methods to replicate data from Regatta leader's log to Rega
 
 ### Service: Metadata
 
-Metadata service provides method to get Regatta metadata, e.g. tables.
+Metadata service provides method to get Armada metadata, e.g. tables.
 
 | Method | Request | Response | Description |
 | ------ | ------- | -------- | ----------- |

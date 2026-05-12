@@ -1,7 +1,7 @@
 // Copyright JAMF Software, LLC
 
 //
-// Regatta replication protobuffer specification
+// Armada replication protobuffer specification
 //
 
 syntax = "proto3";
@@ -12,7 +12,7 @@ import "mvcc.proto";
 
 option go_package = "./armadapb";
 
-// Metadata service provides method to get Regatta metadata, e.g. tables.
+// Metadata service provides method to get Armada metadata, e.g. tables.
 service Metadata {
   rpc Get(MetadataRequest) returns (MetadataResponse);
 }
@@ -59,7 +59,7 @@ message SnapshotChunk {
   uint64 index = 3;
 }
 
-// Log service provides methods to replicate data from Regatta leader's log to Regatta followers' logs.
+// Log service provides methods to replicate data from Armada leader's log to Armada followers' logs.
 service Log {
   // Replicate is method to ask for data of specified table from the specified index.
   rpc Replicate(ReplicateRequest) returns (stream ReplicateResponse);
