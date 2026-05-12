@@ -3,7 +3,7 @@ module github.com/armadakv/armada
 go 1.26.0
 
 require (
-	github.com/VictoriaMetrics/metrics v1.35.2
+	github.com/VictoriaMetrics/metrics v1.43.2
 	github.com/armon/go-metrics v0.4.1
 	github.com/benbjohnson/clock v1.3.5
 	github.com/cenkalti/backoff/v4 v4.3.0
