@@ -33,7 +33,7 @@ order: 4
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 {{range .Fields -}}
-| `{{.Name}}` | {{if .IsMap}}map{{else if .LongType}}[{{.LongType}}](#{{.LongType | lower | replace "." ""}}){{else}}{{.Type}}{{end}} | {{.Label}} | {{.Description | replace "\n" " "}} |
+| `{{.Name}}` | {{if .IsMap}}{{.FullType}}{{else if .LongType}}[{{.LongType}}](#{{.LongType | lower | replace "." ""}}){{else}}{{.Type}}{{end}} | {{if .IsMap}}{{else}}{{.Label}}{{end}} | {{.Description | replace "\n" " "}} |
 {{end}}
 {{- end}}
 {{end}}

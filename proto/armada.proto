@@ -230,6 +230,9 @@ message Member {
 }
 
 message TableStatus {
+  reserved 2, 3;
+  reserved "logSize", "dbSize";
+
   // leader is the member ID which the responding member believes is the current leader.
   string leader = 4;
   // raftIndex is the current raft committed index of the responding member.

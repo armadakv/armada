@@ -58,7 +58,7 @@ proto-docs: docs/api.md
 
 docs/api.md: proto/*.proto proto/doc.md.tmpl
 	protoc -I proto/ --doc_out=docs/ --doc_opt=proto/doc.md.tmpl,api.md \
-	  proto/armada.proto proto/maintenance.proto proto/mvcc.proto proto/replication.proto
+	  proto/*.proto
 
 # Build the docker image
 .PHONY: docker-build
