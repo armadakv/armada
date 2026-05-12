@@ -33,6 +33,10 @@ const (
 // Maintenance service provides methods for maintenance purposes.
 type MaintenanceClient interface {
 	Backup(ctx context.Context, in *BackupRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[SnapshotChunk], error)
+	// Restore streams backup data to the server to restore one or more tables from a backup.
+	// The stream must begin with a RestoreMessage containing RestoreInfo, followed by one or more
+	// RestoreMessages containing SnapshotChunk data. This is a destructive operation — existing
+	// table data is replaced by the backup.
 	Restore(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[RestoreMessage, RestoreResponse], error)
 	Reset(ctx context.Context, in *ResetRequest, opts ...grpc.CallOption) (*ResetResponse, error)
 }
@@ -94,6 +98,10 @@ func (c *maintenanceClient) Reset(ctx context.Context, in *ResetRequest, opts ..
 // Maintenance service provides methods for maintenance purposes.
 type MaintenanceServer interface {
 	Backup(*BackupRequest, grpc.ServerStreamingServer[SnapshotChunk]) error
+	// Restore streams backup data to the server to restore one or more tables from a backup.
+	// The stream must begin with a RestoreMessage containing RestoreInfo, followed by one or more
+	// RestoreMessages containing SnapshotChunk data. This is a destructive operation — existing
+	// table data is replaced by the backup.
 	Restore(grpc.ClientStreamingServer[RestoreMessage, RestoreResponse]) error
 	Reset(context.Context, *ResetRequest) (*ResetResponse, error)
 	mustEmbedUnimplementedMaintenanceServer()

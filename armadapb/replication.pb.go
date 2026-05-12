@@ -80,8 +80,10 @@ func (ReplicateError) EnumDescriptor() ([]byte, []int) {
 type Table_Type int32
 
 const (
+	// REPLICATED indicates a table that is replicated from the leader cluster to this follower cluster.
 	Table_REPLICATED Table_Type = 0
-	Table_LOCAL      Table_Type = 1
+	// LOCAL indicates a table that exists only in this cluster and is not replicated from a leader.
+	Table_LOCAL Table_Type = 1
 )
 
 // Enum value maps for Table_Type.
