@@ -924,10 +924,6 @@ func (x *Member) GetClientURLs() []string {
 
 type TableStatus struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// dbSize is the size of the raft log, in bytes, of the responding member.
-	LogSize int64 `protobuf:"varint,2,opt,name=logSize,proto3" json:"logSize,omitempty"`
-	// dbSize is the size of the backend database physically allocated, in bytes, of the responding member.
-	DbSize int64 `protobuf:"varint,3,opt,name=dbSize,proto3" json:"dbSize,omitempty"`
 	// leader is the member ID which the responding member believes is the current leader.
 	Leader string `protobuf:"bytes,4,opt,name=leader,proto3" json:"leader,omitempty"`
 	// raftIndex is the current raft committed index of the responding member.
@@ -968,20 +964,6 @@ func (x *TableStatus) ProtoReflect() protoreflect.Message {
 // Deprecated: Use TableStatus.ProtoReflect.Descriptor instead.
 func (*TableStatus) Descriptor() ([]byte, []int) {
 	return file_armada_proto_rawDescGZIP(), []int{12}
-}
-
-func (x *TableStatus) GetLogSize() int64 {
-	if x != nil {
-		return x.LogSize
-	}
-	return 0
-}
-
-func (x *TableStatus) GetDbSize() int64 {
-	if x != nil {
-		return x.DbSize
-	}
-	return 0
 }
 
 func (x *TableStatus) GetLeader() string {
@@ -1549,14 +1531,12 @@ const file_armada_proto_rawDesc = "" +
 	"\bpeerURLs\x18\x03 \x03(\tR\bpeerURLs\x12\x1e\n" +
 	"\n" +
 	"clientURLs\x18\x04 \x03(\tR\n" +
-	"clientURLs\"\xbd\x01\n" +
-	"\vTableStatus\x12\x18\n" +
-	"\alogSize\x18\x02 \x01(\x03R\alogSize\x12\x16\n" +
-	"\x06dbSize\x18\x03 \x01(\x03R\x06dbSize\x12\x16\n" +
+	"clientURLs\"\xa8\x01\n" +
+	"\vTableStatus\x12\x16\n" +
 	"\x06leader\x18\x04 \x01(\tR\x06leader\x12\x1c\n" +
 	"\traftIndex\x18\x05 \x01(\x04R\traftIndex\x12\x1a\n" +
 	"\braftTerm\x18\x06 \x01(\x04R\braftTerm\x12*\n" +
-	"\x10raftAppliedIndex\x18\a \x01(\x04R\x10raftAppliedIndex\"'\n" +
+	"\x10raftAppliedIndex\x18\a \x01(\x04R\x10raftAppliedIndexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\alogSizeR\x06dbSize\"'\n" +
 	"\rStatusRequest\x12\x16\n" +
 	"\x06config\x18\x04 \x01(\bR\x06config\"\xab\x02\n" +
 	"\x0eStatusResponse\x12\x0e\n" +

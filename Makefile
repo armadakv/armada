@@ -33,7 +33,7 @@ test:
 	go test ./... -cover -race -v
 
 .PHONY: build
-build: proto docs armada
+build: proto proto-docs docs armada
 
 docs: armada
 	./armada docs --destination=docs/operations_guide/cli
@@ -52,6 +52,13 @@ proto: $(PROTO_GO_OUTS)
 
 $(PROTO_GO_OUTS): proto/*.proto
 	protoc -I proto/ --go_out=. --go-grpc_out=. --go-vtproto_out=. --go-vtproto_opt=features=marshal+unmarshal+unmarshal_unsafe+size+pool --go-vtproto_opt=pool=./armadapb.Command --go-vtproto_opt=pool=./armadapb.SnapshotChunk proto/*.proto
+
+.PHONY: proto-docs
+proto-docs: docs/api.md
+
+docs/api.md: proto/*.proto proto/doc.md.tmpl
+	protoc -I proto/ --doc_out=docs/ --doc_opt=proto/doc.md.tmpl,api.md \
+	  proto/*.proto
 
 # Build the docker image
 .PHONY: docker-build

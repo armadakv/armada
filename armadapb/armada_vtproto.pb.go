@@ -852,16 +852,6 @@ func (m *TableStatus) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x22
 	}
-	if m.DbSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.DbSize))
-		i--
-		dAtA[i] = 0x18
-	}
-	if m.LogSize != 0 {
-		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LogSize))
-		i--
-		dAtA[i] = 0x10
-	}
 	return len(dAtA) - i, nil
 }
 
@@ -1613,12 +1603,6 @@ func (m *TableStatus) SizeVT() (n int) {
 	}
 	var l int
 	_ = l
-	if m.LogSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.LogSize))
-	}
-	if m.DbSize != 0 {
-		n += 1 + protohelpers.SizeOfVarint(uint64(m.DbSize))
-	}
 	l = len(m.Leader)
 	if l > 0 {
 		n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
@@ -3745,44 +3729,6 @@ func (m *TableStatus) UnmarshalVT(dAtA []byte) error {
 			return fmt.Errorf("proto: TableStatus: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogSize", wireType)
-			}
-			m.LogSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LogSize |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DbSize", wireType)
-			}
-			m.DbSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DbSize |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Leader", wireType)
@@ -6869,44 +6815,6 @@ func (m *TableStatus) UnmarshalVTUnsafe(dAtA []byte) error {
 			return fmt.Errorf("proto: TableStatus: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
-		case 2:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LogSize", wireType)
-			}
-			m.LogSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.LogSize |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-		case 3:
-			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field DbSize", wireType)
-			}
-			m.DbSize = 0
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return protohelpers.ErrIntOverflow
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				m.DbSize |= int64(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
 		case 4:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Leader", wireType)

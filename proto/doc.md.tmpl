@@ -1,0 +1,59 @@
+---
+title: "API Reference"
+subtitle: "Complete gRPC API documentation"
+description: "Full reference for ArmadaKV's gRPC APIs: KV, Replication, Maintenance, and Tables."
+section: "overview"
+order: 4
+---
+
+# gRPC API Reference
+{{range .Files}}
+{{$file := .}}
+## {{.Name}}
+{{if .Description}}
+{{.Description}}
+{{end}}
+{{range .Services}}
+### Service: {{.Name}}
+{{if .Description}}
+{{.Description}}
+{{end}}
+| Method | Request | Response | Description |
+| ------ | ------- | -------- | ----------- |
+{{range .Methods -}}
+| **{{.Name}}** | [{{.RequestLongType}}](#{{.RequestLongType | lower | replace "." ""}}) | [{{.ResponseLongType}}](#{{.ResponseLongType | lower | replace "." ""}}) | {{.Description | replace "\n" " "}} |
+{{end}}
+{{end}}
+{{range .Messages}}
+#### {{.LongName}} {#{{.LongName | lower | replace "." ""}}}
+{{if .Description}}
+{{.Description}}
+{{end}}
+{{if .Fields -}}
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+{{range .Fields -}}
+| `{{.Name}}` | {{if .IsMap}}{{.FullType}}{{else if .LongType}}[{{.LongType}}](#{{.LongType | lower | replace "." ""}}){{else}}{{.Type}}{{end}} | {{if .IsMap}}{{else}}{{.Label}}{{end}} | {{.Description | replace "\n" " "}} |
+{{end}}
+{{- end}}
+{{end}}
+{{range .Enums}}
+#### {{.LongName}} {#{{.LongName | lower | replace "." ""}}}
+{{if .Description}}
+{{.Description}}
+{{end}}
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+{{range .Values -}}
+| `{{.Name}}` | {{.Number}} | {{.Description | replace "\n" " "}} |
+{{end}}
+
+{{end}}
+{{end}}
+## Scalar Value Types
+
+| Type | Notes | Go | Java | Python |
+| ---- | ----- | -- | ---- | ------ |
+{{range .Scalars -}}
+| `{{.ProtoType}}` | {{.Notes}} | `{{.GoType}}` | `{{.JavaType}}` | `{{.PythonType}}` |
+{{end}}
