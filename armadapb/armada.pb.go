@@ -1531,12 +1531,12 @@ const file_armada_proto_rawDesc = "" +
 	"\bpeerURLs\x18\x03 \x03(\tR\bpeerURLs\x12\x1e\n" +
 	"\n" +
 	"clientURLs\x18\x04 \x03(\tR\n" +
-	"clientURLs\"\x8b\x01\n" +
+	"clientURLs\"\xa8\x01\n" +
 	"\vTableStatus\x12\x16\n" +
 	"\x06leader\x18\x04 \x01(\tR\x06leader\x12\x1c\n" +
 	"\traftIndex\x18\x05 \x01(\x04R\traftIndex\x12\x1a\n" +
 	"\braftTerm\x18\x06 \x01(\x04R\braftTerm\x12*\n" +
-	"\x10raftAppliedIndex\x18\a \x01(\x04R\x10raftAppliedIndex\"'\n" +
+	"\x10raftAppliedIndex\x18\a \x01(\x04R\x10raftAppliedIndexJ\x04\b\x02\x10\x03J\x04\b\x03\x10\x04R\alogSizeR\x06dbSize\"'\n" +
 	"\rStatusRequest\x12\x16\n" +
 	"\x06config\x18\x04 \x01(\bR\x06config\"\xab\x02\n" +
 	"\x0eStatusResponse\x12\x0e\n" +

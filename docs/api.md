@@ -208,7 +208,7 @@ FollowerGetTablesResponse contains information about tables stored in the cluste
 | `id` | [string](#string) |  | id is the member ID of this member. |
 | `version` | [string](#string) |  | version is the semver version used by the responding member. |
 | `info` | [string](#string) |  | info is the additional server info. |
-| `tables` | map | repeated | tables is a status of tables of the responding member. |
+| `tables` | regatta.v1.StatusResponse.TablesEntry |  | tables is a status of tables of the responding member. |
 | `config` | [google.protobuf.Struct](#googleprotobufstruct) |  | config the node configuration values. |
 | `errors` | [string](#string) | repeated | errors contains alarm/health information and status. |
 
@@ -338,6 +338,41 @@ RestoreMessage contains either info of the table being restored or chunk of a ba
 
 #### RestoreResponse {#restoreresponse}
 
+
+
+
+
+
+## metrics.proto
+
+
+### Service: Metrics
+
+Metrics service for retrieving Prometheus metrics data via gRPC
+
+| Method | Request | Response | Description |
+| ------ | ------- | -------- | ----------- |
+| **GetMetrics** | [MetricsRequest](#metricsrequest) | [MetricsResponse](#metricsresponse) | GetMetrics returns all available Prometheus metrics data. |
+
+
+
+#### MetricsRequest {#metricsrequest}
+
+MetricsRequest is used to request metrics data.
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `format` | [string](#string) |  | format can be used to specify the desired format of metrics (default: prometheus text format) |
+
+
+#### MetricsResponse {#metricsresponse}
+
+MetricsResponse contains the requested metrics data.
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `metrics_data` | [string](#string) |  | metrics_data contains the metrics data in the requested format (typically prometheus text format) |
+| `timestamp` | [int64](#int64) |  | timestamp represents when these metrics were collected |
 
 
 
