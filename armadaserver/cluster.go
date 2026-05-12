@@ -32,6 +32,12 @@ func (c *ClusterServer) MemberList(ctx context.Context, req *armadapb.MemberList
 
 func (c *ClusterServer) Status(ctx context.Context, req *armadapb.StatusRequest) (*armadapb.StatusResponse, error) {
 	res, err := c.Cluster.Status(ctx, req)
+	if err != nil {
+		if serrors.IsSafeToRetry(err) {
+			return nil, status.Error(codes.Unavailable, err.Error())
+		}
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
 	if req.Config {
 		cfg := c.Config()
 		b, err := json.Marshal(cfg)
@@ -43,12 +49,6 @@ func (c *ClusterServer) Status(ctx context.Context, req *armadapb.StatusRequest)
 			return nil, err
 		}
 		res.Config = &st
-	}
-	if err != nil {
-		if serrors.IsSafeToRetry(err) {
-			return nil, status.Error(codes.Unavailable, err.Error())
-		}
-		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	return res, nil
 }
