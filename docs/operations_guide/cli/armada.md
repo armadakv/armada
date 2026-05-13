@@ -23,7 +23,9 @@ done to the leader cluster to which the follower is connected to.
 
 ### SEE ALSO
 
+* [armada backup](armada_backup.md)	 - Backup Armada to local files.
 * [armada follower](armada_follower.md)	 - Start Armada in follower mode.
 * [armada leader](armada_leader.md)	 - Start Armada in leader mode.
+* [armada restore](armada_restore.md)	 - Restore Armada from local files.
 * [armada version](armada_version.md)	 - Print current version.
 

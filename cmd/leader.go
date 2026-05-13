@@ -55,7 +55,7 @@ var leaderCmd = &cobra.Command{
 	Short: "Start Armada in leader mode.",
 	RunE:  leader,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		initConfig(cmd.Flags())
+		initConfig(cmd.PersistentFlags())
 		return validateLeaderConfig()
 	},
 	DisableAutoGenTag: true,

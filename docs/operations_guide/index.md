@@ -25,4 +25,4 @@ The Helm repository still publishes the chart under the legacy `regatta` name.
 * [Backups](backups.md) — create backups and restore from them
 * [Security](security.md) — TLS, mTLS, and token-based authentication
 * [Metrics and Observability](metrics_and_observability.md) — Prometheus metrics, alerting, and profiling
-* [CLI Reference](cli) — full flag reference for `armada` server commands and `arctl` maintenance commands
+* [CLI Reference](cli) — full flag reference for `armada leader` and `armada follower`

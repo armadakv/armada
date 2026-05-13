@@ -9,7 +9,7 @@ COPY . .
 
 # Build
 ARG VERSION
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build GOMODCACHE=/go/pkg/mod GOCACHE=/root/.cache/go-build VERSION=${VERSION} make armada arctl
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build GOMODCACHE=/go/pkg/mod GOCACHE=/root/.cache/go-build VERSION=${VERSION} make armada
 
 # Runtime
 FROM alpine:3.23
@@ -26,7 +26,6 @@ WORKDIR /
 COPY --from=builder /etc/passwd /etc/
 COPY --from=builder /usr/share/zoneinfo/ /usr/share/zoneinfo/
 COPY --from=builder --chown=1000:1000 /github.com/armadakv/armada/armada /usr/local/bin/
-COPY --from=builder --chown=1000:1000 /github.com/armadakv/armada/arctl /usr/local/bin/
 
 USER armada
 

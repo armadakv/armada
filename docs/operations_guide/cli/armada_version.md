@@ -2,7 +2,7 @@
 title: "armada version"
 section: "operations_guide"
 subsection: "cli"
-order: 4
+order: 6
 ---
 ## armada version
 

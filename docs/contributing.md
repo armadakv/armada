@@ -51,10 +51,7 @@ The pull request should be tagged with the label `proposal`.
 # Build only the armada binary (fast iteration)
 make armada
 
-# Build only the control CLI binary
-make arctl
-
-# Regenerate protobuf outputs and build the binaries (full build)
+# Regenerate protobuf outputs and build the binary (full build)
 make build
 
 # Regenerate protobuf outputs only
@@ -120,3 +117,4 @@ make serve-docs
 * [Dragonboat](https://github.com/lni/dragonboat)
 * [Raft algorithm](https://raft.github.io)
 * [Pebble](https://github.com/cockroachdb/pebble)
+

@@ -95,7 +95,7 @@ armada follower \
 ## Maintenance API Token
 
 The Maintenance API (backup/restore) is protected by a token rather than a separate TLS configuration.
-Set `--maintenance.token` on startup and pass the same value to the `arctl backup` or `arctl restore`
+Set `--maintenance.token` on startup and pass the same value to the `armada backup` or `armada restore`
 command via `--token`:
 
 ```bash
@@ -103,7 +103,7 @@ command via `--token`:
 armada leader --maintenance.token=supersecret ...
 
 # Client
-arctl backup --address=127.0.0.1:8445 --token=supersecret --ca=ca.crt --dir=/backup
+armada backup --address=127.0.0.1:8445 --token=supersecret --ca=ca.crt --dir=/backup
 ```
 
 If `--maintenance.token` is left empty (the default), no token is checked.

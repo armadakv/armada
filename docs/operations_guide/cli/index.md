@@ -1,7 +1,7 @@
 ---
 title: "CLI Reference"
 subtitle: "Command-line interface documentation"
-description: "Complete reference for the ArmadaKV CLI — armada server commands and arctl maintenance commands."
+description: "Complete reference for the ArmadaKV CLI — leader, follower, backup, restore, and version commands."
 section: "operations_guide"
 subsection: "cli"
 subsection_label: "CLI Reference"
@@ -11,7 +11,7 @@ order: 1
 
 # CLI Reference
 
-The ArmadaKV CLI is split between the `armada` server binary and the `arctl` control binary.
+The `armada` CLI is used to start and manage ArmadaKV nodes.
 
 ## Commands
 
@@ -20,7 +20,6 @@ The ArmadaKV CLI is split between the `armada` server binary and the `arctl` con
 | [armada](armada.md) | Root command |
 | [armada leader](armada_leader.md) | Start Armada in leader mode |
 | [armada follower](armada_follower.md) | Start Armada in follower mode |
+| [armada backup](armada_backup.md) | Backup Armada to local files |
+| [armada restore](armada_restore.md) | Restore Armada from local files |
 | [armada version](armada_version.md) | Print current version |
-| [arctl](arctl.md) | Root command |
-| [arctl backup](arctl_backup.md) | Backup Armada to local files |
-| [arctl restore](arctl_restore.md) | Restore Armada from local files |
