@@ -78,7 +78,7 @@ compacted or the GC horizon has advanced), the leader signals the follower to pe
 
 1. Receives a full or incremental snapshot from the `Snapshot` service.
 2. Replays the streamed commands into a temporary recovery shard.
-3. Atomically swaps the recovered shard for the live table, minimising downtime.
+3. Atomically swaps the recovered shard for the live table, minimizing downtime.
 
 Snapshot recovery is also used when a brand-new follower cluster is bootstrapped for the first
 time (before it has any local state to resume from).
