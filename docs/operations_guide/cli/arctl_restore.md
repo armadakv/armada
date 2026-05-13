@@ -1,10 +1,10 @@
 ---
-title: "armada restore"
+title: "arctl restore"
 section: "operations_guide"
 subsection: "cli"
-order: 5
+order: 7
 ---
-## armada restore
+## arctl restore
 
 Restore Armada from local files.
 
@@ -17,21 +17,26 @@ Restoring is done sequentially, for the fine-grained control of what to restore 
 It is almost certain that after restore the cold-start of all the followers watching the restored leader cluster is going to be necessary.
 
 ```
-armada restore [flags]
+arctl restore [flags]
 ```
 
 ### Options
 
 ```
-      --address string   Maintenance API address. (default "127.0.0.1:8445")
-      --ca string        Path to the client CA cert file.
-      --dir string       Directory containing the backups (current directory if empty)
-  -h, --help             help for restore
+      --dir string   Directory containing the backups (current directory if empty)
+  -h, --help         help for restore
+```
+
+### Options inherited from parent commands
+
+```
+      --address string   Armada maintenance API address. (default "127.0.0.1:8445")
+      --ca string        Path to the client CA certificate.
       --json             Enables JSON logging.
       --token string     The access token to use for the authentication.
 ```
 
 ### SEE ALSO
 
-* [armada](armada.md)	 - Armada is a read-optimized distributed key-value store.
+* [arctl](arctl.md)	 - Armada control CLI.
 

@@ -46,7 +46,7 @@ armada:
 .PHONY: arctl
 arctl:
 	test $(VERSION) || (echo "version not set"; exit 1)
-	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o arctl ./arctl
+	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o arctl ./cmd/arctl
 
 PROTO_GO_OUTS=armadapb/mvcc.pb.go armadapb/mvcc_vtproto.pb.go \
  armadapb/armada.pb.go armadapb/armada_grpc.pb.go armadapb/armada_vtproto.pb.go \
