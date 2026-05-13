@@ -33,7 +33,7 @@ test:
 	go test ./... -cover -race -v
 
 .PHONY: build
-build: proto proto-docs docs armada
+build: proto proto-docs docs armada arctl
 
 docs: armada
 	./armada docs --destination=docs/operations_guide/cli
@@ -42,6 +42,11 @@ docs: armada
 armada:
 	test $(VERSION) || (echo "version not set"; exit 1)
 	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o armada
+
+.PHONY: arctl
+arctl:
+	test $(VERSION) || (echo "version not set"; exit 1)
+	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o arctl ./arctl
 
 PROTO_GO_OUTS=armadapb/mvcc.pb.go armadapb/mvcc_vtproto.pb.go \
  armadapb/armada.pb.go armadapb/armada_grpc.pb.go armadapb/armada_vtproto.pb.go \
@@ -72,4 +77,4 @@ kind-cluster:
 
 .PHONY: clean
 clean:
-	rm -f armada
+	rm -f armada arctl

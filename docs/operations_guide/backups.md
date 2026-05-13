@@ -1,6 +1,6 @@
 ---
 title: "Backups"
-description: "How to create and restore ArmadaKV backups using the Maintenance gRPC API and built-in CLI commands."
+description: "How to create and restore ArmadaKV backups using the Maintenance gRPC API and the `arctl` control CLI."
 section: "operations_guide"
 order: 3
 ---
@@ -8,14 +8,14 @@ order: 3
 # Backups
 
 Armada supports creating backups and restoring from them through the [Maintenance gRPC API](../api.md#maintenance-proto)
-and built-in [`backup`](cli/armada_backup.md) and
-[`restore`](cli/armada_restore.md) commands.
+and the [`arctl backup`](cli/arctl_backup.md) and
+[`arctl restore`](cli/arctl_restore.md) commands.
 
 
 > **Important:**
 Backing up and restoring can be done only in a leader cluster.
 
-To interact with Armada's Maintenance API, use the `armada` binary, which can be
+To interact with Armada's Maintenance API, use the `arctl` binary, which can be
 downloaded from the [Releases GitHub page](https://github.com/armadakv/armada/releases)
 or use the [Docker Image](https://github.com/armadakv/armada/pkgs/container/regatta).
 
@@ -26,10 +26,10 @@ See the [Helm Chart](https://github.com/armadakv/armada-helm/blob/master/charts/
 or the [CLI documentation](cli/armada_leader.md) for reference. The chart path still uses the legacy `regatta` name.
 
 Additionally, a *token* must be provided during Armada startup which
-is then provided to the `armada backup` command:
+is then provided to the `arctl backup` command:
 
 ```bash
-armada backup \
+arctl backup \
       --address=127.0.0.1:8445 \
       --token=$(BACKUP_TOKEN) \
       --ca=ca.crt \
@@ -51,11 +51,11 @@ to periodically create backup and push it to an S3 Bucket.
 Restoring from backups is a destructive operation and should be used only as a part of a break-glass procedure.
 
 To restore from backups, Maintenance API must be enabled during Armada startup and a *token* and a directory
-containing binary backups and the JSON manifest must be provided to the `armada restore` command.
+containing binary backups and the JSON manifest must be provided to the `arctl restore` command.
 All tables present in the manifest are then restored.
 
 ```bash
-armada restore \
+arctl restore \
       --address=127.0.0.1:8445 \
       --token=$(BACKUP_TOKEN) \
       --ca=ca.crt \

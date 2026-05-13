@@ -10,13 +10,13 @@ import (
 )
 
 func init() {
-	// Add subcommands
 	rootCmd.AddCommand(leaderCmd)
 	rootCmd.AddCommand(followerCmd)
 	rootCmd.AddCommand(docsCmd)
-	rootCmd.AddCommand(backupCmd)
-	rootCmd.AddCommand(restoreCmd)
 	rootCmd.AddCommand(versionCmd)
+
+	arctlRootCmd.AddCommand(backupCmd)
+	arctlRootCmd.AddCommand(restoreCmd)
 }
 
 var rootCmd = &cobra.Command{
@@ -33,9 +33,29 @@ done to the leader cluster to which the follower is connected to.`,
 	CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
+var arctlRootCmd = &cobra.Command{
+	Use:   "arctl",
+	Short: "Armada control CLI.",
+	Long: `Arctl provides administrative and maintenance commands for Armada clusters,
+including backup and restore workflows.`,
+	Hidden:             true,
+	DisableFlagParsing: true,
+	DisableAutoGenTag:  true,
+	CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
+}
+
 // Execute cobra command.
 func Execute() {
-	if err := rootCmd.Execute(); err != nil {
+	execute(rootCmd)
+}
+
+// ExecuteArctl executes the arctl cobra command.
+func ExecuteArctl() {
+	execute(arctlRootCmd)
+}
+
+func execute(root *cobra.Command) {
+	if err := root.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}

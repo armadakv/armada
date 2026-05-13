@@ -27,9 +27,10 @@ var cliOrder = map[string]int{
 	"armada":          1,
 	"armada_leader":   2,
 	"armada_follower": 3,
-	"armada_backup":   4,
-	"armada_restore":  5,
-	"armada_version":  6,
+	"armada_version":  4,
+	"arctl":           5,
+	"arctl_backup":    6,
+	"arctl_restore":   7,
 }
 
 func init() {
@@ -62,6 +63,11 @@ var docsCmd = &cobra.Command{
 		}
 
 		err = doc.GenMarkdownTreeCustom(rootCmd, docsDest, frontMatter, identity)
+		if err != nil {
+			return err
+		}
+
+		err = doc.GenMarkdownTreeCustom(arctlRootCmd, docsDest, frontMatter, identity)
 		if err != nil {
 			return err
 		}

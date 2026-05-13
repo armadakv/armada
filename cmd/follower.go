@@ -58,7 +58,7 @@ var followerCmd = &cobra.Command{
 	Short: "Start Armada in follower mode.",
 	RunE:  follower,
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		initConfig(cmd.PersistentFlags())
+		initConfig(cmd.Flags())
 		return validateFollowerConfig()
 	},
 	DisableAutoGenTag: true,
