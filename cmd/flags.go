@@ -131,12 +131,12 @@ func initConfig(sets ...*pflag.FlagSet) {
 		}
 		err := viper.BindPFlags(set)
 		if err != nil {
-			panic(fmt.Errorf("error binding pflags %v", err))
+			panic(fmt.Errorf("error binding pflags: %w", err))
 		}
 	}
 
 	err := viper.ReadInConfig()
 	if err != nil && !errors.As(err, &viper.ConfigFileNotFoundError{}) {
-		panic(fmt.Errorf("error reading config %v", err))
+		panic(fmt.Errorf("error reading config: %w", err))
 	}
 }
