@@ -38,10 +38,8 @@ var arctlRootCmd = &cobra.Command{
 	Short: "Armada control CLI.",
 	Long: `Arctl provides administrative and maintenance commands for Armada clusters,
 including backup and restore workflows.`,
-	Hidden:             true,
-	DisableFlagParsing: true,
-	DisableAutoGenTag:  true,
-	CompletionOptions:  cobra.CompletionOptions{DisableDefaultCmd: true},
+	DisableAutoGenTag: true,
+	CompletionOptions: cobra.CompletionOptions{DisableDefaultCmd: true},
 }
 
 // Execute cobra command.

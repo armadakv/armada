@@ -117,7 +117,7 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 	tablesFlagSet.String("tables.token", "", "Token to check for tables API access, if left empty (default) no token is checked.")
 }
 
-func initConfig(set *pflag.FlagSet) {
+func initConfig(sets ...*pflag.FlagSet) {
 	viper.SetConfigName("config")
 	viper.AddConfigPath("/etc/armada/")
 	viper.AddConfigPath("/config")
@@ -125,12 +125,17 @@ func initConfig(set *pflag.FlagSet) {
 	viper.AddConfigPath(".")
 	viper.AutomaticEnv()
 
-	err := viper.BindPFlags(set)
-	if err != nil {
-		panic(fmt.Errorf("error binding pflags %v", err))
+	for _, set := range sets {
+		if set == nil {
+			continue
+		}
+		err := viper.BindPFlags(set)
+		if err != nil {
+			panic(fmt.Errorf("error binding pflags %v", err))
+		}
 	}
 
-	err = viper.ReadInConfig()
+	err := viper.ReadInConfig()
 	if err != nil && !errors.As(err, &viper.ConfigFileNotFoundError{}) {
 		panic(fmt.Errorf("error reading config %v", err))
 	}

@@ -37,7 +37,7 @@ Backup consists of file per a table in a binary compressed form and a human-read
 		return err
 	},
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		initConfig(cmd.Flags())
+		initConfig(cmd.InheritedFlags(), cmd.Flags())
 		return nil
 	},
 	DisableAutoGenTag: true,

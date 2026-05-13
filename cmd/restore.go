@@ -36,7 +36,7 @@ It is almost certain that after restore the cold-start of all the followers watc
 		return b.Restore()
 	},
 	PreRunE: func(cmd *cobra.Command, args []string) error {
-		initConfig(cmd.Flags())
+		initConfig(cmd.InheritedFlags(), cmd.Flags())
 		return nil
 	},
 	DisableAutoGenTag: true,
