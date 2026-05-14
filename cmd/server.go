@@ -48,6 +48,16 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 		return storage.Config{}, fmt.Errorf("failed to parse raft.initial-members: %w", err)
 	}
 
+	// Gossip shares the raft UDP port (ALPN multiplexing). When memberlist.members
+	// is not explicitly set, fall back to the raft peer addresses as gossip seeds
+	// so operators don't need to repeat them under a different flag.
+	gossipMembers := filterNonEmpty(viper.GetStringSlice("memberlist.members"))
+	if len(gossipMembers) == 0 {
+		for _, addr := range initialMembers {
+			gossipMembers = append(gossipMembers, addr)
+		}
+	}
+
 	return storage.Config{
 		Log:                 engineLog.Sugar(),
 		ClientAddress:       viper.GetString("api.advertise-address"),
@@ -70,7 +80,7 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 		},
 		Gossip: storage.GossipConfig{
 			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),
-			InitialMembers:   viper.GetStringSlice("memberlist.members"),
+			InitialMembers:   gossipMembers,
 			ClusterName:      viper.GetString("memberlist.cluster-name"),
 			NodeName:         viper.GetString("memberlist.node-name"),
 			TLS: security.TLSInfo{

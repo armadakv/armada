@@ -236,6 +236,9 @@ func (c *Cluster) discoverMembers(members []string) []string {
 	}
 	var ms, resolve []string
 	for _, member := range members {
+		if member == "" {
+			continue
+		}
 		if dns.IsDynamicNode(member) {
 			resolve = append(resolve, member)
 		} else {

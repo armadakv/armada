@@ -282,7 +282,7 @@ func TestCreateEngineConfig(t *testing.T) {
 	require.Equal(t, uint64(0), config.MaxReceiveQueueSize)
 	require.Equal(t, uint64(0), config.MaxSendQueueSize)
 	require.Empty(t, config.Gossip.AdvertiseAddress)
-	require.Equal(t, []string{""}, config.Gossip.InitialMembers)
+	require.Equal(t, []string{"localhost:8080"}, config.Gossip.InitialMembers)
 	require.Equal(t, "test", config.Gossip.ClusterName)
 	require.Empty(t, config.Gossip.NodeName)
 	require.Equal(t, uint64(20), config.Table.ElectionRTT)

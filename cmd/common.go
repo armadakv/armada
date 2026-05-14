@@ -198,3 +198,14 @@ func viperConfigReader() map[string]any {
 	}
 	return res
 }
+
+// filterNonEmpty returns a new slice with empty strings removed.
+func filterNonEmpty(ss []string) []string {
+	out := ss[:0:0]
+	for _, s := range ss {
+		if s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}

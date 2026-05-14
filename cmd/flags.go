@@ -104,8 +104,9 @@ where the kernel UDP buffer limit is lower than the library default (7 MiB). A v
 	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.
 Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.
 When not set, the raft.address value is used (gossip shares the raft UDP port).`)
-	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of AdvertiseAddress of remote Armada instances. Local Armada instance will try to contact all of them to bootstrap the gossip service. 
-At least one reachable Armada instance is required to successfully bootstrap the gossip service. Each seed address is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
+	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of addresses of remote Armada instances to bootstrap the gossip service.
+Each address should be the raft address (IP:Port) of a peer — gossip shares the same UDP port as raft via ALPN multiplexing.
+When not set, the raft.initial-members addresses are used automatically as gossip seeds.`)
 	memberlistFlagSet.String("memberlist.cluster-name", "default", `Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.
 All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value.`)
 	memberlistFlagSet.String("memberlist.node-name", "", "Node name override, MUST be unique in a cluster, if not specified random stable UUID will be used instead.")
