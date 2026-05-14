@@ -27,6 +27,7 @@ import (
 
 	"github.com/armadakv/armada/raft/client"
 	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/internal/quictransport"
 	"github.com/armadakv/armada/raft/internal/id"
 	"github.com/armadakv/armada/raft/internal/registry"
 	"github.com/armadakv/armada/raft/internal/rsm"
@@ -256,6 +257,7 @@ var firstError = utils.FirstError
 type nodeHostOptions struct {
 	transport    raftio.ITransport
 	nodeRegistry raftio.INodeRegistry
+	quicShared   *quictransport.Shared
 }
 
 // Option is a functional option for NewNodeHost.
@@ -271,6 +273,13 @@ func WithTransport(t raftio.ITransport) Option {
 // registry is not created.
 func WithRegistry(r raftio.INodeRegistry) Option {
 	return func(o *nodeHostOptions) { o.nodeRegistry = r }
+}
+
+// WithSharedQUICTransport configures NodeHost to use the provided shared QUIC
+// transport instead of binding its own UDP socket. This allows raft and gossip
+// subsystems to multiplex over a single UDP port via ALPN.
+func WithSharedQUICTransport(shared *quictransport.Shared) Option {
+	return func(o *nodeHostOptions) { o.quicShared = shared }
 }
 
 // NewNodeHost creates a new NodeHost instance. In a typical application, it is
@@ -342,7 +351,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig, opts ...Option) (*NodeHost, err
 	}
 	nh.engine = newExecEngine(nh, nhConfig.Expert.Engine,
 		nh.nhConfig.NotifyCommit, errorInjection, nh.env, nh.mu.logdb)
-	if err := nh.createTransport(nhOpts.transport); err != nil {
+	if err := nh.createTransport(nhOpts.transport, nhOpts.quicShared); err != nil {
 		nh.Close()
 		return nil, err
 	}
@@ -1703,13 +1712,13 @@ func (nh *NodeHost) createNodeRegistry(r raftio.INodeRegistry) error {
 	return nil
 }
 
-func (nh *NodeHost) createTransport(t raftio.ITransport) error {
+func (nh *NodeHost) createTransport(t raftio.ITransport, shared *quictransport.Shared) error {
 	getSnapshotDir := func(cid uint64, nid uint64) string {
 		return nh.env.GetSnapshotDir(nh.nhConfig.GetDeploymentID(), cid, nid)
 	}
 	tsp, err := transport.NewTransport(nh.nhConfig,
 		nh.msgHandler, nh.env, nh.nodes, getSnapshotDir,
-		&transportEvent{nh: nh}, nh.fs, t)
+		&transportEvent{nh: nh}, nh.fs, shared, t)
 	if err != nil {
 		return err
 	}

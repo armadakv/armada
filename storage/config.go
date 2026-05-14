@@ -14,11 +14,17 @@ type TableConfig table.TableConfig
 type MetaConfig table.MetaConfig
 
 type GossipConfig struct {
-	BindAddress      string
+	// AdvertiseAddress is the address that this node advertises to other gossip members.
+	// When empty, the RaftAddress is used (recommended for most deployments since gossip
+	// shares the raft UDP port).
 	AdvertiseAddress string
 	InitialMembers   []string
 	ClusterName      string
 	NodeName         string
+	// TLS configures mutual TLS for the QUIC-based gossip transport.
+	// When empty (the default), a self-signed certificate is used (traffic is
+	// encrypted but peer identity is not verified).
+	TLS security.TLSInfo
 }
 
 type Config struct {

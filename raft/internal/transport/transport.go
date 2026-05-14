@@ -46,6 +46,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/armadakv/armada/internal/quictransport"
 	"github.com/armadakv/armada/vfs"
 
 	"github.com/cockroachdb/errors"
@@ -184,6 +185,7 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	handler IMessageHandler, env *server.Env, resolver registry.IResolver,
 	dir server.SnapshotDirFunc, sysEvents ITransportEvent,
 	fs vfs.FS,
+	shared *quictransport.Shared,
 	customTrans ...raftio.ITransport,
 ) (*Transport, error) {
 	sourceID := nhConfig.RaftAddress
@@ -205,6 +207,8 @@ func NewTransport(nhConfig config.NodeHostConfig,
 		t.snapshotReceived, t.dir, t.nhConfig.GetDeploymentID(), fs)
 	if len(customTrans) > 0 && customTrans[0] != nil {
 		t.trans = customTrans[0]
+	} else if shared != nil {
+		t.trans = NewQUICTransportWithShared(nhConfig, t.handleRequest, chunks.Add, shared)
 	} else {
 		t.trans = NewQUICTransport(nhConfig, t.handleRequest, chunks.Add)
 	}

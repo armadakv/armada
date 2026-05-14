@@ -636,4 +636,5 @@ type ExpertConfig struct {
 	LogDB LogDBConfig
 	// FS is the filesystem instance used in tests.
 	FS vfs.FS
+
 }

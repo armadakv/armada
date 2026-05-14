@@ -69,11 +69,16 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 			ClientCertAuth: viper.GetString("raft.tls-ca-file") != "",
 		},
 		Gossip: storage.GossipConfig{
-			BindAddress:      viper.GetString("memberlist.address"),
 			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),
 			InitialMembers:   viper.GetStringSlice("memberlist.members"),
 			ClusterName:      viper.GetString("memberlist.cluster-name"),
 			NodeName:         viper.GetString("memberlist.node-name"),
+			TLS: security.TLSInfo{
+				CertFile:       viper.GetString("memberlist.tls-cert-file"),
+				KeyFile:        viper.GetString("memberlist.tls-key-file"),
+				TrustedCAFile:  viper.GetString("memberlist.tls-ca-file"),
+				ClientCertAuth: viper.GetString("memberlist.tls-ca-file") != "",
+			},
 		},
 		Table: storage.TableConfig{
 			FS:                   vfs.Default,

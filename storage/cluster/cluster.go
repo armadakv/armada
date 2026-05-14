@@ -4,14 +4,14 @@ package cluster
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/armadakv/armada/internal/quictransport"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftio"
 	"github.com/armadakv/armada/storage/cluster/dns"
@@ -296,8 +296,18 @@ func (c *Cluster) Close() error {
 	return nil
 }
 
-// New configures and creates a new memberlist. To connect the node to the cluster, see (*Cluster).Start.
-func New(bindAddr, advAddr, clusterName, nodeName string, f getClusterInfo) (*Cluster, error) {
+// New configures and creates a new memberlist backed by a QUIC transport.
+// To connect the node to the cluster, see (*Cluster).Start.
+//
+// advAddr is the address this node advertises to other gossip members and the
+// address the QUIC listener binds to (unless a shared transport is provided).
+// When shared is non-nil, the gossip transport reuses that *quic.Transport
+// (and the underlying UDP socket) instead of creating its own.
+//
+// serverTLS and clientTLS configure mutual TLS for the gossip transport.
+// When nil, a self-signed certificate is used (traffic is encrypted but peer
+// identity is not verified).
+func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config, shared *quictransport.Shared, f getClusterInfo) (*Cluster, error) {
 	info := f()
 	log := zap.S().Named("memberlist")
 	cluster := &Cluster{
@@ -313,27 +323,22 @@ func New(bindAddr, advAddr, clusterName, nodeName string, f getClusterInfo) (*Cl
 		resolver:        dns.NewResolver(log.Named("dns")),
 	}
 
+	qt, err := NewQUICTransport(advAddr, serverTLS, clientTLS, shared)
+	if err != nil {
+		return nil, fmt.Errorf("gossip transport: %w", err)
+	}
+
 	mcfg := memberlist.DefaultLANConfig()
 	mcfg.LogOutput = &loggerAdapter{log: log.WithOptions(zap.AddCallerSkip(4))}
 	mcfg.Label = clusterName
 	mcfg.Name = nodeName
 	mcfg.Events = cluster
-
-	host, port, err := net.SplitHostPort(bindAddr)
-	if err != nil {
-		return nil, err
-	}
-	mcfg.BindAddr = host
-	mcfg.BindPort, _ = strconv.Atoi(port)
-
-	if advAddr != "" {
-		aHost, aPort, aerr := net.SplitHostPort(bindAddr)
-		if aerr != nil {
-			return nil, aerr
-		}
-		mcfg.AdvertiseAddr = aHost
-		mcfg.AdvertisePort, _ = strconv.Atoi(aPort)
-	}
+	mcfg.Transport = qt
+	// With a custom transport the default BindPort/AdvertisePort (7946) must be
+	// cleared so that FinalAdvertiseAddr is called with port=0 and the transport
+	// can advertise its own actual port.
+	mcfg.BindPort = 0
+	mcfg.AdvertisePort = 0
 
 	cluster.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       func() int { return cluster.ml.NumMembers() },
@@ -346,7 +351,7 @@ func New(bindAddr, advAddr, clusterName, nodeName string, f getClusterInfo) (*Cl
 			NodeID:        info.NodeID,
 			RaftAddress:   info.RaftAddress,
 			ClientAddress: info.ClientAddress,
-			MemberAddress: bindAddr,
+			MemberAddress: advAddr,
 		},
 		broadcasts: cluster.broadcasts,
 		shardView:  cluster.shardView,

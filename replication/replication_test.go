@@ -217,7 +217,6 @@ func prepareLeaderAndFollowerEngine(t *testing.T) (leaderTM *storage.Engine, fol
 		InitialMembers:    map[uint64]string{1: leaderAddress},
 		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
 		Gossip: storage.GossipConfig{
-			BindAddress: fmt.Sprintf("127.0.0.1:%d", getTestPort()),
 			ClusterName: "leader",
 		},
 		NodeID:         1,
@@ -237,7 +236,6 @@ func prepareLeaderAndFollowerEngine(t *testing.T) (leaderTM *storage.Engine, fol
 		InitialMembers:    map[uint64]string{1: followerAddress},
 		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
 		Gossip: storage.GossipConfig{
-			BindAddress: fmt.Sprintf("127.0.0.1:%d", getTestPort()),
 			ClusterName: "follower",
 		},
 		NodeID:         1,

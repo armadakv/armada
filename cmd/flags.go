@@ -101,15 +101,17 @@ where the kernel UDP buffer limit is lower than the library default (7 MiB). A v
 	raftFlagSet.String("raft.tls-cert-file", "", "Path to the TLS certificate file for mutual TLS between raft peers. Must be set together with raft.tls-key-file and raft.tls-ca-file.")
 	raftFlagSet.String("raft.tls-key-file", "", "Path to the TLS private key file for mutual TLS between raft peers.")
 	raftFlagSet.String("raft.tls-ca-file", "", "Path to the CA certificate file used to verify raft peer certificates.")
-	memberlistFlagSet.String("memberlist.address", "0.0.0.0:7432", `Address is the address for the gossip service to bind to and listen on. Both UDP and TCP ports are used by the gossip service.
-The local gossip service should be able to receive gossip service related messages by binding to and listening on this address. BindAddress is usually in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
 	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.
-Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
+Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.
+When not set, the raft.address value is used (gossip shares the raft UDP port).`)
 	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of AdvertiseAddress of remote Armada instances. Local Armada instance will try to contact all of them to bootstrap the gossip service. 
 At least one reachable Armada instance is required to successfully bootstrap the gossip service. Each seed address is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
 	memberlistFlagSet.String("memberlist.cluster-name", "default", `Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.
 All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value.`)
 	memberlistFlagSet.String("memberlist.node-name", "", "Node name override, MUST be unique in a cluster, if not specified random stable UUID will be used instead.")
+	memberlistFlagSet.String("memberlist.tls-cert-file", "", "Path to the TLS certificate file for mutual TLS between gossip peers.")
+	memberlistFlagSet.String("memberlist.tls-key-file", "", "Path to the TLS private key file for mutual TLS between gossip peers.")
+	memberlistFlagSet.String("memberlist.tls-ca-file", "", "Path to the CA certificate file used to verify gossip peer certificates.")
 
 	// Storage flags
 	storageFlagSet.Int64("storage.block-cache-size", 16*1024*1024, "Shared block cache size in bytes, the cache is used to hold uncompressed blocks of data in memory.")

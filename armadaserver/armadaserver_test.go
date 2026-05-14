@@ -54,7 +54,6 @@ func newInMemTestEngine(t *testing.T, tables ...string) *storage.Engine {
 	}
 
 	raftAddr := testAddr()
-	gossipAddr := testAddr()
 
 	e, err := storage.New(storage.Config{
 		ClientAddress:     raftAddr,
@@ -67,8 +66,7 @@ func newInMemTestEngine(t *testing.T, tables ...string) *storage.Engine {
 		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
 		Gossip: storage.GossipConfig{
 			ClusterName:    uuid.New().String(),
-			BindAddress:    gossipAddr,
-			InitialMembers: []string{gossipAddr},
+			InitialMembers: []string{raftAddr},
 		},
 		Table: storage.TableConfig{
 			ElectionRTT:        10,

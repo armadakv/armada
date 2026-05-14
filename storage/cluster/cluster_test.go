@@ -18,7 +18,7 @@ import (
 
 func TestSingleNodeCluster(t *testing.T) {
 	address := getTestBindAddress()
-	cluster, err := New(address, "", "", "", func() Info { return Info{} })
+	cluster, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} })
 	require.NoError(t, err)
 	cluster.Start([]string{address})
 	require.Len(t, cluster.Nodes(), 1)
@@ -29,7 +29,7 @@ func TestMultiNodeCluster(t *testing.T) {
 	t.Log("start 3 node cluster")
 	for i := 0; i < 3; i++ {
 		address := getTestBindAddress()
-		cluster, err := New(address, address, "", strconv.Itoa(i), func() Info {
+		cluster, err := New(address, "", strconv.Itoa(i), nil, nil, nil, func() Info {
 			return Info{
 				NodeHostID:  util.RandString(64),
 				NodeID:      uint64(i),
@@ -120,9 +120,9 @@ func TestMultiNodeCluster(t *testing.T) {
 }
 
 func getTestBindAddress() string {
-	l, _ := net.Listen("tcp4", "127.0.0.1:0")
-	defer l.Close()
-	return l.Addr().String()
+	conn, _ := net.ListenPacket("udp4", "127.0.0.1:0")
+	defer conn.Close()
+	return conn.LocalAddr().String()
 }
 
 func keys(m map[string]*Cluster) []string {
