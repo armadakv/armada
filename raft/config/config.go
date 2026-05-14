@@ -329,14 +329,14 @@ type NodeHostConfig struct {
 	// commits are not notified, clients are only notified when their proposals
 	// are both committed and applied.
 	NotifyCommit bool
-	// QUICUDPBufferSize is the desired UDP socket receive and send buffer size
-	// in bytes for the QUIC transport. When set to a positive value, the QUIC
-	// transport will request this buffer size from the OS kernel and will also
-	// cap any subsequent attempts by the QUIC library to increase the buffer
-	// beyond this value. This is useful on systems where the kernel enforces a
-	// low maximum UDP buffer size (e.g. some CI environments where
-	// net.core.rmem_max is only 4096 bytes). When set to 0 (the default), the
-	// QUIC library chooses its own default (currently 7 MiB) and the kernel
+	// QUICUDPBufferSize is the maximum UDP socket receive and send buffer size
+	// in bytes that the QUIC transport will request from the OS kernel. When
+	// set to a positive value, the QUIC transport caps buffer size requests made
+	// by the QUIC library at this value, but it does not increase smaller
+	// library requests up to this size. This is useful on systems where the
+	// kernel enforces a low maximum UDP buffer size (e.g. some CI environments
+	// where net.core.rmem_max is only 4096 bytes). When set to 0 (the default),
+	// the QUIC library chooses its own default (currently 7 MiB) and the kernel
 	// maximum determines whether that request succeeds.
 	QUICUDPBufferSize int
 	// Expert contains options for expert users who are familiar with the internals
