@@ -349,26 +349,6 @@ type TargetValidator func(string) bool
 // RaftAddress values.
 type RaftAddressValidator func(string) bool
 
-// NodeRegistryFactory is the interface used for providing a custom node registry.
-// For a short example of how to implement a custom node registry, please see
-// TestExternalNodeRegistryFunction in nodehost_test.go.
-type NodeRegistryFactory interface {
-	Create(nhid string, streamConnections uint64, v TargetValidator) (raftio.INodeRegistry, error)
-}
-
-// TransportFactory is the interface used for creating custom transport modules.
-type TransportFactory interface {
-	// Create creates a transport module.
-	Create(NodeHostConfig,
-		raftio.MessageHandler, raftio.ChunkHandler) raftio.ITransport
-	// Validate validates the RaftAddress of the NodeHost. When using a custom
-	// transport module, users are granted full control on what address type to
-	// use for the NodeHostConfig.RaftAddress field, it can be of the traditional
-	// IP:Port format or any other form. The Validate method is used to validate
-	// that a received address is of the valid form.
-	Validate(string) bool
-}
-
 // LogDBInfo is the info provided when LogDBCallback is invoked.
 type LogDBInfo struct {
 	Shard uint64
@@ -438,11 +418,6 @@ func (c *NodeHostConfig) Prepare() error {
 	return nil
 }
 
-// NodeRegistryEnabled returns a bool indicating if any node registry is enabled.
-func (c *NodeHostConfig) NodeRegistryEnabled() bool {
-	return c.Expert.NodeRegistryFactory != nil
-}
-
 // GetListenAddress returns the actual address the transport module is going to
 // listen on.
 func (c *NodeHostConfig) GetListenAddress() string {
@@ -463,10 +438,8 @@ func (c *NodeHostConfig) GetDeploymentID() uint64 {
 // GetTargetValidator returns a TargetValidator based on the specified
 // NodeHostConfig instance.
 func (c *NodeHostConfig) GetTargetValidator() TargetValidator {
-	if c.NodeRegistryEnabled() {
+	if c.NodeHostID != "" {
 		return id.IsNodeHostID
-	} else if c.Expert.TransportFactory != nil {
-		return c.Expert.TransportFactory.Validate
 	}
 	return stringutil.IsValidAddress
 }
@@ -474,9 +447,6 @@ func (c *NodeHostConfig) GetTargetValidator() TargetValidator {
 // GetRaftAddressValidator creates a RaftAddressValidator based on the specified
 // NodeHostConfig instance.
 func (c *NodeHostConfig) GetRaftAddressValidator() RaftAddressValidator {
-	if c.Expert.TransportFactory != nil {
-		return c.Expert.TransportFactory.Validate
-	}
 	return stringutil.IsValidAddress
 }
 
@@ -657,10 +627,6 @@ func GetDefaultExpertConfig() ExpertConfig {
 // internals of Dragonboat. Users are recommended not to set ExpertConfig
 // unless it is absoloutely necessary.
 type ExpertConfig struct {
-	// TransportFactory is an optional factory type used for creating the custom
-	// transport module to be used by dragonbaot. When not set, the built-in TCP
-	// transport module is used.
-	TransportFactory TransportFactory
 	// Engine is the configuration for the execution engine.
 	Engine EngineConfig
 	// LogDB contains configuration options for the LogDB storage engine. LogDB
@@ -670,7 +636,4 @@ type ExpertConfig struct {
 	LogDB LogDBConfig
 	// FS is the filesystem instance used in tests.
 	FS vfs.FS
-	// NodeRegistryFactory defines a custom node registry function that can be used
-	// instead of a static registry.
-	NodeRegistryFactory NodeRegistryFactory
 }

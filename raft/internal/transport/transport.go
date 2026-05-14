@@ -149,23 +149,6 @@ const (
 	chanIsFull
 )
 
-// DefaultTransportFactory is the default transport module used.
-type DefaultTransportFactory struct{}
-
-// Create creates a default transport instance.
-func (dtm *DefaultTransportFactory) Create(nhConfig config.NodeHostConfig,
-	handler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler,
-) raftio.ITransport {
-	return NewQUICTransport(nhConfig, handler, chunkHandler)
-}
-
-// Validate returns a boolean value indicating whether the specified address is
-// valid.
-func (dtm *DefaultTransportFactory) Validate(addr string) bool {
-	panic("not suppose to be called")
-}
-
 // Transport is the transport layer for delivering raft messages and snapshots.
 type Transport struct {
 	mu struct {
@@ -201,9 +184,10 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	handler IMessageHandler, env *server.Env, resolver registry.IResolver,
 	dir server.SnapshotDirFunc, sysEvents ITransportEvent,
 	fs vfs.FS,
+	customTrans ...raftio.ITransport,
 ) (*Transport, error) {
 	sourceID := nhConfig.RaftAddress
-	if nhConfig.NodeRegistryEnabled() {
+	if nhConfig.NodeHostID != "" {
 		sourceID = env.NodeHostID()
 	}
 	t := &Transport{
@@ -219,7 +203,11 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	}
 	chunks := NewChunk(t.handleRequest,
 		t.snapshotReceived, t.dir, t.nhConfig.GetDeploymentID(), fs)
-	t.trans = create(nhConfig, t.handleRequest, chunks.Add)
+	if len(customTrans) > 0 && customTrans[0] != nil {
+		t.trans = customTrans[0]
+	} else {
+		t.trans = NewQUICTransport(nhConfig, t.handleRequest, chunks.Add)
+	}
 	t.chunks = chunks
 	t.ctx, t.cancel = context.WithCancel(context.Background())
 	t.mu.queues = make(map[string]sendQueue)
@@ -530,17 +518,4 @@ func (t *Transport) sendMessageBatch(conn raftio.IConnection,
 	}
 	t.metrics.messageSendSuccess(uint64(len(batch.Requests)))
 	return nil
-}
-
-func create(nhConfig config.NodeHostConfig,
-	requestHandler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler,
-) raftio.ITransport {
-	var tm config.TransportFactory
-	if nhConfig.Expert.TransportFactory != nil {
-		tm = nhConfig.Expert.TransportFactory
-	} else {
-		tm = &DefaultTransportFactory{}
-	}
-	return tm.Create(nhConfig, requestHandler, chunkHandler)
 }

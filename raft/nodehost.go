@@ -252,14 +252,39 @@ var dn = logutil.DescribeNode
 
 var firstError = utils.FirstError
 
+// nodeHostOptions holds optional overrides for NodeHost construction.
+type nodeHostOptions struct {
+	transport    raftio.ITransport
+	nodeRegistry raftio.INodeRegistry
+}
+
+// Option is a functional option for NewNodeHost.
+type Option func(*nodeHostOptions)
+
+// WithTransport injects a pre-built transport module. When set, the default
+// QUIC transport is not created.
+func WithTransport(t raftio.ITransport) Option {
+	return func(o *nodeHostOptions) { o.transport = t }
+}
+
+// WithRegistry injects a pre-built node registry. When set, the built-in static
+// registry is not created.
+func WithRegistry(r raftio.INodeRegistry) Option {
+	return func(o *nodeHostOptions) { o.nodeRegistry = r }
+}
+
 // NewNodeHost creates a new NodeHost instance. In a typical application, it is
 // expected to have one NodeHost on each server.
-func NewNodeHost(nhConfig config.NodeHostConfig) (*NodeHost, error) {
+func NewNodeHost(nhConfig config.NodeHostConfig, opts ...Option) (*NodeHost, error) {
 	if err := nhConfig.Validate(); err != nil {
 		return nil, err
 	}
 	if err := nhConfig.Prepare(); err != nil {
 		return nil, err
+	}
+	nhOpts := &nodeHostOptions{}
+	for _, o := range opts {
+		o(nhOpts)
 	}
 	env, err := server.NewEnv(nhConfig, nhConfig.Expert.FS)
 	if err != nil {
@@ -306,7 +331,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig) (*NodeHost, error) {
 		return nil, err
 	}
 	plog.Infof("NodeHost ID: %s", nh.id.String())
-	if err := nh.createNodeRegistry(); err != nil {
+	if err := nh.createNodeRegistry(nhOpts.nodeRegistry); err != nil {
 		nh.Close()
 		return nil, err
 	}
@@ -317,7 +342,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig) (*NodeHost, error) {
 	}
 	nh.engine = newExecEngine(nh, nhConfig.Expert.Engine,
 		nh.nhConfig.NotifyCommit, errorInjection, nh.env, nh.mu.logdb)
-	if err := nh.createTransport(); err != nil {
+	if err := nh.createTransport(nhOpts.transport); err != nil {
 		nh.Close()
 		return nil, err
 	}
@@ -1666,16 +1691,10 @@ func (te *transportEvent) ConnectionFailed(addr string, snapshot bool) {
 	})
 }
 
-func (nh *NodeHost) createNodeRegistry() error {
+func (nh *NodeHost) createNodeRegistry(r raftio.INodeRegistry) error {
 	validator := nh.nhConfig.GetTargetValidator()
-	// TODO:
-	// more tests here required
-	if nh.nhConfig.Expert.NodeRegistryFactory != nil {
-		plog.Infof("Expert.NodeRegistryFactory was set: using custom registry")
-		r, err := nh.nhConfig.Expert.NodeRegistryFactory.Create(nh.ID(), streamConnections, validator)
-		if err != nil {
-			return err
-		}
+	if r != nil {
+		plog.Infof("using provided node registry")
 		nh.nodes = r
 	} else {
 		plog.Infof("using regular node registry")
@@ -1684,13 +1703,13 @@ func (nh *NodeHost) createNodeRegistry() error {
 	return nil
 }
 
-func (nh *NodeHost) createTransport() error {
+func (nh *NodeHost) createTransport(t raftio.ITransport) error {
 	getSnapshotDir := func(cid uint64, nid uint64) string {
 		return nh.env.GetSnapshotDir(nh.nhConfig.GetDeploymentID(), cid, nid)
 	}
 	tsp, err := transport.NewTransport(nh.nhConfig,
 		nh.msgHandler, nh.env, nh.nodes, getSnapshotDir,
-		&transportEvent{nh: nh}, nh.fs)
+		&transportEvent{nh: nh}, nh.fs, t)
 	if err != nil {
 		return err
 	}

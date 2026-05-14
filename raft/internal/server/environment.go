@@ -411,7 +411,7 @@ func (env *Env) check(cfg config.NodeHostConfig,
 		return ErrLogDBType
 	}
 	if !dbto {
-		if !cfg.NodeRegistryEnabled() && !se(s.Address, cfg.RaftAddress) {
+		if cfg.NodeHostID == "" && !se(s.Address, cfg.RaftAddress) {
 			return ErrNotOwner
 		}
 		if len(s.Hostname) > 0 && !se(s.Hostname, env.hostname) {

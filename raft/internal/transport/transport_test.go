@@ -331,16 +331,14 @@ func newNOOPTestTransport(handler IMessageHandler, fs vfs.FS) (*Transport,
 	c := config.NodeHostConfig{
 		MaxSendQueueSize: 256 * 1024 * 1024,
 		RaftAddress:      "localhost:9876",
-		Expert: config.ExpertConfig{
-			TransportFactory: &NOOPTransportFactory{},
-		},
 	}
 	env, err := server.NewEnv(c, fs)
 	if err != nil {
 		panic(err)
 	}
+	noop := NewNOOPTransport(c, nil, nil)
 	transport, err := NewTransport(c,
-		handler, env, nodes, t.GetSnapshotRootDir, &dummyTransportEvent{}, fs)
+		handler, env, nodes, t.GetSnapshotRootDir, &dummyTransportEvent{}, fs, noop)
 	if err != nil {
 		panic(err)
 	}
