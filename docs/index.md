@@ -11,72 +11,120 @@ order: 1
 # Armada
 
 **Armada** is a distributed, eventually consistent key-value store built for Kubernetes.
-It is designed to distribute data globally in a
-[*hub-and-spoke model*](https://en.wikipedia.org/wiki/Spoke–hub_distribution_paradigm)
-with an emphasis on *high read throughput*.
-It is *fault-tolerant* and able to handle network partitions and node outages gracefully.
+It distributes data globally using a
+[*hub-and-spoke model*](https://en.wikipedia.org/wiki/Spoke%E2%80%93hub_distribution_paradigm),
+with an emphasis on *high read throughput*, *fault-tolerance*, and *low operational overhead*.
 
-## Feature Overview
+```
+                         ┌──────────────────┐
+                         │   Leader Cluster  │
+                         │   (core / hub)    │
+                         └────────┬─────────┘
+                 pull replication │ (async)
+           ┌─────────────────┬────┘────────────────┐
+           ▼                 ▼                      ▼
+  ┌──────────────┐  ┌──────────────┐      ┌──────────────┐
+  │   Follower   │  │   Follower   │  ... │   Follower   │
+  │  (edge DC 1) │  │  (edge DC 2) │      │  (edge DC N) │
+  └──────────────┘  └──────────────┘      └──────────────┘
+```
 
-### Built for Kubernetes
+A single **leader cluster** accepts all writes and replicates them asynchronously to any number
+of **follower clusters**. Followers serve low-latency reads locally without requiring round-trips
+to the leader. See [Architecture](architecture.md) for an in-depth explanation.
 
-Armada is Kubernetes native. You can manage and monitor Armada as any
-other Kubernetes deployment. Check out the
-[official Armada Helm Chart](https://github.com/armadakv/armada-helm) for more information.
+> **Note:** Armada has not yet reached the 1.0 milestone. The API may change before 1.0 is
+> released. Backward-incompatible changes will always be flagged in the release notes.
 
-### Distribute data globally in a hub-and-spoke model
+---
 
-Armada is designed to efficiently distribute data from a single core cluster
-to multiple edge clusters around the world. See the [Architecture](architecture.md#Topology)
-page for more information.
+## Get Started Quickly
 
-### Emphasis on high read throughput
+| Goal | Where to go |
+|------|-------------|
+| Run a local single-node cluster | [Quickstart](quickstart.md) |
+| Deploy a leader + followers on Kubernetes | [Deploying to Kubernetes](operations_guide/deploying_to_kubernetes.md) |
+| Read and write data | [User Guide](user_guide/index.md) |
+| Understand the architecture | [Architecture](architecture.md) |
+| Secure your deployment | [Security](operations_guide/security.md) |
+| Monitor and operate | [Metrics & Observability](operations_guide/metrics_and_observability.md) |
 
-Armada is built to handle read-heavy workloads and to serve sub-millisecond reads.
+---
 
-### Fault-tolerance and data availability
+## Feature Highlights
 
-Thanks to the Raft algorithm and data redundancy, Armada can serve reads even in the event of
-network partition or node outage.
+### 🌍 Global data distribution
 
-### Data persistence
+Armada replicates data from one core cluster to many edge clusters worldwide using
+asynchronous, pull-based replication. Adding a new edge cluster requires no changes to the
+leader — follower clusters bootstrap themselves and replicate automatically.
 
-Armada is more than just an in-memory cache -- data persistence is built-in. Armada
-can be backed up and restored from backups.
+### ⚡ High read throughput
 
-### Dynamic scaling of edge clusters
+Reads are served entirely from the local follower's memory-mapped storage.
+This delivers **sub-millisecond read latency** and unlimited horizontal read scaling simply
+by adding more followers.
 
-Armada makes it really easy to add new edge clusters. When adding a new edge cluster,
-no other clusters are affected and the data is automatically replicated from the core cluster to the edge cluster.
+### 🛡️ Fault-tolerant by design
 
-## What is Armada good for?
+Every cluster — both leader and follower — uses the [Raft consensus algorithm](https://raft.github.io)
+internally. The system continues to serve reads even if a minority of nodes in a cluster are
+unavailable, and tolerates transient network partitions between clusters without data loss.
 
-### You need a distributed key-value store to allow local and quick access to data in edge locations
+### 🗄️ Persistent, MVCC storage
 
-Armada will provide a read-only copy of the data in edge locations. Armada will take care of the data replication,
-data availability, and resilience in case of failure of the core cluster.
+Data is stored in [Pebble](https://github.com/cockroachdb/pebble), a high-performance
+LSM-tree engine. Every write is versioned with a monotonically increasing **revision**, enabling
+multi-version concurrency control (MVCC) across all regions. The same logical write always
+carries the same revision on every cluster that has applied it.
 
-### You need a local, persistent, cache within a data center where reads heavily outnumber writes
+### 🔒 Production-grade security
 
-Armada writes are expensive in comparison with Redis for example.
-Reads are usually served from memory, resulting in sub-millisecond reads.
+TLS, mutual TLS (mTLS), per-API token authentication, and Unix socket transport are all
+supported out of the box. See [Security](operations_guide/security.md) for the full guide.
 
-### You need a pseudo-document store
+### ☸️ Kubernetes native
 
-You can define secondary indexes or additional columns/tables within a single Armada table.
-The data consistency is granted within a single table.
-There are compare-and-switch and multi-key atomic operations available.
+Armada is designed to run on Kubernetes. Use the
+[official Armada Helm Chart](https://github.com/armadakv/armada-helm) to deploy and manage
+both leader and follower clusters with a single `helm install`. Helm values control cluster
+mode, replication targets, TLS certificates, and more.
+
+### 📦 Backups and restores
+
+The Maintenance API provides online backup and point-in-time restore without downtime.
+See [Backups](operations_guide/backups.md) for details.
+
+### 🔑 Rich key-value semantics
+
+Beyond basic put/get/delete, Armada supports:
+
+* **Prefix scans** and **range deletes**
+* **Compare-and-swap (CAS) transactions** — atomic multi-key operations with preconditions
+* **Secondary indexes** — model additional lookup patterns within a single table
+* **Tables** — isolated keyspaces, each with independent consistency guarantees
+
+---
+
+## When to Use Armada
+
+| Scenario | Fit |
+|----------|-----|
+| Low-latency reads from edge locations worldwide | ✅ Excellent |
+| Persistent local cache where reads heavily outnumber writes | ✅ Excellent |
+| Configuration or feature-flag distribution to many clusters | ✅ Excellent |
+| Mixed read/write workloads requiring strong consistency | ⚠️ Use the leader cluster directly |
+| Pure write-heavy workloads | ❌ Not the right tool |
+
+---
 
 ## Why Armada?
 
-Armada was built because we were unable to find a distributed system
-offering all the aforementioned features. The original story behind the project can be found in the JAMF blog post
+Armada was built because no existing distributed system offered all of the above features
+together. The original story is told in the JAMF engineering blog post
 [The story of Regatta](https://medium.com/jamf-engineering/the-story-of-regatta-4652f71a350f).
 
 Armada is the spiritual successor to the **Regatta** project. See [Regatta and Armada](regatta.md) for the
-history of the project, the relationship between the two, and guidance on migrating from Regatta to Armada.
+full history, the relationship between the two, and guidance on migrating from Regatta to Armada.
 
-> **Note:**
-Armada has not yet reached the 1.0 milestone. The API may change before 1.0 is released.
-Backward-incompatible changes will always be flagged in the release notes. If you would like to
-help, do not hesitate and check the [Contributing](contributing.md) page!
+Want to contribute? Check the [Contributing](contributing.md) page!
