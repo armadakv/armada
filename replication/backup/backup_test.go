@@ -314,17 +314,18 @@ func newTestConfig(t *testing.T) storage.Config {
 	raftPort := getTestPort()
 	gossipPort := getTestPort()
 	return storage.Config{
-		Log:            zaptest.NewLogger(t).Sugar(),
-		NodeID:         1,
-		InitialMembers: map[uint64]string{1: fmt.Sprintf("127.0.0.1:%d", raftPort)},
-		WALDir:         "/wal",
-		NodeHostDir:    "/nh",
-		RTTMillisecond: 5,
-		RaftAddress:    fmt.Sprintf("127.0.0.1:%d", raftPort),
-		Gossip:         storage.GossipConfig{BindAddress: fmt.Sprintf("127.0.0.1:%d", gossipPort), InitialMembers: []string{fmt.Sprintf("127.0.0.1:%d", gossipPort)}},
-		Table:          storage.TableConfig{FS: wrapFS(fs), TableCacheSize: 1024, ElectionRTT: 10, HeartbeatRTT: 1},
-		Meta:           storage.MetaConfig{ElectionRTT: 10, HeartbeatRTT: 1},
-		FS:             fs,
+		Log:               zaptest.NewLogger(t).Sugar(),
+		NodeID:            1,
+		InitialMembers:    map[uint64]string{1: fmt.Sprintf("127.0.0.1:%d", raftPort)},
+		WALDir:            "/wal",
+		NodeHostDir:       "/nh",
+		RTTMillisecond:    5,
+		RaftAddress:       fmt.Sprintf("127.0.0.1:%d", raftPort),
+		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
+		Gossip:            storage.GossipConfig{BindAddress: fmt.Sprintf("127.0.0.1:%d", gossipPort), InitialMembers: []string{fmt.Sprintf("127.0.0.1:%d", gossipPort)}},
+		Table:             storage.TableConfig{FS: wrapFS(fs), TableCacheSize: 1024, ElectionRTT: 10, HeartbeatRTT: 1},
+		Meta:              storage.MetaConfig{ElectionRTT: 10, HeartbeatRTT: 1},
+		FS:                fs,
 	}
 }
 

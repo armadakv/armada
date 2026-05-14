@@ -94,6 +94,10 @@ dropped to restrict memory usage. When set to 0, it means the queue size is unli
 	raftFlagSet.Uint64("raft.max-send-queue-size", 0,
 		`MaxSendQueueSize is the maximum size in bytes of each send queue. Once the maximum size is reached, further replication messages will be
 dropped to restrict memory usage. When set to 0, it means the send queue size is unlimited.`)
+	raftFlagSet.Int("raft.quic-udp-buffer-size", 0,
+		`QUICUDPBufferSize is the UDP socket receive/send buffer size in bytes requested for the QUIC transport.
+When set to a positive value the QUIC library's buffer requests are capped at this value, preventing log warnings on systems
+where the kernel UDP buffer limit is lower than the library default (7 MiB). A value of 0 uses the library default.`)
 	memberlistFlagSet.String("memberlist.address", "0.0.0.0:7432", `Address is the address for the gossip service to bind to and listen on. Both UDP and TCP ports are used by the gossip service.
 The local gossip service should be able to receive gossip service related messages by binding to and listening on this address. BindAddress is usually in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
 	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.

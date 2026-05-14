@@ -81,6 +81,12 @@ type Config struct {
 	// dropped to restrict memory usage. When set to 0, it means the queue size
 	// is unlimited.
 	MaxReceiveQueueSize uint64
+	// QUICUDPBufferSize is the desired UDP socket receive/send buffer size in
+	// bytes for the QUIC transport. When > 0, the QUIC library's buffer requests
+	// are capped at this value, preventing warnings on systems with a low kernel
+	// maximum (e.g. constrained CI environments). When 0, the QUIC library's
+	// default (currently 7 MiB) is used.
+	QUICUDPBufferSize int
 	// NotifyCommit specifies whether clients should be notified when their
 	// regular proposals and config change requests are committed. By default,
 	// commits are not notified, clients are only notified when their proposals

@@ -212,9 +212,10 @@ func prepareLeaderAndFollowerEngine(t *testing.T) (leaderTM *storage.Engine, fol
 	t.Log("start leader Raft")
 	leaderAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
 	leaderTM, err := storage.New(storage.Config{
-		FS:             vfs.NewMem(),
-		Log:            zaptest.NewLogger(t).Sugar(),
-		InitialMembers: map[uint64]string{1: leaderAddress},
+		FS:                vfs.NewMem(),
+		Log:               zaptest.NewLogger(t).Sugar(),
+		InitialMembers:    map[uint64]string{1: leaderAddress},
+		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
 		Gossip: storage.GossipConfig{
 			BindAddress: fmt.Sprintf("127.0.0.1:%d", getTestPort()),
 			ClusterName: "leader",
@@ -231,9 +232,10 @@ func prepareLeaderAndFollowerEngine(t *testing.T) (leaderTM *storage.Engine, fol
 	t.Log("start follower Raft")
 	followerAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
 	followerTM, err = storage.New(storage.Config{
-		FS:             vfs.NewMem(),
-		Log:            zaptest.NewLogger(t).Sugar(),
-		InitialMembers: map[uint64]string{1: followerAddress},
+		FS:                vfs.NewMem(),
+		Log:               zaptest.NewLogger(t).Sugar(),
+		InitialMembers:    map[uint64]string{1: followerAddress},
+		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
 		Gossip: storage.GossipConfig{
 			BindAddress: fmt.Sprintf("127.0.0.1:%d", getTestPort()),
 			ClusterName: "follower",
