@@ -26,7 +26,6 @@ import (
 	"github.com/armadakv/armada/vfs"
 
 	"github.com/cockroachdb/errors"
-	"github.com/lni/goutils/netutil"
 	"github.com/lni/goutils/stringutil"
 
 	"github.com/armadakv/armada/raft/internal/id"
@@ -284,21 +283,17 @@ type NodeHostConfig struct {
 	// interfaces. When hostname or domain name is used, it will be resolved to
 	// IPv4 addresses first and Dragonboat listens to all resolved IPv4 addresses.
 	ListenAddress string
-	// MutualTLS defines whether to use mutual TLS for authenticating servers
-	// and clients. Insecure communication is used when MutualTLS is set to
-	// False.
-	// See https://github.com/lni/dragonboat/wiki/TLS-in-Dragonboat for more
-	// details on how to use Mutual TLS.
-	MutualTLS bool
-	// CAFile is the path of the CA certificate file. This field is ignored when
-	// MutualTLS is false.
-	CAFile string
-	// CertFile is the path of the node certificate file. This field is ignored
-	// when MutualTLS is false.
-	CertFile string
-	// KeyFile is the path of the node key file. This field is ignored when
-	// MutualTLS is false.
-	KeyFile string
+	// ServerTLS is the TLS configuration used by the QUIC transport listener.
+	// When nil, the transport generates a self-signed certificate (traffic is
+	// encrypted but peer identity is not verified). Set this for production
+	// deployments that require mutual TLS between raft peers.
+	ServerTLS *tls.Config
+	// ClientTLS is the TLS configuration used by the QUIC transport dialer when
+	// connecting to remote peers. When nil, the dialer skips certificate
+	// verification (appropriate only when ServerTLS is also nil and a
+	// self-signed certificate is in use). Set this together with ServerTLS for
+	// mutual TLS between raft peers.
+	ClientTLS *tls.Config
 	// EnableMetrics determines whether health metrics in Prometheus format should
 	// be enabled.
 	EnableMetrics bool
@@ -393,23 +388,6 @@ func (c *NodeHostConfig) Validate() error {
 	if len(c.NodeHostDir) == 0 {
 		return errors.New("NodeHostConfig.NodeHostDir is empty")
 	}
-	if !c.MutualTLS {
-		plog.Warningf("mutual TLS disabled, communication is insecure")
-		if len(c.CAFile) > 0 || len(c.CertFile) > 0 || len(c.KeyFile) > 0 {
-			plog.Warningf("CAFile/CertFile/KeyFile specified when MutualTLS is disabled")
-		}
-	}
-	if c.MutualTLS {
-		if len(c.CAFile) == 0 {
-			return errors.New("CA file not specified")
-		}
-		if len(c.CertFile) == 0 {
-			return errors.New("cert file not specified")
-		}
-		if len(c.KeyFile) == 0 {
-			return errors.New("key file not specified")
-		}
-	}
 	if c.MaxSendQueueSize > 0 &&
 		c.MaxSendQueueSize < settings.EntryNonCmdFieldsSize+1 {
 		return errors.New("MaxSendQueueSize value is too small")
@@ -472,37 +450,6 @@ func (c *NodeHostConfig) GetListenAddress() string {
 		return c.ListenAddress
 	}
 	return c.RaftAddress
-}
-
-// GetServerTLSConfig returns the server tls.Config instance based on the
-// TLS settings in NodeHostConfig.
-func (c *NodeHostConfig) GetServerTLSConfig() (*tls.Config, error) {
-	if c.MutualTLS {
-		return netutil.GetServerTLSConfig(c.CAFile, c.CertFile, c.KeyFile)
-	}
-	return nil, nil
-}
-
-// GetClientTLSConfig returns the client tls.Config instance for the specified
-// target based on the TLS settings in NodeHostConfig.
-func (c *NodeHostConfig) GetClientTLSConfig(target string) (*tls.Config, error) {
-	if c.MutualTLS {
-		tlsConfig, err := netutil.GetClientTLSConfig("",
-			c.CAFile, c.CertFile, c.KeyFile)
-		if err != nil {
-			return nil, err
-		}
-		host, err := netutil.GetHost(target)
-		if err != nil {
-			return nil, err
-		}
-		return &tls.Config{
-			ServerName:   host,
-			Certificates: tlsConfig.Certificates,
-			RootCAs:      tlsConfig.RootCAs,
-		}, nil
-	}
-	return nil, nil
 }
 
 // GetDeploymentID returns the deployment ID to be used.

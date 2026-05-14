@@ -305,6 +305,19 @@ func createNodeHost(e *Engine) (*raft.NodeHost, error) {
 	}
 	nhc.Expert.LogDB = buildLogDBConfig()
 
+	if !e.cfg.RaftTLS.Empty() {
+		serverTLS, err := e.cfg.RaftTLS.ServerConfig()
+		if err != nil {
+			return nil, fmt.Errorf("raft server TLS: %w", err)
+		}
+		clientTLS, err := e.cfg.RaftTLS.ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("raft client TLS: %w", err)
+		}
+		nhc.ServerTLS = serverTLS
+		nhc.ClientTLS = clientTLS
+	}
+
 	if e.cfg.FS != nil {
 		nhc.Expert.FS = e.cfg.FS
 	}

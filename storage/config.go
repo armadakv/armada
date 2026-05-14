@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/armada/vfs"
 	"go.uber.org/zap"
@@ -87,6 +88,10 @@ type Config struct {
 	// maximum (e.g. constrained CI environments). When 0, the QUIC library's
 	// default (currently 7 MiB) is used.
 	QUICUDPBufferSize int
+	// RaftTLS configures mutual TLS for the QUIC-based Raft transport.
+	// When empty (the default), the transport uses a self-signed certificate.
+	// Set CertFile, KeyFile, and TrustedCAFile for production mTLS between peers.
+	RaftTLS security.TLSInfo
 	// NotifyCommit specifies whether clients should be notified when their
 	// regular proposals and config change requests are committed. By default,
 	// commits are not notified, clients are only notified when their proposals

@@ -535,29 +535,22 @@ func (t *QUIC) serveSnapshotStream(stream *quic.Stream) {
 // ---------------------------------------------------------------------------
 
 func (t *QUIC) serverTLSConfig() (*tls.Config, error) {
-	if t.nhConfig.MutualTLS {
-		cfg, err := t.nhConfig.GetServerTLSConfig()
-		if err != nil {
-			return nil, err
-		}
-		cfg.NextProtos = []string{quicALPN}
+	if t.nhConfig.ServerTLS != nil {
+		cfg := t.nhConfig.ServerTLS.Clone()
+		cfg.NextProtos = append(cfg.NextProtos, quicALPN)
 		return cfg, nil
 	}
 	return selfSignedTLSConfig()
 }
 
-func (t *QUIC) clientTLSConfig(target string) (*tls.Config, error) {
-	if t.nhConfig.MutualTLS {
-		cfg, err := t.nhConfig.GetClientTLSConfig(target)
-		if err != nil {
-			return nil, err
-		}
-		cfg.NextProtos = []string{quicALPN}
+func (t *QUIC) clientTLSConfig(_ string) (*tls.Config, error) {
+	if t.nhConfig.ClientTLS != nil {
+		cfg := t.nhConfig.ClientTLS.Clone()
+		cfg.NextProtos = append(cfg.NextProtos, quicALPN)
 		return cfg, nil
 	}
-	// When MutualTLS is not configured the server uses a self-signed certificate.
+	// When no ClientTLS is configured the server uses a self-signed certificate.
 	// We accept it unconditionally here; the channel is still encrypted.
-	// lgtm[go/disabled-certificate-check]
 	return &tls.Config{ //nolint:gosec
 		InsecureSkipVerify: true, // lgtm[go/disabled-certificate-check]
 		NextProtos:         []string{quicALPN},

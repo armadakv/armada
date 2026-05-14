@@ -404,16 +404,16 @@ func NewTCPTransport(nhConfig config.NodeHostConfig,
 		connStopper:    syncutil.NewStopper(),
 		requestHandler: requestHandler,
 		chunkHandler:   chunkHandler,
-		encrypted:      nhConfig.MutualTLS,
+		encrypted:      nhConfig.ServerTLS != nil,
 	}
 }
 
 // Start starts the TCP transport module.
 func (t *TCP) Start() error {
 	address := t.nhConfig.GetListenAddress()
-	tlsConfig, err := t.nhConfig.GetServerTLSConfig()
-	if err != nil {
-		return err
+	var tlsConfig *tls.Config
+	if t.nhConfig.ServerTLS != nil {
+		tlsConfig = t.nhConfig.ServerTLS
 	}
 	listener, err := netutil.NewStoppableListener(address,
 		tlsConfig, t.stopper.ShouldStop())
@@ -574,10 +574,7 @@ func (t *TCP) getConnection(ctx context.Context,
 			return nil, err
 		}
 	}
-	tlsConfig, err := t.nhConfig.GetClientTLSConfig(target)
-	if err != nil {
-		return nil, err
-	}
+	tlsConfig := t.nhConfig.ClientTLS
 	if tlsConfig != nil {
 		conn = tls.Client(conn, tlsConfig)
 		tt := time.Now().Add(tlsHandshackTimeout)

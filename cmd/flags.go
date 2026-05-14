@@ -98,6 +98,9 @@ dropped to restrict memory usage. When set to 0, it means the send queue size is
 		`QUICUDPBufferSize is the UDP socket receive/send buffer size in bytes requested for the QUIC transport.
 When set to a positive value the QUIC library's buffer requests are capped at this value, preventing log warnings on systems
 where the kernel UDP buffer limit is lower than the library default (7 MiB). A value of 0 uses the library default.`)
+	raftFlagSet.String("raft.tls-cert-file", "", "Path to the TLS certificate file for mutual TLS between raft peers. Must be set together with raft.tls-key-file and raft.tls-ca-file.")
+	raftFlagSet.String("raft.tls-key-file", "", "Path to the TLS private key file for mutual TLS between raft peers.")
+	raftFlagSet.String("raft.tls-ca-file", "", "Path to the CA certificate file used to verify raft peer certificates.")
 	memberlistFlagSet.String("memberlist.address", "0.0.0.0:7432", `Address is the address for the gossip service to bind to and listen on. Both UDP and TCP ports are used by the gossip service.
 The local gossip service should be able to receive gossip service related messages by binding to and listening on this address. BindAddress is usually in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
 	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.

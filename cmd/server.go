@@ -13,6 +13,7 @@ import (
 
 	"github.com/armadakv/armada/armadaserver"
 	rl "github.com/armadakv/armada/log"
+	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/prometheus/client_golang/prometheus"
@@ -61,6 +62,12 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 		MaxReceiveQueueSize: viper.GetUint64("raft.max-recv-queue-size"),
 		MaxSendQueueSize:    viper.GetUint64("raft.max-send-queue-size"),
 		QUICUDPBufferSize:   viper.GetInt("raft.quic-udp-buffer-size"),
+		RaftTLS: security.TLSInfo{
+			CertFile:       viper.GetString("raft.tls-cert-file"),
+			KeyFile:        viper.GetString("raft.tls-key-file"),
+			TrustedCAFile:  viper.GetString("raft.tls-ca-file"),
+			ClientCertAuth: viper.GetString("raft.tls-ca-file") != "",
+		},
 		Gossip: storage.GossipConfig{
 			BindAddress:      viper.GetString("memberlist.address"),
 			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),

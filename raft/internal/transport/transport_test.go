@@ -17,10 +17,13 @@ package transport
 import (
 	"bytes"
 	"crypto/md5"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io"
 	"math/rand"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -357,10 +360,9 @@ func newTestTransport(handler IMessageHandler,
 		RaftAddress: serverAddress,
 	}
 	if mutualTLS {
-		c.MutualTLS = true
-		c.CAFile = caFile
-		c.CertFile = certFile
-		c.KeyFile = keyFile
+		serverTLS, clientTLS := loadTestTLSConfigs()
+		c.ServerTLS = serverTLS
+		c.ClientTLS = clientTLS
 	}
 	env, err := server.NewEnv(c, fs)
 	if err != nil {
@@ -372,6 +374,30 @@ func newTestTransport(handler IMessageHandler,
 		panic(err)
 	}
 	return transport, nodes, t
+}
+
+func loadTestTLSConfigs() (*tls.Config, *tls.Config) {
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		panic(err)
+	}
+	caData, err := os.ReadFile(caFile)
+	if err != nil {
+		panic(err)
+	}
+	pool := x509.NewCertPool()
+	pool.AppendCertsFromPEM(caData)
+	serverCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    pool,
+	}
+	clientCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      pool,
+		ServerName:   "localhost",
+	}
+	return serverCfg, clientCfg
 }
 
 func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.FS) {
