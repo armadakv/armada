@@ -157,6 +157,7 @@ func (s *Shared) Serve() error {
 	ql, err := s.Transport.Listen(combinedTLS, &quic.Config{
 		MaxIdleTimeout:  sharedIdleTimeout,
 		KeepAlivePeriod: sharedKeepAlive,
+		EnableDatagrams: true,
 	})
 	if err != nil {
 		return err

@@ -10,7 +10,6 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/binary"
 	"io"
 	"math/big"
 	"net"
@@ -27,14 +26,12 @@ const (
 	// gossipALPN is the ALPN identifier for the armada gossip QUIC protocol.
 	gossipALPN = "armada-gossip-1"
 
-	// Stream-type header bytes written at the start of every QUIC stream so
-	// the receiving side knows how to interpret the payload.
-	gossipPacketStreamType byte = 0x01
-	gossipRelayStreamType  byte = 0x02
+	// Stream-type header byte written at the start of every relay QUIC stream.
+	gossipRelayStreamType byte = 0x02
 
-	// maxGossipFrameSize caps incoming gossip payloads.  4 MiB is far more
-	// than any realistic memberlist message.
-	maxGossipFrameSize = 4 * 1024 * 1024
+	// maxGossipDatagramSize caps incoming gossip datagrams. Memberlist probe
+	// messages are always small (a few hundred bytes), well under QUIC MTU.
+	maxGossipDatagramSize = 65535
 
 	gossipDialTimeout  = 5 * time.Second
 	gossipIdleTimeout  = 30 * time.Second
@@ -48,9 +45,11 @@ var _ memberlist.Transport = (*QUICTransport)(nil)
 
 // QUICTransport implements memberlist.Transport using QUIC.
 //
-// Both gossip probes/pushes (packet channel) and anti-entropy (stream channel)
-// are multiplexed over QUIC streams on a single shared UDP socket.
-// A one-byte header distinguishes packet streams (0x01) from relay streams (0x02).
+// Gossip probes and push-notifications (packet channel) are sent as QUIC
+// datagrams — true fire-and-forget semantics that map naturally to what
+// memberlist expects from its "UDP" path.  Anti-entropy push-pull (stream
+// channel) uses QUIC streams for reliable, ordered delivery.  Both paths are
+// multiplexed over a single shared UDP socket via ALPN "armada-gossip-1".
 //
 // Outbound connections are pooled by peer address to avoid repeated TLS
 // handshakes for high-frequency gossip operations.
@@ -139,6 +138,7 @@ func NewQUICTransport(advAddr string, serverTLS, clientTLS *tls.Config, shared *
 		l, err := qt.Listen(serverTLS, &quic.Config{
 			MaxIdleTimeout:  gossipIdleTimeout,
 			KeepAlivePeriod: gossipKeepAlive,
+			EnableDatagrams: true,
 		})
 		if err != nil {
 			_ = udpConn.Close()
@@ -232,32 +232,23 @@ func (t *QUICTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, er
 	return parsedIP, parsedPort, nil
 }
 
-// WriteTo sends a gossip packet (probe / push-pull) to addr.
-// It reuses a pooled QUIC connection to the peer when available.
+// WriteTo sends a gossip packet (probe / push-pull notification) to addr as a
+// QUIC datagram.  Datagrams are truly fire-and-forget: no per-message stream
+// setup, no flow control — matching the UDP semantics memberlist expects on
+// this path.  The underlying QUIC connection is pooled so the TLS handshake
+// cost is paid only once per peer.
 func (t *QUICTransport) WriteTo(b []byte, addr string) (time.Time, error) {
 	conn, err := t.pooledDial(addr)
 	if err != nil {
 		return time.Time{}, err
 	}
 
-	stream, err := conn.OpenStreamSync(t.ctx)
-	if err != nil {
-		t.evictConn(addr)
-		return time.Time{}, err
-	}
-	defer stream.CancelRead(0)
-
-	// Header: type byte + 4-byte big-endian payload length.
-	hdr := make([]byte, 1+4)
-	hdr[0] = gossipPacketStreamType
-	binary.BigEndian.PutUint32(hdr[1:], uint32(len(b)))
-
 	sent := time.Now()
-	if _, err := stream.Write(append(hdr, b...)); err != nil {
+	if err := conn.SendDatagram(b); err != nil {
+		// Connection may be dead — evict so the next probe gets a fresh one.
 		t.evictConn(addr)
 		return time.Time{}, err
 	}
-	_ = stream.Close()
 	return sent, nil
 }
 
@@ -279,6 +270,7 @@ func (t *QUICTransport) DialTimeout(addr string, timeout time.Duration) (net.Con
 	conn, err := t.quicTransport.Dial(ctx, udpAddr, t.clientTLS, &quic.Config{
 		MaxIdleTimeout:  gossipIdleTimeout,
 		KeepAlivePeriod: gossipKeepAlive,
+		EnableDatagrams: true,
 	})
 	if err != nil {
 		return nil, err
@@ -348,6 +340,12 @@ func (t *QUICTransport) serveConn(conn *quic.Conn) {
 	defer t.wg.Done()
 	t.activeConns.Store(conn, struct{}{})
 	defer t.activeConns.Delete(conn)
+
+	// Receive QUIC datagrams (gossip probes / push notifications).
+	t.wg.Add(1)
+	go t.serveDatagram(conn)
+
+	// Receive QUIC streams (anti-entropy push-pull relay).
 	for {
 		stream, err := conn.AcceptStream(t.ctx)
 		if err != nil {
@@ -361,44 +359,41 @@ func (t *QUICTransport) serveConn(conn *quic.Conn) {
 	}
 }
 
+// serveDatagram receives QUIC datagrams from conn and delivers them to
+// packetCh.  This is the "UDP probe" path used by memberlist for pings and
+// acks — truly fire-and-forget, no per-message stream overhead.
+func (t *QUICTransport) serveDatagram(conn *quic.Conn) {
+	defer t.wg.Done()
+	for {
+		dgram, err := conn.ReceiveDatagram(t.ctx)
+		if err != nil {
+			return
+		}
+		if len(dgram) == 0 || len(dgram) > maxGossipDatagramSize {
+			continue
+		}
+		buf := make([]byte, len(dgram))
+		copy(buf, dgram)
+		select {
+		case t.packetCh <- &memberlist.Packet{
+			Buf:       buf,
+			From:      conn.RemoteAddr(),
+			Timestamp: time.Now(),
+		}:
+		case <-t.ctx.Done():
+			return
+		}
+	}
+}
+
 func (t *QUICTransport) serveStream(conn *quic.Conn, stream *quic.Stream) {
 	var typeBuf [1]byte
 	if _, err := io.ReadFull(stream, typeBuf[:]); err != nil {
 		return
 	}
 
-	switch typeBuf[0] {
-	case gossipPacketStreamType:
-		t.servePacketStream(conn, stream)
-	case gossipRelayStreamType:
+	if typeBuf[0] == gossipRelayStreamType {
 		t.serveRelayStream(conn, stream)
-	}
-}
-
-// servePacketStream reads a framed gossip packet and pushes it to packetCh.
-func (t *QUICTransport) servePacketStream(conn *quic.Conn, stream *quic.Stream) {
-	defer stream.CancelRead(0)
-
-	var hdr [4]byte
-	if _, err := io.ReadFull(stream, hdr[:]); err != nil {
-		return
-	}
-	size := binary.BigEndian.Uint32(hdr[:])
-	if size == 0 || size > maxGossipFrameSize {
-		return
-	}
-	buf := make([]byte, size)
-	if _, err := io.ReadFull(stream, buf); err != nil {
-		return
-	}
-
-	select {
-	case t.packetCh <- &memberlist.Packet{
-		Buf:       buf,
-		From:      conn.RemoteAddr(),
-		Timestamp: time.Now(),
-	}:
-	case <-t.ctx.Done():
 	}
 }
 
@@ -437,6 +432,7 @@ func (t *QUICTransport) pooledDial(addr string) (*quic.Conn, error) {
 	conn, err = t.quicTransport.Dial(ctx, udpAddr, t.clientTLS, &quic.Config{
 		MaxIdleTimeout:  gossipIdleTimeout,
 		KeepAlivePeriod: gossipKeepAlive,
+		EnableDatagrams: true,
 	})
 	if err != nil {
 		return nil, err
