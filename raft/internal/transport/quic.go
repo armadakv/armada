@@ -33,6 +33,7 @@ import (
 	"github.com/quic-go/quic-go"
 
 	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
@@ -59,6 +60,8 @@ const (
 var (
 	quicMaxIdleTimeout  = 30 * time.Second
 	quicKeepAlivePeriod = 10 * time.Second
+	perConnBufSize      = settings.PerConnectionSendBufSize
+	recvBufSize         = settings.PerConnectionRecvBufSize
 	// quicDialTimeout is a context deadline applied to every outbound QUIC dial.
 	// Unlike HandshakeIdleTimeout (which only ticks down once the remote sends
 	// its first crypto packet), a context deadline aborts the dial after the
@@ -184,7 +187,7 @@ func (c *QUICSnapshotConnection) SendChunk(chunk pb.Chunk) error {
 // that the server has received and processed all chunks. The server closes
 // its write side after the last chunk is handled, which produces the EOF here.
 func (c *QUICSnapshotConnection) waitForServerFIN() {
-	_ = c.stream.SetReadDeadline(time.Now().Add(keepAlivePeriod))
+	_ = c.stream.SetReadDeadline(time.Now().Add(quicKeepAlivePeriod))
 	_, _ = io.Copy(io.Discard, c.stream)
 }
 
