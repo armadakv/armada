@@ -60,6 +60,7 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 		EnableMetrics:       true,
 		MaxReceiveQueueSize: viper.GetUint64("raft.max-recv-queue-size"),
 		MaxSendQueueSize:    viper.GetUint64("raft.max-send-queue-size"),
+		QUICUDPBufferSize:   viper.GetInt("raft.quic-udp-buffer-size"),
 		Gossip: storage.GossipConfig{
 			BindAddress:      viper.GetString("memberlist.address"),
 			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),

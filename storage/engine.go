@@ -299,6 +299,7 @@ func createNodeHost(e *Engine) (*raft.NodeHost, error) {
 		EnableMetrics:       true,
 		MaxReceiveQueueSize: e.cfg.MaxReceiveQueueSize,
 		MaxSendQueueSize:    e.cfg.MaxSendQueueSize,
+		QUICUDPBufferSize:   e.cfg.QUICUDPBufferSize,
 		SystemEventListener: e.events,
 		RaftEventListener:   e.events,
 	}

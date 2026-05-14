@@ -253,11 +253,22 @@ func (t *QUIC) Start() error {
 	// Create the UDP socket ourselves so we can close it explicitly in Close(),
 	// guaranteeing that the port is released.  quic.ListenAddr hides the
 	// Transport internally and listener.Close() does not close the UDP socket.
-	udpConn, err := net.ListenPacket("udp", t.nhConfig.GetListenAddress())
+	pc, err := net.ListenPacket("udp", t.nhConfig.GetListenAddress())
 	if err != nil {
 		return err
 	}
-	qt := &quic.Transport{Conn: udpConn}
+	udpConn := pc.(*net.UDPConn)
+	// Wrap the connection to control the UDP receive/send buffer size.
+	// When QUICUDPBufferSize is set, we cap any buffer-size request (including
+	// those issued internally by quic-go) to that value. This prevents noisy
+	// warnings on systems where the kernel enforces a low SO_RCVBUF maximum
+	// (e.g. constrained CI environments). When the field is 0, the raw
+	// connection is used and quic-go applies its own default (7 MiB).
+	var packetConn net.PacketConn = udpConn
+	if sz := t.nhConfig.QUICUDPBufferSize; sz > 0 {
+		packetConn = newCappedUDPConn(udpConn, sz)
+	}
+	qt := &quic.Transport{Conn: packetConn}
 	listener, err := qt.Listen(tlsConfig, &quic.Config{
 		MaxIdleTimeout:  quicMaxIdleTimeout,
 		KeepAlivePeriod: quicKeepAlivePeriod,
@@ -581,4 +592,35 @@ func selfSignedTLSConfig() (*tls.Config, error) {
 		}},
 		NextProtos: []string{quicALPN},
 	}, nil
+}
+
+// cappedUDPConn wraps a *net.UDPConn and caps SetReadBuffer / SetWriteBuffer
+// calls to a configured maximum. This prevents the QUIC library from
+// requesting a buffer size larger than the OS kernel permits, which would
+// otherwise produce a noisy log warning on systems with a low SO_RCVBUF limit.
+type cappedUDPConn struct {
+	*net.UDPConn
+	maxSize int
+}
+
+// newCappedUDPConn returns a cappedUDPConn that enforces maxSize on every
+// SetReadBuffer / SetWriteBuffer call.
+func newCappedUDPConn(c *net.UDPConn, maxSize int) *cappedUDPConn {
+	return &cappedUDPConn{UDPConn: c, maxSize: maxSize}
+}
+
+// SetReadBuffer caps the requested size and delegates to the underlying conn.
+func (c *cappedUDPConn) SetReadBuffer(n int) error {
+	if n > c.maxSize {
+		n = c.maxSize
+	}
+	return c.UDPConn.SetReadBuffer(n)
+}
+
+// SetWriteBuffer caps the requested size and delegates to the underlying conn.
+func (c *cappedUDPConn) SetWriteBuffer(n int) error {
+	if n > c.maxSize {
+		n = c.maxSize
+	}
+	return c.UDPConn.SetWriteBuffer(n)
 }
