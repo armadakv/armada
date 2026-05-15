@@ -76,8 +76,14 @@ func New(cfg Config) (*Engine, error) {
 	// Create the gossip cluster before raft so that it can be passed directly
 	// as the raft node registry. Until the NodeHost is assigned (below),
 	// clusterInfo returns minimal metadata — gossip just broadcasts empty shard
-	// info initially. The node name falls back to nh.ID() once available.
-	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, cfg.Gossip.NodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo)
+	// info initially.
+	// The gossip node name must be unique per member; fall back to the raft
+	// address (always unique) when not explicitly configured.
+	gossipNodeName := cfg.Gossip.NodeName
+	if gossipNodeName == "" {
+		gossipNodeName = cfg.RaftAddress
+	}
+	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, gossipNodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo)
 	if err != nil {
 		_ = sharedQT.Close()
 		return nil, fmt.Errorf("failed to bootstrap gossip cluster: %w", err)
@@ -90,11 +96,6 @@ func New(cfg Config) (*Engine, error) {
 		return nil, fmt.Errorf("failed to start raft nodehost: %w", err)
 	}
 	e.NodeHost = nh
-
-	// Backfill the gossip node name with the NodeHost ID if not explicitly set.
-	if cfg.Gossip.NodeName == "" {
-		clst.SetName(nh.ID())
-	}
 
 	// All ALPN listeners are now registered; start the shared QUIC listener.
 	if err := sharedQT.Serve(); err != nil {

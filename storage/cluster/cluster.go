@@ -453,12 +453,6 @@ func (c *Cluster) Name() string {
 	return c.name
 }
 
-// SetName updates the cluster's node name. Used to backfill the NodeHost ID
-// after raft starts when no explicit node name was configured.
-func (c *Cluster) SetName(name string) {
-	c.name = name
-}
-
 type Node struct {
 	memberlist.Node
 	NodeMeta
