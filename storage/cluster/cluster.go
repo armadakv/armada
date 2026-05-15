@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -109,6 +110,15 @@ type listenerStore struct {
 type getClusterInfo func() Info
 
 // Cluster holds information about the memberlist cluster and active listeners.
+// streamConnections mirrors raft/internal/settings.StreamConnections.
+// The raft transport uses this many connections per remote nodehost for load
+// distribution; the connection key must use the same value.
+const streamConnections = 4
+
+// ErrUnknownTarget is returned by Resolve when a replica's address is not
+// yet known via the local cache or the gossip shard view.
+var ErrUnknownTarget = errors.New("target address unknown")
+
 type Cluster struct {
 	name            string
 	ml              *memberlist.Memberlist
@@ -123,6 +133,59 @@ type Cluster struct {
 	stop            chan struct{}
 	resolver        resolver
 	addrs           []string
+
+	// localRegistry is the raftio.INodeRegistry local cache.
+	// raft calls Add/Remove/RemoveShard when it processes config-change entries;
+	// Resolve checks here first before falling back to the gossip shard view.
+	localRegistry sync.Map // raftio.NodeInfo → string
+}
+
+// Compile-time check that *Cluster satisfies raftio.INodeRegistry.
+var _ raftio.INodeRegistry = (*Cluster)(nil)
+
+// Add records addr for (shardID, replicaID) in the local cache.
+// Called by raft when it processes membership config-change log entries.
+func (c *Cluster) Add(shardID, replicaID uint64, addr string) {
+	c.localRegistry.Store(raftio.GetNodeInfo(shardID, replicaID), addr)
+}
+
+// Remove removes the local cache entry for (shardID, replicaID).
+func (c *Cluster) Remove(shardID, replicaID uint64) {
+	c.localRegistry.Delete(raftio.GetNodeInfo(shardID, replicaID))
+}
+
+// RemoveShard removes all local cache entries for shardID.
+func (c *Cluster) RemoveShard(shardID uint64) {
+	c.localRegistry.Range(func(k, _ any) bool {
+		if k.(raftio.NodeInfo).ShardID == shardID {
+			c.localRegistry.Delete(k)
+		}
+		return true
+	})
+}
+
+// Resolve returns the raft address and connection key for the replica
+// identified by (shardID, replicaID).
+//
+// Resolution order:
+//  1. Local cache — populated by raft via Add() when processing config changes.
+//  2. Gossip shard view — populated from cluster-wide broadcasts.
+func (c *Cluster) Resolve(shardID, replicaID uint64) (string, string, error) {
+	if v, ok := c.localRegistry.Load(raftio.GetNodeInfo(shardID, replicaID)); ok {
+		addr := v.(string)
+		return addr, registryConnKey(addr, shardID), nil
+	}
+	view := c.shardView.shardInfo(shardID)
+	if addr, ok := view.Replicas[replicaID]; ok && addr != "" {
+		return addr, registryConnKey(addr, shardID), nil
+	}
+	return "", "", ErrUnknownTarget
+}
+
+// registryConnKey builds the per-shard connection key used by the raft
+// transport to spread traffic across multiple connections per remote nodehost.
+func registryConnKey(addr string, shardID uint64) string {
+	return fmt.Sprintf("%s-%d", addr, shardID%streamConnections)
 }
 
 func (c *Cluster) Notify() {
@@ -388,6 +451,12 @@ func (c *Cluster) Nodes() []Node {
 // Name returns human-readable cluster name.
 func (c *Cluster) Name() string {
 	return c.name
+}
+
+// SetName updates the cluster's node name. Used to backfill the NodeHost ID
+// after raft starts when no explicit node name was configured.
+func (c *Cluster) SetName(name string) {
+	c.name = name
 }
 
 type Node struct {

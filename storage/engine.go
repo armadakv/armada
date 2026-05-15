@@ -54,17 +54,7 @@ func New(cfg Config) (*Engine, error) {
 	}
 	e.sharedQT = sharedQT
 
-	nh, err := createNodeHost(e, sharedQT)
-	if err != nil {
-		_ = sharedQT.Close()
-		return nil, fmt.Errorf("failed to start raft nodehost: %w", err)
-	}
-	e.NodeHost = nh
-
-	name := cfg.Gossip.NodeName
-	if name == "" {
-		name = nh.ID()
-	}
+	// Build TLS for gossip early so errors surface before raft starts.
 	var gossipServerTLS, gossipClientTLS *tls.Config
 	if !cfg.Gossip.TLS.Empty() {
 		gossipServerTLS, err = cfg.Gossip.TLS.ServerConfig()
@@ -82,12 +72,29 @@ func New(cfg Config) (*Engine, error) {
 	if gossipAdvAddr == "" {
 		gossipAdvAddr = cfg.RaftAddress
 	}
-	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, name, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo)
+
+	// Create the gossip cluster before raft so that it can be passed directly
+	// as the raft node registry. Until the NodeHost is assigned (below),
+	// clusterInfo returns minimal metadata — gossip just broadcasts empty shard
+	// info initially. The node name falls back to nh.ID() once available.
+	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, cfg.Gossip.NodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo)
 	if err != nil {
 		_ = sharedQT.Close()
 		return nil, fmt.Errorf("failed to bootstrap gossip cluster: %w", err)
 	}
 	e.Cluster = clst
+
+	nh, err := createNodeHost(e, sharedQT, clst)
+	if err != nil {
+		_ = sharedQT.Close()
+		return nil, fmt.Errorf("failed to start raft nodehost: %w", err)
+	}
+	e.NodeHost = nh
+
+	// Backfill the gossip node name with the NodeHost ID if not explicitly set.
+	if cfg.Gossip.NodeName == "" {
+		clst.SetName(nh.ID())
+	}
 
 	// All ALPN listeners are now registered; start the shared QUIC listener.
 	if err := sharedQT.Serve(); err != nil {
@@ -315,6 +322,9 @@ func (e *Engine) clusterInfo() cluster.Info {
 		RaftAddress:   e.cfg.RaftAddress,
 		ClientAddress: e.cfg.ClientAddress,
 	}
+	if e.NodeHost == nil {
+		return info
+	}
 	info.NodeHostID = e.ID()
 	if nhi := e.GetNodeHostInfo(raft.DefaultNodeHostInfoOption); nhi != nil {
 		info.ShardInfoList = nhi.ShardInfoList
@@ -335,7 +345,7 @@ func (e *Engine) Config() Config {
 	return e.cfg
 }
 
-func createNodeHost(e *Engine, sharedQT *quictransport.Shared) (*raft.NodeHost, error) {
+func createNodeHost(e *Engine, sharedQT *quictransport.Shared, clst *cluster.Cluster) (*raft.NodeHost, error) {
 	nhc := config.NodeHostConfig{
 		WALDir:              e.cfg.WALDir,
 		NodeHostDir:         e.cfg.NodeHostDir,
@@ -373,7 +383,7 @@ func createNodeHost(e *Engine, sharedQT *quictransport.Shared) (*raft.NodeHost, 
 		return nil, err
 	}
 
-	nh, err := raft.NewNodeHost(nhc, raft.WithSharedQUICTransport(sharedQT))
+	nh, err := raft.NewNodeHost(nhc, raft.WithSharedQUICTransport(sharedQT), raft.WithRegistry(clst))
 	if err != nil {
 		return nil, err
 	}

@@ -954,18 +954,19 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 
 	e := &Engine{cfg: cfg, stop: make(chan struct{}), log: zaptest.NewLogger(t).Sugar()}
 	e.events = &events{eventsCh: make(chan any, 1), stopc: make(chan struct{}), donec: make(chan struct{}), engine: e}
-	nh, err := createNodeHost(e, sharedQT)
-	require.NoError(t, err)
-	e.NodeHost = nh
-	e.LogReader = &logreader.Simple{LogQuerier: nh}
 	gossipAdvAddr := cfg.Gossip.AdvertiseAddress
 	if gossipAdvAddr == "" {
 		gossipAdvAddr = cfg.RaftAddress
 	}
-	e.Cluster, err = cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, "", nil, nil, sharedQT, func() cluster.Info {
+	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, "", nil, nil, sharedQT, func() cluster.Info {
 		return cluster.Info{}
 	})
 	require.NoError(t, err)
+	e.Cluster = clst
+	nh, err := createNodeHost(e, sharedQT, clst)
+	require.NoError(t, err)
+	e.NodeHost = nh
+	e.LogReader = &logreader.Simple{LogQuerier: nh}
 	require.NoError(t, sharedQT.Serve())
 	e.tableStore = &kv.RaftStore{
 		NodeHost:  nh,
