@@ -131,6 +131,7 @@ type Cluster struct {
 	msgs            chan Message
 	not             chan struct{}
 	stop            chan struct{}
+	closeOnce       sync.Once
 	resolver        resolver
 	addrs           []string
 
@@ -340,36 +341,41 @@ func (c *Cluster) WatchPrefix(key string, f func(message Message)) {
 
 // Close gracefully disconnects the node from the memberlist cluster.
 // It tries to wait to broadcast currently pending outgoing messages before leaving.
+// Close is idempotent and safe to call multiple times.
 func (c *Cluster) Close() error {
-	waitTimeout := time.Now().Add(10 * time.Second)
-	for c.broadcasts.NumQueued() > 0 && c.ml.NumMembers() > 1 && time.Now().Before(waitTimeout) {
-		time.Sleep(250 * time.Millisecond)
-	}
+	var closeErr error
+	c.closeOnce.Do(func() {
+		waitTimeout := time.Now().Add(10 * time.Second)
+		for c.broadcasts.NumQueued() > 0 && c.ml.NumMembers() > 1 && time.Now().Before(waitTimeout) {
+			time.Sleep(250 * time.Millisecond)
+		}
 
-	if cnt := c.broadcasts.NumQueued(); cnt > 0 {
-		c.log.Warnf("broadcast messages left in queue %d", cnt)
-	}
+		if cnt := c.broadcasts.NumQueued(); cnt > 0 {
+			c.log.Warnf("broadcast messages left in queue %d", cnt)
+		}
 
-	// Leave may panic if the transport was already closed (e.g. when a shared
-	// QUIC transport is torn down before Close is called). Recover gracefully.
-	leaveErr := func() (err error) {
-		defer func() {
-			if r := recover(); r != nil {
-				c.log.Warnf("memberlist Leave skipped: %v", r)
-			}
+		// Leave may panic if the transport was already closed (e.g. when a shared
+		// QUIC transport is torn down before Close is called). Recover gracefully.
+		leaveErr := func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					c.log.Warnf("memberlist Leave skipped: %v", r)
+				}
+			}()
+			return c.ml.Leave(20 * time.Second)
 		}()
-		return c.ml.Leave(20 * time.Second)
-	}()
-	if leaveErr != nil {
-		return leaveErr
-	}
+		if leaveErr != nil {
+			closeErr = leaveErr
+			return
+		}
 
-	close(c.stop)
+		close(c.stop)
 
-	if err := c.ml.Shutdown(); err != nil {
-		return err
-	}
-	return nil
+		if err := c.ml.Shutdown(); err != nil {
+			closeErr = err
+		}
+	})
+	return closeErr
 }
 
 // New configures and creates a new memberlist backed by a QUIC transport.
