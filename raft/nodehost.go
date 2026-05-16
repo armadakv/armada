@@ -33,7 +33,7 @@ import (
 	"github.com/armadakv/armada/raft/internal/rsm"
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/internal/transport"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/raft/internal/utils"
 	"github.com/armadakv/armada/raft/logreader"
 	"github.com/armadakv/armada/raft/raftio"

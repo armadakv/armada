@@ -52,7 +52,7 @@ import (
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/internal/tests"
-	"github.com/armadakv/armada/raft/internal/transport"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 	sm "github.com/armadakv/armada/raft/statemachine"
