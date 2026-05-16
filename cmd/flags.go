@@ -30,7 +30,7 @@ func init() {
 
 	// API flags
 	apiFlagSet.String("api.address", "http://0.0.0.0:8443", "API server address. The address the server listens on.")
-	apiFlagSet.String("api.advertise-address", "http://127.0.0.1:8443", "Advertise API server address, used for NAT traversal.")
+	apiFlagSet.String("api.advertise-address", "http://127.0.0.1:8443", "Advertise API server address, used for NAT traversal. This is the address clients should use to connect to the API server.")
 	apiFlagSet.String("api.cert-filename", "", "Path to the API server certificate.")
 	apiFlagSet.String("api.key-filename", "", "Path to the API server private key file.")
 	apiFlagSet.String("api.ca-filename", "", "Path to the API server client auth CA file.")
@@ -101,7 +101,7 @@ where the kernel UDP buffer limit is lower than the library default (7 MiB). A v
 	memberlistFlagSet.String("memberlist.address", "0.0.0.0:7432", `Address is the address for the gossip service to bind to and listen on. Both UDP and TCP ports are used by the gossip service.
 The local gossip service should be able to receive gossip service related messages by binding to and listening on this address. BindAddress is usually in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
 	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.
-Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
+Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port. If empty, uses the bind address.`)
 	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of AdvertiseAddress of remote Armada instances. Local Armada instance will try to contact all of them to bootstrap the gossip service. 
 At least one reachable Armada instance is required to successfully bootstrap the gossip service. Each seed address is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
 	memberlistFlagSet.String("memberlist.cluster-name", "default", `Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.

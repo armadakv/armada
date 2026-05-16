@@ -37,6 +37,13 @@ While Armada maintains many of ETCD features there are some notable differences:
 For guidance on installation, deployment, and administration,
 see the [documentation page](https://armadakv.io).
 
+### Key Configuration Topics
+
+* **[Advertise Addresses](docs/advertise-addresses.md)** - Understanding and configuring advertise addresses for NAT traversal and multi-region deployments
+  * [Quick Reference](docs/advertise-addresses-quick-reference.md) - Summary and common use cases
+  * [Configuration Examples](docs/advertise-addresses-examples.toml) - Practical examples for different scenarios
+  * [Troubleshooting Guide](docs/advertise-addresses-troubleshooting.md) - Common problems and solutions
+
 ## Contributing
 
 Armada is in active development and contributors are welcome! For guidance on development, see the page

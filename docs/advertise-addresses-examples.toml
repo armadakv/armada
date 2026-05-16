@@ -1,0 +1,93 @@
+# Example Configuration for Advertise Addresses
+# This file demonstrates various advertise address configurations for different deployment scenarios
+
+# =============================================================================
+# Scenario 1: Local Development
+# =============================================================================
+# For local development where everything runs on localhost
+[local]
+api.address = "http://0.0.0.0:8443"
+api.advertise-address = "http://127.0.0.1:8443"
+memberlist.address = "0.0.0.0:7432"
+memberlist.advertise-address = ""  # Uses bind address
+
+# =============================================================================
+# Scenario 2: Docker Container with Port Mapping
+# =============================================================================
+# When running in Docker with port mapping from container to host
+[docker]
+api.address = "http://0.0.0.0:8443"
+api.advertise-address = "http://192.168.1.100:8443"  # Host IP
+memberlist.address = "0.0.0.0:7432"
+memberlist.advertise-address = "192.168.1.100:7432"  # Host IP
+
+# =============================================================================
+# Scenario 3: Cloud Deployment with Load Balancer
+# =============================================================================
+# When running behind a load balancer or reverse proxy
+[cloud]
+api.address = "http://0.0.0.0:8443"
+api.advertise-address = "https://armada-api.company.com:443"  # Load balancer endpoint
+memberlist.address = "0.0.0.0:7432"
+memberlist.advertise-address = "10.0.1.50:7432"  # Private IP for inter-node communication
+
+# =============================================================================
+# Scenario 4: Multi-Region Leader Setup
+# =============================================================================
+# Leader node in US-East region
+[leader-us-east]
+api.address = "http://0.0.0.0:8443"
+api.advertise-address = "https://armada-us-east.company.com:8443"
+memberlist.address = "0.0.0.0:7432"
+memberlist.advertise-address = "203.0.113.10:7432"  # Public IP for cross-region
+memberlist.members = ["203.0.113.20:7432", "203.0.113.30:7432"]
+memberlist.cluster-name = "armada-global"
+
+# =============================================================================
+# Scenario 5: Multi-Region Follower Setup
+# =============================================================================
+# Follower node in EU-West region
+[follower-eu-west]
+api.address = "http://0.0.0.0:8443"
+api.advertise-address = "https://armada-eu-west.company.com:8443"
+memberlist.address = "0.0.0.0:7432"
+memberlist.advertise-address = "203.0.113.20:7432"  # Public IP for cross-region
+memberlist.members = ["203.0.113.10:7432", "203.0.113.30:7432"]
+memberlist.cluster-name = "armada-global"
+
+# =============================================================================
+# Scenario 6: NAT/Firewall Environment
+# =============================================================================
+# When running behind NAT with port forwarding
+[nat-environment]
+api.address = "http://0.0.0.0:8443"
+api.advertise-address = "http://203.0.113.50:8443"  # External NAT IP
+memberlist.address = "0.0.0.0:7432"
+memberlist.advertise-address = "203.0.113.50:7432"  # External NAT IP
+
+# =============================================================================
+# Scenario 7: Kubernetes Deployment
+# =============================================================================
+# When running in Kubernetes with services
+[kubernetes]
+api.address = "http://0.0.0.0:8443"
+api.advertise-address = "http://armada-service.default.svc.cluster.local:8443"  # K8s service
+memberlist.address = "0.0.0.0:7432"
+memberlist.advertise-address = ""  # Use pod IP automatically
+
+# =============================================================================
+# Common Settings for All Scenarios
+# =============================================================================
+[common]
+dev-mode = false
+log-level = "INFO"
+raft.node-id = 1
+raft.address = "127.0.0.1:5012"
+raft.initial-members = "1=127.0.0.1:5012"
+memberlist.cluster-name = "production"
+
+# Security settings for production
+api.cert-filename = "/etc/armada/certs/server.crt"
+api.key-filename = "/etc/armada/certs/server.key"
+api.ca-filename = "/etc/armada/certs/ca.crt"
+api.client-cert-auth = true
