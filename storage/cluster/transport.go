@@ -267,7 +267,7 @@ func (t *QUICTransport) DialTimeout(addr string, timeout time.Duration) (net.Con
 	ctx, cancel := context.WithTimeout(t.ctx, timeout)
 	defer cancel()
 
-	conn, err := t.quicTransport.Dial(ctx, udpAddr, t.clientTLS, &quic.Config{
+	conn, err := t.quicTransport.Dial(ctx, udpAddr, tlsForAddr(t.clientTLS, addr), &quic.Config{
 		MaxIdleTimeout:  gossipIdleTimeout,
 		KeepAlivePeriod: gossipKeepAlive,
 		EnableDatagrams: true,
@@ -289,9 +289,11 @@ func (t *QUICTransport) DialTimeout(addr string, timeout time.Duration) (net.Con
 		return nil, err
 	}
 
-	// The caller (memberlist) is responsible for closing the returned net.Conn.
-	// Closing the quicStreamConn sends STREAM_FIN; the connection itself remains
-	// alive until idle so the server can still read any buffered stream data.
+	// Keep closeConn false: memberlist's SendReliable (which uses DialTimeout)
+	// closes the stream when done, but the server-side serveStream goroutine
+	// may still be reading buffered data. Closing the connection immediately
+	// would race with that read. The QUIC connection is cleaned up by idle
+	// timeout; the underlying quicTransport.Close() in Shutdown also handles it.
 	return &quicStreamConn{conn: conn, stream: stream, closeConn: false}, nil
 }
 
@@ -429,7 +431,7 @@ func (t *QUICTransport) pooledDial(addr string) (*quic.Conn, error) {
 	ctx, cancel := context.WithTimeout(t.ctx, gossipDialTimeout)
 	defer cancel()
 
-	conn, err = t.quicTransport.Dial(ctx, udpAddr, t.clientTLS, &quic.Config{
+	conn, err = t.quicTransport.Dial(ctx, udpAddr, tlsForAddr(t.clientTLS, addr), &quic.Config{
 		MaxIdleTimeout:  gossipIdleTimeout,
 		KeepAlivePeriod: gossipKeepAlive,
 		EnableDatagrams: true,
@@ -534,4 +536,19 @@ func gossipSelfSignedTLSConfig() (*tls.Config, error) {
 		}},
 		NextProtos: []string{gossipALPN},
 	}, nil
+}
+
+// tlsForAddr returns a clone of base with ServerName set to the host extracted
+// from addr when ServerName is not already configured.  This ensures that
+// CA-backed TLS connections can verify the peer hostname/IP.
+func tlsForAddr(base *tls.Config, addr string) *tls.Config {
+	cfg := base.Clone()
+	if cfg.ServerName == "" {
+		host, _, _ := net.SplitHostPort(addr)
+		if host == "" {
+			host = addr
+		}
+		cfg.ServerName = host
+	}
+	return cfg
 }

@@ -49,6 +49,13 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 		return storage.Config{}, fmt.Errorf("failed to parse raft.initial-members: %w", err)
 	}
 
+	if err := validateTLSTriplet("raft.tls"); err != nil {
+		return storage.Config{}, err
+	}
+	if err := validateTLSTriplet("memberlist.tls"); err != nil {
+		return storage.Config{}, err
+	}
+
 	// Gossip shares the raft UDP port (ALPN multiplexing). When memberlist.members
 	// is not explicitly set, fall back to the raft peer addresses as gossip seeds
 	// so operators don't need to repeat them under a different flag.
@@ -124,6 +131,25 @@ func setupRESTServer(log *zap.SugaredLogger) *armadaserver.RESTServer {
 		}
 	}()
 	return hs
+}
+
+// validateTLSTriplet checks that the cert, key, and CA flags for the given
+// prefix are either all set or all empty.  A partial set is rejected because
+// it produces a silently degraded TLS configuration.
+func validateTLSTriplet(prefix string) error {
+	cert := viper.GetString(prefix + "-cert-file")
+	key := viper.GetString(prefix + "-key-file")
+	ca := viper.GetString(prefix + "-ca-file")
+	set := 0
+	for _, v := range []string{cert, key, ca} {
+		if v != "" {
+			set++
+		}
+	}
+	if set > 0 && set < 3 {
+		return fmt.Errorf("%s TLS configuration is incomplete: cert-file, key-file, and ca-file must all be set or all be empty", prefix)
+	}
+	return nil
 }
 
 // waitForShutdown waits for a shutdown signal and logs a message when received.

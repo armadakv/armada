@@ -159,10 +159,13 @@ func (tokenCredentials) RequireTransportSecurity() bool {
 // the list (1-based) is the replica ID. The node's own replica ID is derived
 // by finding raftAddress in the list.
 //
-// An empty list is valid for nodes restarting after initial bootstrap — in
-// that case nodeID is 0 and membersMap is empty (raft recovers from disk).
+// The list must always be provided — it is the authoritative source of the
+// node's replica ID and cannot be inferred from disk state.
 func parseInitialMembersList(members []string, raftAddress string) (nodeID uint64, membersMap map[uint64]string, err error) {
 	members = filterNonEmpty(members)
+	if len(members) == 0 {
+		return 0, nil, fmt.Errorf("--raft.initial-members must not be empty: the ordered list is required to determine the local replica ID")
+	}
 	membersMap = make(map[uint64]string, len(members))
 	for i, addr := range members {
 		replicaID := uint64(i + 1)
@@ -171,7 +174,7 @@ func parseInitialMembersList(members []string, raftAddress string) (nodeID uint6
 			nodeID = replicaID
 		}
 	}
-	if len(members) > 0 && nodeID == 0 {
+	if nodeID == 0 {
 		return 0, nil, fmt.Errorf("raft address %q not found in initial-members list %v", raftAddress, members)
 	}
 	return nodeID, membersMap, nil

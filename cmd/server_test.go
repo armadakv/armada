@@ -144,8 +144,7 @@ func TestParseInitialMembersList(t *testing.T) {
 			name:        "empty list",
 			members:     []string{},
 			raftAddress: "localhost:8080",
-			wantNodeID:  0,
-			wantMembers: map[uint64]string{},
+			wantErr:     true,
 		},
 	}
 

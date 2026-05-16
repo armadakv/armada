@@ -92,6 +92,7 @@ func New(cfg Config) (*Engine, error) {
 
 	nh, err := createNodeHost(e, sharedQT, clst)
 	if err != nil {
+		_ = clst.Close()
 		_ = sharedQT.Close()
 		return nil, fmt.Errorf("failed to start raft nodehost: %w", err)
 	}
@@ -99,6 +100,8 @@ func New(cfg Config) (*Engine, error) {
 
 	// All ALPN listeners are now registered; start the shared QUIC listener.
 	if err := sharedQT.Serve(); err != nil {
+		nh.Close()
+		_ = clst.Close()
 		_ = sharedQT.Close()
 		return nil, fmt.Errorf("failed to start shared QUIC listener: %w", err)
 	}
