@@ -4,16 +4,17 @@ package cluster
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"net"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftio"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/storage/cluster/dns"
 	"github.com/hashicorp/memberlist"
 	"go.uber.org/zap"
@@ -109,6 +110,15 @@ type listenerStore struct {
 type getClusterInfo func() Info
 
 // Cluster holds information about the memberlist cluster and active listeners.
+// streamConnections mirrors raft/internal/settings.StreamConnections.
+// The raft transport uses this many connections per remote nodehost for load
+// distribution; the connection key must use the same value.
+const streamConnections = 4
+
+// ErrUnknownTarget is returned by Resolve when a replica's address is not
+// yet known via the local cache or the gossip shard view.
+var ErrUnknownTarget = errors.New("target address unknown")
+
 type Cluster struct {
 	name            string
 	ml              *memberlist.Memberlist
@@ -121,8 +131,62 @@ type Cluster struct {
 	msgs            chan Message
 	not             chan struct{}
 	stop            chan struct{}
+	closeOnce       sync.Once
 	resolver        resolver
 	addrs           []string
+
+	// localRegistry is the raftio.INodeRegistry local cache.
+	// raft calls Add/Remove/RemoveShard when it processes config-change entries;
+	// Resolve checks here first before falling back to the gossip shard view.
+	localRegistry sync.Map // raftio.NodeInfo → string
+}
+
+// Compile-time check that *Cluster satisfies raftio.INodeRegistry.
+var _ raftio.INodeRegistry = (*Cluster)(nil)
+
+// Add records addr for (shardID, replicaID) in the local cache.
+// Called by raft when it processes membership config-change log entries.
+func (c *Cluster) Add(shardID, replicaID uint64, addr string) {
+	c.localRegistry.Store(raftio.GetNodeInfo(shardID, replicaID), addr)
+}
+
+// Remove removes the local cache entry for (shardID, replicaID).
+func (c *Cluster) Remove(shardID, replicaID uint64) {
+	c.localRegistry.Delete(raftio.GetNodeInfo(shardID, replicaID))
+}
+
+// RemoveShard removes all local cache entries for shardID.
+func (c *Cluster) RemoveShard(shardID uint64) {
+	c.localRegistry.Range(func(k, _ any) bool {
+		if k.(raftio.NodeInfo).ShardID == shardID {
+			c.localRegistry.Delete(k)
+		}
+		return true
+	})
+}
+
+// Resolve returns the raft address and connection key for the replica
+// identified by (shardID, replicaID).
+//
+// Resolution order:
+//  1. Local cache — populated by raft via Add() when processing config changes.
+//  2. Gossip shard view — populated from cluster-wide broadcasts.
+func (c *Cluster) Resolve(shardID, replicaID uint64) (string, string, error) {
+	if v, ok := c.localRegistry.Load(raftio.GetNodeInfo(shardID, replicaID)); ok {
+		addr := v.(string)
+		return addr, registryConnKey(addr, shardID), nil
+	}
+	view := c.shardView.shardInfo(shardID)
+	if addr, ok := view.Replicas[replicaID]; ok && addr != "" {
+		return addr, registryConnKey(addr, shardID), nil
+	}
+	return "", "", ErrUnknownTarget
+}
+
+// registryConnKey builds the per-shard connection key used by the raft
+// transport to spread traffic across multiple connections per remote nodehost.
+func registryConnKey(addr string, shardID uint64) string {
+	return fmt.Sprintf("%s-%d", addr, shardID%streamConnections)
 }
 
 func (c *Cluster) Notify() {
@@ -236,6 +300,9 @@ func (c *Cluster) discoverMembers(members []string) []string {
 	}
 	var ms, resolve []string
 	for _, member := range members {
+		if member == "" {
+			continue
+		}
 		if dns.IsDynamicNode(member) {
 			resolve = append(resolve, member)
 		} else {
@@ -274,30 +341,55 @@ func (c *Cluster) WatchPrefix(key string, f func(message Message)) {
 
 // Close gracefully disconnects the node from the memberlist cluster.
 // It tries to wait to broadcast currently pending outgoing messages before leaving.
+// Close is idempotent and safe to call multiple times.
 func (c *Cluster) Close() error {
-	waitTimeout := time.Now().Add(10 * time.Second)
-	for c.broadcasts.NumQueued() > 0 && c.ml.NumMembers() > 1 && time.Now().Before(waitTimeout) {
-		time.Sleep(250 * time.Millisecond)
-	}
+	var closeErr error
+	c.closeOnce.Do(func() {
+		waitTimeout := time.Now().Add(10 * time.Second)
+		for c.broadcasts.NumQueued() > 0 && c.ml.NumMembers() > 1 && time.Now().Before(waitTimeout) {
+			time.Sleep(250 * time.Millisecond)
+		}
 
-	if cnt := c.broadcasts.NumQueued(); cnt > 0 {
-		c.log.Warnf("broadcast messages left in queue %d", cnt)
-	}
+		if cnt := c.broadcasts.NumQueued(); cnt > 0 {
+			c.log.Warnf("broadcast messages left in queue %d", cnt)
+		}
 
-	if err := c.ml.Leave(20 * time.Second); err != nil {
-		return err
-	}
+		// Leave may panic if the transport was already closed (e.g. when a shared
+		// QUIC transport is torn down before Close is called). Recover gracefully.
+		leaveErr := func() (err error) {
+			defer func() {
+				if r := recover(); r != nil {
+					c.log.Warnf("memberlist Leave skipped: %v", r)
+				}
+			}()
+			return c.ml.Leave(20 * time.Second)
+		}()
+		if leaveErr != nil {
+			closeErr = leaveErr
+			return
+		}
 
-	close(c.stop)
+		close(c.stop)
 
-	if err := c.ml.Shutdown(); err != nil {
-		return err
-	}
-	return nil
+		if err := c.ml.Shutdown(); err != nil {
+			closeErr = err
+		}
+	})
+	return closeErr
 }
 
-// New configures and creates a new memberlist. To connect the node to the cluster, see (*Cluster).Start.
-func New(bindAddr, advAddr, clusterName, nodeName string, f getClusterInfo) (*Cluster, error) {
+// New configures and creates a new memberlist backed by a QUIC transport.
+// To connect the node to the cluster, see (*Cluster).Start.
+//
+// advAddr is the address this node advertises to other gossip members and the
+// address the QUIC listener binds to (unless a shared transport is provided).
+// When shared is non-nil, the gossip transport reuses that *quic.Transport
+// (and the underlying UDP socket) instead of creating its own.
+//
+// serverTLS and clientTLS configure mutual TLS for the gossip transport.
+// When nil, a self-signed certificate is used (traffic is encrypted but peer
+// identity is not verified).
+func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config, shared *transport.Shared, f getClusterInfo) (*Cluster, error) {
 	info := f()
 	log := zap.S().Named("memberlist")
 	cluster := &Cluster{
@@ -313,27 +405,22 @@ func New(bindAddr, advAddr, clusterName, nodeName string, f getClusterInfo) (*Cl
 		resolver:        dns.NewResolver(log.Named("dns")),
 	}
 
+	qt, err := NewQUICTransport(advAddr, serverTLS, clientTLS, shared)
+	if err != nil {
+		return nil, fmt.Errorf("gossip transport: %w", err)
+	}
+
 	mcfg := memberlist.DefaultLANConfig()
 	mcfg.LogOutput = &loggerAdapter{log: log.WithOptions(zap.AddCallerSkip(4))}
 	mcfg.Label = clusterName
 	mcfg.Name = nodeName
 	mcfg.Events = cluster
-
-	host, port, err := net.SplitHostPort(bindAddr)
-	if err != nil {
-		return nil, err
-	}
-	mcfg.BindAddr = host
-	mcfg.BindPort, _ = strconv.Atoi(port)
-
-	if advAddr != "" {
-		aHost, aPort, aerr := net.SplitHostPort(bindAddr)
-		if aerr != nil {
-			return nil, aerr
-		}
-		mcfg.AdvertiseAddr = aHost
-		mcfg.AdvertisePort, _ = strconv.Atoi(aPort)
-	}
+	mcfg.Transport = qt
+	// With a custom transport the default BindPort/AdvertisePort (7946) must be
+	// cleared so that FinalAdvertiseAddr is called with port=0 and the transport
+	// can advertise its own actual port.
+	mcfg.BindPort = 0
+	mcfg.AdvertisePort = 0
 
 	cluster.broadcasts = &memberlist.TransmitLimitedQueue{
 		NumNodes:       func() int { return cluster.ml.NumMembers() },
@@ -346,7 +433,7 @@ func New(bindAddr, advAddr, clusterName, nodeName string, f getClusterInfo) (*Cl
 			NodeID:        info.NodeID,
 			RaftAddress:   info.RaftAddress,
 			ClientAddress: info.ClientAddress,
-			MemberAddress: bindAddr,
+			MemberAddress: advAddr,
 		},
 		broadcasts: cluster.broadcasts,
 		shardView:  cluster.shardView,

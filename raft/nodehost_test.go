@@ -52,7 +52,7 @@ import (
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/internal/tests"
-	"github.com/armadakv/armada/raft/internal/transport"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 	sm "github.com/armadakv/armada/raft/statemachine"
@@ -480,6 +480,7 @@ type testOption struct {
 	rf                   testFunc
 	bt                   beforeTest
 	at                   afterTest
+	nhOpts               []Option
 	defaultTestNode      bool
 	fakeDiskNode         bool
 	fakeDiskInitialIndex uint64
@@ -557,7 +558,7 @@ func runNodeHostTest(t *testing.T, to *testOption, fs vfs.FS) {
 		if to.updateNodeHostConfig != nil {
 			nhc = to.updateNodeHostConfig(nhc)
 		}
-		nh, err := NewNodeHost(*nhc)
+		nh, err := NewNodeHost(*nhc, to.nhOpts...)
 		if err != nil && !to.newNodeHostToFail {
 			t.Fatalf("failed to create nodehost: %v", err)
 		}
@@ -594,7 +595,7 @@ func runNodeHostTest(t *testing.T, to *testOption, fs vfs.FS) {
 		}
 		if to.restartNodeHost {
 			nh.Close()
-			nh, err = NewNodeHost(*nhc)
+			nh, err = NewNodeHost(*nhc, to.nhOpts...)
 			if err != nil {
 				t.Fatalf("failed to create nodehost: %v", err)
 			}
@@ -674,25 +675,10 @@ func TestQUICTransportIsUsedByDefault(t *testing.T) {
 	runNodeHostTest(t, to, fs)
 }
 
-type noopTransportFactory struct{}
-
-func (noopTransportFactory) Create(cfg config.NodeHostConfig,
-	h raftio.MessageHandler, ch raftio.ChunkHandler,
-) raftio.ITransport {
-	return transport.NewNOOPTransport(cfg, h, ch)
-}
-
-func (noopTransportFactory) Validate(string) bool {
-	return true
-}
-
-func TestTransportFactoryIsStillHonored(t *testing.T) {
+func TestWithTransportOptionWorks(t *testing.T) {
 	fs := vfs.NewMem()
 	to := &testOption{
-		updateNodeHostConfig: func(nhc *config.NodeHostConfig) *config.NodeHostConfig {
-			nhc.Expert.TransportFactory = noopTransportFactory{}
-			return nhc
-		},
+		nhOpts: []Option{WithTransport(transport.NewNOOPTransport(config.NodeHostConfig{}, nil, nil))},
 		tf: func(nh *NodeHost) {
 			tt := nh.transport.(*transport.Transport)
 			if tt.GetTrans().Name() != transport.NOOPRaftName {
@@ -701,65 +687,6 @@ func TestTransportFactoryIsStillHonored(t *testing.T) {
 			}
 		},
 		noElection: true,
-	}
-	runNodeHostTest(t, to, fs)
-}
-
-func TestTransportFactoryCanBeSet(t *testing.T) {
-	fs := vfs.NewMem()
-	to := &testOption{
-		updateNodeHostConfig: func(nhc *config.NodeHostConfig) *config.NodeHostConfig {
-			nhc.Expert.TransportFactory = &transport.NOOPTransportFactory{}
-			return nhc
-		},
-		tf: func(nh *NodeHost) {
-			tt := nh.transport.(*transport.Transport)
-			if tt.GetTrans().Name() != transport.NOOPRaftName {
-				t.Errorf("transport type name %s, expect %s",
-					tt.GetTrans().Name(), transport.NOOPRaftName)
-			}
-		},
-		noElection: true,
-	}
-	runNodeHostTest(t, to, fs)
-}
-
-type validatorTestModule struct{}
-
-func (tm *validatorTestModule) Create(nhConfig config.NodeHostConfig,
-	handler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler,
-) raftio.ITransport {
-	return transport.NewNOOPTransport(nhConfig, handler, chunkHandler)
-}
-
-func (tm *validatorTestModule) Validate(addr string) bool {
-	return addr == "localhost:12346" || addr == "localhost:26001"
-}
-
-func TestAddressValidatorCanBeSet(t *testing.T) {
-	fs := vfs.NewMem()
-	to := &testOption{
-		defaultTestNode: true,
-		updateNodeHostConfig: func(nhc *config.NodeHostConfig) *config.NodeHostConfig {
-			nhc.Expert.TransportFactory = &validatorTestModule{}
-			return nhc
-		},
-		tf: func(nh *NodeHost) {
-			pto := lpto(nh)
-			ctx, cancel := context.WithTimeout(context.Background(), pto)
-			err := nh.SyncRequestAddReplica(ctx, 1, 100, "localhost:12345", 0)
-			cancel()
-			if err != ErrInvalidAddress {
-				t.Fatalf("failed to return ErrInvalidAddress, %v", err)
-			}
-			ctx, cancel = context.WithTimeout(context.Background(), pto)
-			err = nh.SyncRequestAddReplica(ctx, 1, 100, "localhost:12346", 0)
-			cancel()
-			if err != nil {
-				t.Fatalf("failed to add node, %v", err)
-			}
-		},
 	}
 	runNodeHostTest(t, to, fs)
 }
@@ -842,15 +769,22 @@ func TestExternalNodeRegistryFunction(t *testing.T) {
 			nhc2.NodeHostID: nodeHostTestAddr2,
 		},
 	}
-	nhc1.Expert.NodeRegistryFactory = testRegistryFactory
-	nhc2.Expert.NodeRegistryFactory = testRegistryFactory
+	validator := nhc1.GetTargetValidator()
+	reg1, err := testRegistryFactory.Create(nhc1.NodeHostID, settings.StreamConnections, validator)
+	if err != nil {
+		t.Fatalf("failed to create registry for nh1: %v", err)
+	}
+	reg2, err := testRegistryFactory.Create(nhc2.NodeHostID, settings.StreamConnections, validator)
+	if err != nil {
+		t.Fatalf("failed to create registry for nh2: %v", err)
+	}
 
-	nh1, err := NewNodeHost(nhc1)
+	nh1, err := NewNodeHost(nhc1, WithRegistry(reg1))
 	if err != nil {
 		t.Fatalf("failed to create nh, %v", err)
 	}
 	defer nh1.Close()
-	nh2, err := NewNodeHost(nhc2)
+	nh2, err := NewNodeHost(nhc2, WithRegistry(reg2))
 	if err != nil {
 		t.Fatalf("failed to create nh2, %v", err)
 	}
@@ -900,7 +834,11 @@ func TestExternalNodeRegistryFunction(t *testing.T) {
 	nh2.Close()
 	nhc2.RaftAddress = nodeHostTestAddr3
 	testRegistryFactory.Set(nh2NodeHostID, nodeHostTestAddr3)
-	nh2, err = NewNodeHost(nhc2)
+	reg2restarted, err := testRegistryFactory.Create(nhc2.NodeHostID, settings.StreamConnections, validator)
+	if err != nil {
+		t.Fatalf("failed to create registry for nh2 restart: %v", err)
+	}
+	nh2, err = NewNodeHost(nhc2, WithRegistry(reg2restarted))
 	if err != nil {
 		t.Fatalf("failed to restart nh2, %v", err)
 	}

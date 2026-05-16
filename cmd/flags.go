@@ -75,9 +75,10 @@ This is also the identifier for a Storage instance. RaftAddress should be set to
 		`ListenAddress is a hostname:port or IP:port address used by the Raft RPC module to listen on for Raft message and snapshots.
 When the ListenAddress field is not set, The Raft RPC module listens on RaftAddress. If 0.0.0.0 is specified as the IP of the ListenAddress, Armada listens to the specified port on all interfaces.
 When hostname or domain name is specified, it is locally resolved to IP addresses first and Armada listens to all resolved IP addresses.`)
-	raftFlagSet.Uint64("raft.node-id", 1, "Raft Node ID is a non-zero value used to identify a node within a Raft cluster.")
-	raftFlagSet.StringToString("raft.initial-members", map[string]string{}, `Raft cluster initial members defines a mapping of node IDs to their respective raft address.
-The node ID must be must be Integer >= 1. Example for the initial 3 node cluster setup on the localhost: "--raft.initial-members=1=127.0.0.1:5012,2=127.0.0.1:5013,3=127.0.0.1:5014".`)
+	raftFlagSet.StringSlice("raft.initial-members", []string{}, `Raft cluster initial members is an ordered list of raft addresses for the initial cluster nodes.
+The position in the list (1-based) determines the replica ID. Each node derives its own replica ID
+by finding its own raft.address in this list. All nodes must specify the same list in the same order.
+Example for a 3-node cluster: "--raft.initial-members=127.0.0.1:5012,127.0.0.1:5013,127.0.0.1:5014".`)
 	raftFlagSet.Uint64("raft.snapshot-entries", 10000,
 		`SnapshotEntries defines how often the state machine should be snapshot automatically.
 It is defined in terms of the number of applied Raft log entries.
@@ -98,15 +99,21 @@ dropped to restrict memory usage. When set to 0, it means the send queue size is
 		`QUICUDPBufferSize is the UDP socket receive/send buffer size in bytes requested for the QUIC transport.
 When set to a positive value the QUIC library's buffer requests are capped at this value, preventing log warnings on systems
 where the kernel UDP buffer limit is lower than the library default (7 MiB). A value of 0 uses the library default.`)
-	memberlistFlagSet.String("memberlist.address", "0.0.0.0:7432", `Address is the address for the gossip service to bind to and listen on. Both UDP and TCP ports are used by the gossip service.
-The local gossip service should be able to receive gossip service related messages by binding to and listening on this address. BindAddress is usually in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
+	raftFlagSet.String("raft.tls-cert-file", "", "Path to the TLS certificate file for mutual TLS between raft peers. Must be set together with raft.tls-key-file and raft.tls-ca-file.")
+	raftFlagSet.String("raft.tls-key-file", "", "Path to the TLS private key file for mutual TLS between raft peers.")
+	raftFlagSet.String("raft.tls-ca-file", "", "Path to the CA certificate file used to verify raft peer certificates.")
 	memberlistFlagSet.String("memberlist.advertise-address", "", `AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.
-Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
-	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of AdvertiseAddress of remote Armada instances. Local Armada instance will try to contact all of them to bootstrap the gossip service. 
-At least one reachable Armada instance is required to successfully bootstrap the gossip service. Each seed address is in the format of IP:Port, Hostname:Port or DNS Name:Port.`)
+Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.
+When not set, the raft.address value is used (gossip shares the raft UDP port).`)
+	memberlistFlagSet.StringSlice("memberlist.members", []string{""}, `Seed is a list of addresses of remote Armada instances to bootstrap the gossip service.
+Each address should be the raft address (IP:Port) of a peer — gossip shares the same UDP port as raft via ALPN multiplexing.
+When not set, the raft.initial-members addresses are used automatically as gossip seeds.`)
 	memberlistFlagSet.String("memberlist.cluster-name", "default", `Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.
 All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value.`)
 	memberlistFlagSet.String("memberlist.node-name", "", "Node name override, MUST be unique in a cluster, if not specified random stable UUID will be used instead.")
+	memberlistFlagSet.String("memberlist.tls-cert-file", "", "Path to the TLS certificate file for mutual TLS between gossip peers.")
+	memberlistFlagSet.String("memberlist.tls-key-file", "", "Path to the TLS private key file for mutual TLS between gossip peers.")
+	memberlistFlagSet.String("memberlist.tls-ca-file", "", "Path to the CA certificate file used to verify gossip peer certificates.")
 
 	// Storage flags
 	storageFlagSet.Int64("storage.block-cache-size", 16*1024*1024, "Shared block cache size in bytes, the cache is used to hold uncompressed blocks of data in memory.")

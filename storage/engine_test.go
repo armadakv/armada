@@ -12,6 +12,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/pebble"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"
@@ -65,7 +66,6 @@ func TestEngine_Start(t *testing.T) {
 			name: "start tmp fs",
 			fields: fields{cfg: func() Config {
 				raftPort := getTestPort()
-				gossipPort := getTestPort()
 				tmpdir := t.TempDir()
 				return Config{
 					NodeID:         1,
@@ -73,7 +73,7 @@ func TestEngine_Start(t *testing.T) {
 					NodeHostDir:    filepath.Join(tmpdir, "nh"),
 					RTTMillisecond: 5,
 					RaftAddress:    fmt.Sprintf("127.0.0.1:%d", raftPort),
-					Gossip:         GossipConfig{BindAddress: fmt.Sprintf("127.0.0.1:%d", gossipPort)},
+					Gossip:         GossipConfig{},
 					Table:          TableConfig{DataDir: filepath.Join(tmpdir, "data"), TableCacheSize: 1024, ElectionRTT: 10, HeartbeatRTT: 1},
 					Meta:           MetaConfig{ElectionRTT: 10, HeartbeatRTT: 1},
 				}
@@ -899,7 +899,7 @@ func TestNew(t *testing.T) {
 				cfg.Gossip = GossipConfig{}
 				return cfg
 			}()},
-			wantErr: require.Error,
+			wantErr: require.NoError,
 		},
 	}
 	for _, tt := range tests {
@@ -928,7 +928,6 @@ func createTable(t *testing.T, e *Engine) {
 func newTestConfig() Config {
 	fs := lvfs.NewMem()
 	raftPort := getTestPort()
-	gossipPort := getTestPort()
 	return Config{
 		NodeID:            1,
 		InitialMembers:    map[uint64]string{1: fmt.Sprintf("127.0.0.1:%d", raftPort)},
@@ -937,7 +936,7 @@ func newTestConfig() Config {
 		RTTMillisecond:    5,
 		RaftAddress:       fmt.Sprintf("127.0.0.1:%d", raftPort),
 		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
-		Gossip:            GossipConfig{BindAddress: fmt.Sprintf("127.0.0.1:%d", gossipPort), InitialMembers: []string{fmt.Sprintf("127.0.0.1:%d", gossipPort)}},
+		Gossip:            GossipConfig{InitialMembers: []string{fmt.Sprintf("127.0.0.1:%d", raftPort)}},
 		Table:             TableConfig{FS: pebble.NewPebbleFS(fs), TableCacheSize: 1024, ElectionRTT: 10, HeartbeatRTT: 1},
 		Meta:              MetaConfig{ElectionRTT: 10, HeartbeatRTT: 1},
 		FS:                fs,
@@ -946,16 +945,29 @@ func newTestConfig() Config {
 
 func newTestEngine(t *testing.T, cfg Config) *Engine {
 	t.Helper()
+	listenAddr := cfg.ListenAddress
+	if listenAddr == "" {
+		listenAddr = cfg.RaftAddress
+	}
+	sharedQT, err := transport.New(listenAddr, cfg.QUICUDPBufferSize)
+	require.NoError(t, err)
+
 	e := &Engine{cfg: cfg, stop: make(chan struct{}), log: zaptest.NewLogger(t).Sugar()}
 	e.events = &events{eventsCh: make(chan any, 1), stopc: make(chan struct{}), donec: make(chan struct{}), engine: e}
-	nh, err := createNodeHost(e)
-	require.NoError(t, err)
-	e.NodeHost = nh
-	e.LogReader = &logreader.Simple{LogQuerier: nh}
-	e.Cluster, err = cluster.New(cfg.Gossip.BindAddress, cfg.Gossip.AdvertiseAddress, "", "", func() cluster.Info {
+	gossipAdvAddr := cfg.Gossip.AdvertiseAddress
+	if gossipAdvAddr == "" {
+		gossipAdvAddr = cfg.RaftAddress
+	}
+	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, "", nil, nil, sharedQT, func() cluster.Info {
 		return cluster.Info{}
 	})
 	require.NoError(t, err)
+	e.Cluster = clst
+	nh, err := createNodeHost(e, sharedQT, clst)
+	require.NoError(t, err)
+	e.NodeHost = nh
+	e.LogReader = &logreader.Simple{LogQuerier: nh}
+	require.NoError(t, sharedQT.Serve())
 	e.tableStore = &kv.RaftStore{
 		NodeHost:  nh,
 		ClusterID: tableStoreID,
@@ -968,6 +980,7 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	t.Cleanup(func() {
 		defer func() { recover() }()
 		require.NoError(t, e.Close())
+		require.NoError(t, sharedQT.Close())
 	})
 	return e
 }

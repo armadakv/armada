@@ -33,6 +33,7 @@ import (
 	"github.com/quic-go/quic-go"
 
 	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/raftio"
 	pb "github.com/armadakv/armada/raft/raftpb"
 )
@@ -59,6 +60,8 @@ const (
 var (
 	quicMaxIdleTimeout  = 30 * time.Second
 	quicKeepAlivePeriod = 10 * time.Second
+	perConnBufSize      = settings.PerConnectionSendBufSize
+	recvBufSize         = settings.PerConnectionRecvBufSize
 	// quicDialTimeout is a context deadline applied to every outbound QUIC dial.
 	// Unlike HandshakeIdleTimeout (which only ticks down once the remote sends
 	// its first crypto packet), a context deadline aborts the dial after the
@@ -184,7 +187,7 @@ func (c *QUICSnapshotConnection) SendChunk(chunk pb.Chunk) error {
 // that the server has received and processed all chunks. The server closes
 // its write side after the last chunk is handled, which produces the EOF here.
 func (c *QUICSnapshotConnection) waitForServerFIN() {
-	_ = c.stream.SetReadDeadline(time.Now().Add(keepAlivePeriod))
+	_ = c.stream.SetReadDeadline(time.Now().Add(quicKeepAlivePeriod))
 	_, _ = io.Copy(io.Discard, c.stream)
 }
 
@@ -216,7 +219,7 @@ type QUIC struct {
 	// quic-go Transport (which is the case when the Conn is passed in by us).
 	quicTransport *quic.Transport
 	udpConn       net.PacketConn
-	listener      *quic.Listener
+	listener      Listener
 	cancelCtx     context.CancelFunc
 	// activeConns tracks all connections accepted by the server-side listener.
 	// We explicitly call CloseWithError on every entry during Close() — before
@@ -226,6 +229,13 @@ type QUIC struct {
 	// never detects the failure, leaving it blocked writing into a dead
 	// connection indefinitely.
 	activeConns sync.Map // *quic.Conn → struct{}
+	// ownsTransport is true when this QUIC instance created the quicTransport
+	// itself (no shared transport was provided). Only the owner closes it.
+	ownsTransport bool
+	// shared is the caller-provided shared transport. When non-nil, Start()
+	// registers an ALPN listener on it instead of creating a new UDP socket.
+	// The caller retains ownership; this instance will NOT close it.
+	shared *Shared
 }
 
 // NewQUICTransport creates and returns a new QUIC transport module.
@@ -241,6 +251,23 @@ func NewQUICTransport(
 	}
 }
 
+// NewQUICTransportWithShared creates a QUIC transport that reuses the provided
+// shared QUIC transport instead of binding its own UDP socket. This allows the
+// raft and gossip subsystems to multiplex over a single UDP port.
+func NewQUICTransportWithShared(
+	nhConfig config.NodeHostConfig,
+	requestHandler raftio.MessageHandler,
+	chunkHandler raftio.ChunkHandler,
+	shared *Shared,
+) raftio.ITransport {
+	return &QUIC{
+		nhConfig:       nhConfig,
+		requestHandler: requestHandler,
+		chunkHandler:   chunkHandler,
+		shared:         shared,
+	}
+}
+
 // Name returns the human-readable name of the transport module.
 func (t *QUIC) Name() string { return QUICTransportName }
 
@@ -250,36 +277,53 @@ func (t *QUIC) Start() error {
 	if err != nil {
 		return err
 	}
-	// Create the UDP socket ourselves so we can close it explicitly in Close(),
-	// guaranteeing that the port is released.  quic.ListenAddr hides the
-	// Transport internally and listener.Close() does not close the UDP socket.
-	pc, err := net.ListenPacket("udp", t.nhConfig.GetListenAddress())
-	if err != nil {
-		return err
+
+	if t.shared != nil {
+		// Reuse the caller-owned transport. Apply buffer cap to the shared conn
+		// if configured, then register our ALPN with the shared listener.
+		if sz := t.nhConfig.QUICUDPBufferSize; sz > 0 {
+			uc := t.shared.UDPConn()
+			_ = uc.SetReadBuffer(sz)
+			_ = uc.SetWriteBuffer(sz)
+		}
+		t.quicTransport = t.shared.Transport
+		t.ownsTransport = false
+		// Register our ALPN; Shared.Serve() starts the actual listener later.
+		alpnListener, err := t.shared.ListenALPN(quicALPN, tlsConfig)
+		if err != nil {
+			return err
+		}
+		t.listener = alpnListener
+	} else {
+		// Create our own UDP socket (no shared transport provided).
+		pc, err := net.ListenPacket("udp", t.nhConfig.GetListenAddress())
+		if err != nil {
+			return err
+		}
+		udpConn := pc.(*net.UDPConn)
+		// Wrap the connection to control the UDP receive/send buffer size.
+		// When QUICUDPBufferSize is set, we cap any buffer-size request (including
+		// those issued internally by quic-go) to that value. This prevents noisy
+		// warnings on systems where the kernel enforces a low SO_RCVBUF maximum
+		// (e.g. constrained CI environments). When the field is 0, the raw
+		// connection is used and quic-go applies its own default (7 MiB).
+		var packetConn net.PacketConn = udpConn
+		if sz := t.nhConfig.QUICUDPBufferSize; sz > 0 {
+			packetConn = newCappedUDPConn(udpConn, sz)
+		}
+		t.quicTransport = &quic.Transport{Conn: packetConn}
+		t.udpConn = pc
+		t.ownsTransport = true
+		listener, err := t.quicTransport.Listen(tlsConfig, &quic.Config{
+			MaxIdleTimeout:  quicMaxIdleTimeout,
+			KeepAlivePeriod: quicKeepAlivePeriod,
+		})
+		if err != nil {
+			_ = t.udpConn.Close()
+			return err
+		}
+		t.listener = listener
 	}
-	udpConn := pc.(*net.UDPConn)
-	// Wrap the connection to control the UDP receive/send buffer size.
-	// When QUICUDPBufferSize is set, we cap any buffer-size request (including
-	// those issued internally by quic-go) to that value. This prevents noisy
-	// warnings on systems where the kernel enforces a low SO_RCVBUF maximum
-	// (e.g. constrained CI environments). When the field is 0, the raw
-	// connection is used and quic-go applies its own default (7 MiB).
-	var packetConn net.PacketConn = udpConn
-	if sz := t.nhConfig.QUICUDPBufferSize; sz > 0 {
-		packetConn = newCappedUDPConn(udpConn, sz)
-	}
-	qt := &quic.Transport{Conn: packetConn}
-	listener, err := qt.Listen(tlsConfig, &quic.Config{
-		MaxIdleTimeout:  quicMaxIdleTimeout,
-		KeepAlivePeriod: quicKeepAlivePeriod,
-	})
-	if err != nil {
-		_ = udpConn.Close()
-		return err
-	}
-	t.udpConn = udpConn
-	t.quicTransport = qt
-	t.listener = listener
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.cancelCtx = cancel
@@ -327,34 +371,34 @@ func (t *QUIC) Close() error {
 		return true
 	})
 
-	// 3. Close the listener and the quic.Transport immediately after cancelling
-	//    the context. This is the critical step that unblocks any goroutine
-	//    stuck in a blocking stream read (e.g. io.ReadFull inside readFrame /
-	//    serveRaftStream). quic-go does not propagate a context cancellation to
-	//    open streams — only closing the Transport aborts them with an error.
-	//    We must do this before waiting, otherwise serveConn goroutines that
-	//    own active streams will never return.
+	// 3. Close the listener so the accept loop and any goroutines stuck in
+	//    blocking stream reads are unblocked. Always close the listener
+	//    regardless of ownership, since we created it ourselves in Start().
 	if t.listener != nil {
 		_ = t.listener.Close()
 	}
-	if t.quicTransport != nil {
-		_ = t.quicTransport.Close()
+
+	// 4. Only close the quic.Transport and UDP socket when we own them.
+	//    When a shared transport is in use, the Engine closes it after us.
+	if t.ownsTransport {
+		if t.quicTransport != nil {
+			_ = t.quicTransport.Close()
+		}
 	}
 
-	// 3. Wait for the accept loop goroutine to exit.
+	// 5. Wait for the accept loop goroutine to exit.
 	t.wg.Wait()
 
-	// 4. Wait for all serveConn goroutines (and the stream goroutines they
+	// 6. Wait for all serveConn goroutines (and the stream goroutines they
 	//    own) to finish. By this point every stream read has been aborted by
 	//    the Transport closure above, so these goroutines should exit promptly.
 	t.connWg.Wait()
 
-	// 5. Close the raw UDP socket to release the port. The Transport has
-	//    already been closed above; this final close ensures the OS port is
-	//    freed immediately even if the Transport's internal reference counting
-	//    would otherwise delay it.
-	if t.udpConn != nil {
-		_ = t.udpConn.Close()
+	// 7. Close the raw UDP socket to release the port. Only when owned.
+	if t.ownsTransport {
+		if t.udpConn != nil {
+			_ = t.udpConn.Close()
+		}
 	}
 	return nil
 }
@@ -535,29 +579,22 @@ func (t *QUIC) serveSnapshotStream(stream *quic.Stream) {
 // ---------------------------------------------------------------------------
 
 func (t *QUIC) serverTLSConfig() (*tls.Config, error) {
-	if t.nhConfig.MutualTLS {
-		cfg, err := t.nhConfig.GetServerTLSConfig()
-		if err != nil {
-			return nil, err
-		}
-		cfg.NextProtos = []string{quicALPN}
+	if t.nhConfig.ServerTLS != nil {
+		cfg := t.nhConfig.ServerTLS.Clone()
+		cfg.NextProtos = append(cfg.NextProtos, quicALPN)
 		return cfg, nil
 	}
 	return selfSignedTLSConfig()
 }
 
-func (t *QUIC) clientTLSConfig(target string) (*tls.Config, error) {
-	if t.nhConfig.MutualTLS {
-		cfg, err := t.nhConfig.GetClientTLSConfig(target)
-		if err != nil {
-			return nil, err
-		}
-		cfg.NextProtos = []string{quicALPN}
+func (t *QUIC) clientTLSConfig(_ string) (*tls.Config, error) {
+	if t.nhConfig.ClientTLS != nil {
+		cfg := t.nhConfig.ClientTLS.Clone()
+		cfg.NextProtos = append(cfg.NextProtos, quicALPN)
 		return cfg, nil
 	}
-	// When MutualTLS is not configured the server uses a self-signed certificate.
+	// When no ClientTLS is configured the server uses a self-signed certificate.
 	// We accept it unconditionally here; the channel is still encrypted.
-	// lgtm[go/disabled-certificate-check]
 	return &tls.Config{ //nolint:gosec
 		InsecureSkipVerify: true, // lgtm[go/disabled-certificate-check]
 		NextProtos:         []string{quicALPN},

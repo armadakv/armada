@@ -78,6 +78,25 @@ var (
 	dn                  = logutil.DescribeNode
 )
 
+// TransportOption is a functional option for NewTransport.
+type TransportOption func(*transportConfig)
+
+type transportConfig struct {
+	shared      *Shared
+	customTrans raftio.ITransport
+}
+
+// WithShared configures NewTransport to multiplex raft traffic over the
+// provided shared QUIC transport instead of binding its own UDP socket.
+func WithShared(s *Shared) TransportOption {
+	return func(c *transportConfig) { c.shared = s }
+}
+
+// WithCustomTransport injects a pre-built low-level transport (used in tests).
+func WithCustomTransport(t raftio.ITransport) TransportOption {
+	return func(c *transportConfig) { c.customTrans = t }
+}
+
 // IMessageHandler is the interface required to handle incoming raft requests.
 type IMessageHandler interface {
 	HandleMessageBatch(batch pb.MessageBatch) (uint64, uint64)
@@ -149,23 +168,6 @@ const (
 	chanIsFull
 )
 
-// DefaultTransportFactory is the default transport module used.
-type DefaultTransportFactory struct{}
-
-// Create creates a default transport instance.
-func (dtm *DefaultTransportFactory) Create(nhConfig config.NodeHostConfig,
-	handler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler,
-) raftio.ITransport {
-	return NewQUICTransport(nhConfig, handler, chunkHandler)
-}
-
-// Validate returns a boolean value indicating whether the specified address is
-// valid.
-func (dtm *DefaultTransportFactory) Validate(addr string) bool {
-	panic("not suppose to be called")
-}
-
 // Transport is the transport layer for delivering raft messages and snapshots.
 type Transport struct {
 	mu struct {
@@ -201,9 +203,14 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	handler IMessageHandler, env *server.Env, resolver registry.IResolver,
 	dir server.SnapshotDirFunc, sysEvents ITransportEvent,
 	fs vfs.FS,
+	opts ...TransportOption,
 ) (*Transport, error) {
+	var tcfg transportConfig
+	for _, o := range opts {
+		o(&tcfg)
+	}
 	sourceID := nhConfig.RaftAddress
-	if nhConfig.NodeRegistryEnabled() {
+	if nhConfig.NodeHostID != "" {
 		sourceID = env.NodeHostID()
 	}
 	t := &Transport{
@@ -219,7 +226,13 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	}
 	chunks := NewChunk(t.handleRequest,
 		t.snapshotReceived, t.dir, t.nhConfig.GetDeploymentID(), fs)
-	t.trans = create(nhConfig, t.handleRequest, chunks.Add)
+	if tcfg.customTrans != nil {
+		t.trans = tcfg.customTrans
+	} else if tcfg.shared != nil {
+		t.trans = NewQUICTransportWithShared(nhConfig, t.handleRequest, chunks.Add, tcfg.shared)
+	} else {
+		t.trans = NewQUICTransport(nhConfig, t.handleRequest, chunks.Add)
+	}
 	t.chunks = chunks
 	t.ctx, t.cancel = context.WithCancel(context.Background())
 	t.mu.queues = make(map[string]sendQueue)
@@ -530,17 +543,4 @@ func (t *Transport) sendMessageBatch(conn raftio.IConnection,
 	}
 	t.metrics.messageSendSuccess(uint64(len(batch.Requests)))
 	return nil
-}
-
-func create(nhConfig config.NodeHostConfig,
-	requestHandler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler,
-) raftio.ITransport {
-	var tm config.TransportFactory
-	if nhConfig.Expert.TransportFactory != nil {
-		tm = nhConfig.Expert.TransportFactory
-	} else {
-		tm = &DefaultTransportFactory{}
-	}
-	return tm.Create(nhConfig, requestHandler, chunkHandler)
 }

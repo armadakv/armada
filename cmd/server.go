@@ -13,6 +13,7 @@ import (
 
 	"github.com/armadakv/armada/armadaserver"
 	rl "github.com/armadakv/armada/log"
+	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/prometheus/client_golang/prometheus"
@@ -42,31 +43,60 @@ func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal, 
 
 // createEngineConfig creates a common storage engine configuration for both leader and follower modes.
 func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table string, rev uint64)) (storage.Config, error) {
-	initialMembers, err := parseInitialMembers(viper.GetStringMapString("raft.initial-members"))
+	raftAddress := viper.GetString("raft.address")
+	nodeID, initialMembers, err := parseInitialMembersList(viper.GetStringSlice("raft.initial-members"), raftAddress)
 	if err != nil {
 		return storage.Config{}, fmt.Errorf("failed to parse raft.initial-members: %w", err)
+	}
+
+	if err := validateTLSTriplet("raft.tls"); err != nil {
+		return storage.Config{}, err
+	}
+	if err := validateTLSTriplet("memberlist.tls"); err != nil {
+		return storage.Config{}, err
+	}
+
+	// Gossip shares the raft UDP port (ALPN multiplexing). When memberlist.members
+	// is not explicitly set, fall back to the raft peer addresses as gossip seeds
+	// so operators don't need to repeat them under a different flag.
+	gossipMembers := filterNonEmpty(viper.GetStringSlice("memberlist.members"))
+	if len(gossipMembers) == 0 {
+		for _, addr := range initialMembers {
+			gossipMembers = append(gossipMembers, addr)
+		}
 	}
 
 	return storage.Config{
 		Log:                 engineLog.Sugar(),
 		ClientAddress:       viper.GetString("api.advertise-address"),
-		NodeID:              viper.GetUint64("raft.node-id"),
+		NodeID:              nodeID,
 		InitialMembers:      initialMembers,
 		WALDir:              viper.GetString("raft.wal-dir"),
 		NodeHostDir:         viper.GetString("raft.node-host-dir"),
 		RTTMillisecond:      uint64(viper.GetDuration("raft.rtt").Milliseconds()),
-		RaftAddress:         viper.GetString("raft.address"),
+		RaftAddress:         raftAddress,
 		ListenAddress:       viper.GetString("raft.listen-address"),
 		EnableMetrics:       true,
 		MaxReceiveQueueSize: viper.GetUint64("raft.max-recv-queue-size"),
 		MaxSendQueueSize:    viper.GetUint64("raft.max-send-queue-size"),
 		QUICUDPBufferSize:   viper.GetInt("raft.quic-udp-buffer-size"),
+		RaftTLS: security.TLSInfo{
+			CertFile:       viper.GetString("raft.tls-cert-file"),
+			KeyFile:        viper.GetString("raft.tls-key-file"),
+			TrustedCAFile:  viper.GetString("raft.tls-ca-file"),
+			ClientCertAuth: viper.GetString("raft.tls-ca-file") != "",
+		},
 		Gossip: storage.GossipConfig{
-			BindAddress:      viper.GetString("memberlist.address"),
 			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),
-			InitialMembers:   viper.GetStringSlice("memberlist.members"),
+			InitialMembers:   gossipMembers,
 			ClusterName:      viper.GetString("memberlist.cluster-name"),
 			NodeName:         viper.GetString("memberlist.node-name"),
+			TLS: security.TLSInfo{
+				CertFile:       viper.GetString("memberlist.tls-cert-file"),
+				KeyFile:        viper.GetString("memberlist.tls-key-file"),
+				TrustedCAFile:  viper.GetString("memberlist.tls-ca-file"),
+				ClientCertAuth: viper.GetString("memberlist.tls-ca-file") != "",
+			},
 		},
 		Table: storage.TableConfig{
 			FS:                   vfs.Default,
@@ -101,6 +131,25 @@ func setupRESTServer(log *zap.SugaredLogger) *armadaserver.RESTServer {
 		}
 	}()
 	return hs
+}
+
+// validateTLSTriplet checks that the cert, key, and CA flags for the given
+// prefix are either all set or all empty.  A partial set is rejected because
+// it produces a silently degraded TLS configuration.
+func validateTLSTriplet(prefix string) error {
+	cert := viper.GetString(prefix + "-cert-file")
+	key := viper.GetString(prefix + "-key-file")
+	ca := viper.GetString(prefix + "-ca-file")
+	set := 0
+	for _, v := range []string{cert, key, ca} {
+		if v != "" {
+			set++
+		}
+	}
+	if set > 0 && set < 3 {
+		return fmt.Errorf("%s TLS configuration is incomplete: cert-file, key-file, and ca-file must all be set or all be empty", prefix)
+	}
+	return nil
 }
 
 // waitForShutdown waits for a shutdown signal and logs a message when received.

@@ -312,7 +312,6 @@ func TestBackup_ensureDefaults(t *testing.T) {
 func newTestConfig(t *testing.T) storage.Config {
 	fs := lvfs.NewMem()
 	raftPort := getTestPort()
-	gossipPort := getTestPort()
 	return storage.Config{
 		Log:               zaptest.NewLogger(t).Sugar(),
 		NodeID:            1,
@@ -322,7 +321,7 @@ func newTestConfig(t *testing.T) storage.Config {
 		RTTMillisecond:    5,
 		RaftAddress:       fmt.Sprintf("127.0.0.1:%d", raftPort),
 		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
-		Gossip:            storage.GossipConfig{BindAddress: fmt.Sprintf("127.0.0.1:%d", gossipPort), InitialMembers: []string{fmt.Sprintf("127.0.0.1:%d", gossipPort)}},
+		Gossip:            storage.GossipConfig{InitialMembers: []string{fmt.Sprintf("127.0.0.1:%d", raftPort)}},
 		Table:             storage.TableConfig{FS: wrapFS(fs), TableCacheSize: 1024, ElectionRTT: 10, HeartbeatRTT: 1},
 		Meta:              storage.MetaConfig{ElectionRTT: 10, HeartbeatRTT: 1},
 		FS:                fs,

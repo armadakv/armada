@@ -97,54 +97,67 @@ func TestResolveURL(t *testing.T) {
 	}
 }
 
-func TestParseInitialMembers(t *testing.T) {
+func TestParseInitialMembersList(t *testing.T) {
 	tests := []struct {
-		name    string
-		members map[string]string
-		want    map[uint64]string
-		wantErr bool
+		name        string
+		members     []string
+		raftAddress string
+		wantNodeID  uint64
+		wantMembers map[uint64]string
+		wantErr     bool
 	}{
 		{
-			name: "valid",
-			members: map[string]string{
-				"1": "localhost:8080",
-				"2": "localhost:8081",
-				"3": "localhost:8082",
-			},
-			want: map[uint64]string{
-				1: "localhost:8080",
-				2: "localhost:8081",
-				3: "localhost:8082",
-			},
-			wantErr: false,
+			name:        "single node",
+			members:     []string{"localhost:8080"},
+			raftAddress: "localhost:8080",
+			wantNodeID:  1,
+			wantMembers: map[uint64]string{1: "localhost:8080"},
 		},
 		{
-			name: "invalid",
-			members: map[string]string{
-				"1":    "localhost:8080",
-				"2":    "localhost:8081",
-				"test": "localhost:8082",
-			},
-			want:    nil,
-			wantErr: true,
+			name:        "three nodes, first",
+			members:     []string{"localhost:8080", "localhost:8081", "localhost:8082"},
+			raftAddress: "localhost:8080",
+			wantNodeID:  1,
+			wantMembers: map[uint64]string{1: "localhost:8080", 2: "localhost:8081", 3: "localhost:8082"},
 		},
 		{
-			name:    "empty",
-			members: map[string]string{},
-			want:    map[uint64]string{},
-			wantErr: false,
+			name:        "three nodes, second",
+			members:     []string{"localhost:8080", "localhost:8081", "localhost:8082"},
+			raftAddress: "localhost:8081",
+			wantNodeID:  2,
+			wantMembers: map[uint64]string{1: "localhost:8080", 2: "localhost:8081", 3: "localhost:8082"},
+		},
+		{
+			name:        "three nodes, third",
+			members:     []string{"localhost:8080", "localhost:8081", "localhost:8082"},
+			raftAddress: "localhost:8082",
+			wantNodeID:  3,
+			wantMembers: map[uint64]string{1: "localhost:8080", 2: "localhost:8081", 3: "localhost:8082"},
+		},
+		{
+			name:        "address not in list",
+			members:     []string{"localhost:8080", "localhost:8081"},
+			raftAddress: "localhost:9999",
+			wantErr:     true,
+		},
+		{
+			name:        "empty list",
+			members:     []string{},
+			raftAddress: "localhost:8080",
+			wantErr:     true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseInitialMembers(tt.members)
+			gotNodeID, gotMembers, err := parseInitialMembersList(tt.members, tt.raftAddress)
 			if tt.wantErr {
 				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.want, got)
+				return
 			}
+			require.NoError(t, err)
+			require.Equal(t, tt.wantNodeID, gotNodeID)
+			require.Equal(t, tt.wantMembers, gotMembers)
 		})
 	}
 }
@@ -198,7 +211,6 @@ func TestCreateEngineConfig(t *testing.T) {
 	// Save the original values of the config
 	originalValues := map[string]interface{}{
 		"api.advertise-address":        viper.Get("api.advertise-address"),
-		"raft.node-id":                 viper.Get("raft.node-id"),
 		"raft.initial-members":         viper.Get("raft.initial-members"),
 		"raft.wal-dir":                 viper.Get("raft.wal-dir"),
 		"raft.node-host-dir":           viper.Get("raft.node-host-dir"),
@@ -231,8 +243,7 @@ func TestCreateEngineConfig(t *testing.T) {
 
 	// Set up test values
 	viper.Set("api.advertise-address", "http://localhost:8443")
-	viper.Set("raft.node-id", uint64(1))
-	viper.Set("raft.initial-members", map[string]string{"1": "localhost:8080"})
+	viper.Set("raft.initial-members", []string{"localhost:8080"})
 	viper.Set("raft.wal-dir", "/tmp/wal")
 	viper.Set("raft.node-host-dir", "/tmp/node")
 	viper.Set("raft.rtt", 50*time.Millisecond)
@@ -240,7 +251,6 @@ func TestCreateEngineConfig(t *testing.T) {
 	viper.Set("raft.listen-address", "")
 	viper.Set("raft.max-recv-queue-size", uint64(0))
 	viper.Set("raft.max-send-queue-size", uint64(0))
-	viper.Set("memberlist.address", "localhost:7432")
 	viper.Set("memberlist.advertise-address", "")
 	viper.Set("memberlist.members", []string{""})
 	viper.Set("memberlist.cluster-name", "test")
@@ -282,9 +292,8 @@ func TestCreateEngineConfig(t *testing.T) {
 	require.True(t, config.EnableMetrics)
 	require.Equal(t, uint64(0), config.MaxReceiveQueueSize)
 	require.Equal(t, uint64(0), config.MaxSendQueueSize)
-	require.Equal(t, "localhost:7432", config.Gossip.BindAddress)
 	require.Empty(t, config.Gossip.AdvertiseAddress)
-	require.Equal(t, []string{""}, config.Gossip.InitialMembers)
+	require.Equal(t, []string{"localhost:8080"}, config.Gossip.InitialMembers)
 	require.Equal(t, "test", config.Gossip.ClusterName)
 	require.Empty(t, config.Gossip.NodeName)
 	require.Equal(t, uint64(20), config.Table.ElectionRTT)

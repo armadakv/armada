@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
-	"github.com/lni/goutils/stringutil"
 
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/raft/raftio"
@@ -120,23 +119,6 @@ func (c *NOOPSnapshotConnection) SendChunk(chunk raftpb.Chunk) error {
 	}
 	c.sendChunksCount++
 	return nil
-}
-
-// NOOPTransportFactory is a NOOP transport module used in testing
-type NOOPTransportFactory struct{}
-
-// Create creates a noop transport instance.
-func (n *NOOPTransportFactory) Create(nhConfig config.NodeHostConfig,
-	handler raftio.MessageHandler,
-	chunkHandler raftio.ChunkHandler,
-) raftio.ITransport {
-	return NewNOOPTransport(nhConfig, handler, chunkHandler)
-}
-
-// Validate returns a boolean value indicating whether the input address is
-// valid.
-func (n *NOOPTransportFactory) Validate(addr string) bool {
-	return stringutil.IsValidAddress(addr)
 }
 
 // NOOPTransport is a transport module for testing purposes. It does not

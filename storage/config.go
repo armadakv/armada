@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"github.com/armadakv/armada/security"
 	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/armada/vfs"
 	"go.uber.org/zap"
@@ -13,11 +14,17 @@ type TableConfig table.TableConfig
 type MetaConfig table.MetaConfig
 
 type GossipConfig struct {
-	BindAddress      string
+	// AdvertiseAddress is the address that this node advertises to other gossip members.
+	// When empty, the RaftAddress is used (recommended for most deployments since gossip
+	// shares the raft UDP port).
 	AdvertiseAddress string
 	InitialMembers   []string
 	ClusterName      string
 	NodeName         string
+	// TLS configures mutual TLS for the QUIC-based gossip transport.
+	// When empty (the default), a self-signed certificate is used (traffic is
+	// encrypted but peer identity is not verified).
+	TLS security.TLSInfo
 }
 
 type Config struct {
@@ -87,6 +94,10 @@ type Config struct {
 	// maximum (e.g. constrained CI environments). When 0, the QUIC library's
 	// default (currently 7 MiB) is used.
 	QUICUDPBufferSize int
+	// RaftTLS configures mutual TLS for the QUIC-based Raft transport.
+	// When empty (the default), the transport uses a self-signed certificate.
+	// Set CertFile, KeyFile, and TrustedCAFile for production mTLS between peers.
+	RaftTLS security.TLSInfo
 	// NotifyCommit specifies whether clients should be notified when their
 	// regular proposals and config change requests are committed. By default,
 	// commits are not notified, clients are only notified when their proposals

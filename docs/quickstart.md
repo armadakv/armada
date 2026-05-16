@@ -41,7 +41,7 @@ tar -xf armada-darwin-amd64.tar
 ./armada leader \
     --dev-mode \
     --raft.address=127.0.0.1:5012 \
-    --raft.initial-members='1=127.0.0.1:5012'
+    --raft.initial-members='127.0.0.1:5012'
 ```
 This command will start an Armada leader cluster with a single instance locally.
 
@@ -64,7 +64,7 @@ docker run \
     leader \
     --dev-mode \
     --raft.address=127.0.0.1:5012 \
-    --raft.initial-members='1=127.0.0.1:5012'
+    --raft.initial-members='127.0.0.1:5012'
 ```
 
 This command will start an Armada leader cluster with a single instance in a Docker container.

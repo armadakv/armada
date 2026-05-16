@@ -8,6 +8,7 @@ package storage
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"iter"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"
@@ -40,21 +42,69 @@ func New(cfg Config) (*Engine, error) {
 	}
 	e.events = &events{eventsCh: make(chan any, 1), stopc: make(chan struct{}), donec: make(chan struct{}), engine: e}
 
-	nh, err := createNodeHost(e)
+	// Create the shared QUIC transport that raft and gossip will both use.
+	// Use the listen address when set, otherwise fall back to the raft address.
+	listenAddr := cfg.ListenAddress
+	if listenAddr == "" {
+		listenAddr = cfg.RaftAddress
+	}
+	sharedQT, err := transport.New(listenAddr, cfg.QUICUDPBufferSize)
 	if err != nil {
+		return nil, fmt.Errorf("failed to create shared QUIC transport: %w", err)
+	}
+	e.sharedQT = sharedQT
+
+	// Build TLS for gossip early so errors surface before raft starts.
+	var gossipServerTLS, gossipClientTLS *tls.Config
+	if !cfg.Gossip.TLS.Empty() {
+		gossipServerTLS, err = cfg.Gossip.TLS.ServerConfig()
+		if err != nil {
+			_ = sharedQT.Close()
+			return nil, fmt.Errorf("gossip server TLS: %w", err)
+		}
+		gossipClientTLS, err = cfg.Gossip.TLS.ClientConfig()
+		if err != nil {
+			_ = sharedQT.Close()
+			return nil, fmt.Errorf("gossip client TLS: %w", err)
+		}
+	}
+	gossipAdvAddr := cfg.Gossip.AdvertiseAddress
+	if gossipAdvAddr == "" {
+		gossipAdvAddr = cfg.RaftAddress
+	}
+
+	// Create the gossip cluster before raft so that it can be passed directly
+	// as the raft node registry. Until the NodeHost is assigned (below),
+	// clusterInfo returns minimal metadata — gossip just broadcasts empty shard
+	// info initially.
+	// The gossip node name must be unique per member; fall back to the raft
+	// address (always unique) when not explicitly configured.
+	gossipNodeName := cfg.Gossip.NodeName
+	if gossipNodeName == "" {
+		gossipNodeName = cfg.RaftAddress
+	}
+	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, gossipNodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo)
+	if err != nil {
+		_ = sharedQT.Close()
+		return nil, fmt.Errorf("failed to bootstrap gossip cluster: %w", err)
+	}
+	e.Cluster = clst
+
+	nh, err := createNodeHost(e, sharedQT, clst)
+	if err != nil {
+		_ = clst.Close()
+		_ = sharedQT.Close()
 		return nil, fmt.Errorf("failed to start raft nodehost: %w", err)
 	}
 	e.NodeHost = nh
 
-	name := cfg.Gossip.NodeName
-	if name == "" {
-		name = nh.ID()
+	// All ALPN listeners are now registered; start the shared QUIC listener.
+	if err := sharedQT.Serve(); err != nil {
+		nh.Close()
+		_ = clst.Close()
+		_ = sharedQT.Close()
+		return nil, fmt.Errorf("failed to start shared QUIC listener: %w", err)
 	}
-	clst, err := cluster.New(cfg.Gossip.BindAddress, cfg.Gossip.AdvertiseAddress, cfg.Gossip.ClusterName, name, e.clusterInfo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to bootstrap gossip cluster: %w", err)
-	}
-	e.Cluster = clst
 	e.tableStore = &kv.RaftStore{
 		NodeHost:  nh,
 		ClusterID: tableStoreID,
@@ -95,6 +145,7 @@ type Engine struct {
 	Cluster    *cluster.Cluster
 	tableStore *kv.RaftStore
 	disk       *diskMetrics
+	sharedQT   *transport.Shared
 }
 
 func (e *Engine) Start() error {
@@ -119,7 +170,13 @@ func (e *Engine) Start() error {
 func (e *Engine) Close() error {
 	close(e.stop)
 	e.Manager.Close()
+	if e.Cluster != nil {
+		_ = e.Cluster.Close()
+	}
 	e.NodeHost.Close()
+	if e.sharedQT != nil {
+		_ = e.sharedQT.Close()
+	}
 	if e.events.started.Load() {
 		<-e.events.donec
 	}
@@ -269,6 +326,9 @@ func (e *Engine) clusterInfo() cluster.Info {
 		RaftAddress:   e.cfg.RaftAddress,
 		ClientAddress: e.cfg.ClientAddress,
 	}
+	if e.NodeHost == nil {
+		return info
+	}
 	info.NodeHostID = e.ID()
 	if nhi := e.GetNodeHostInfo(raft.DefaultNodeHostInfoOption); nhi != nil {
 		info.ShardInfoList = nhi.ShardInfoList
@@ -289,7 +349,7 @@ func (e *Engine) Config() Config {
 	return e.cfg
 }
 
-func createNodeHost(e *Engine) (*raft.NodeHost, error) {
+func createNodeHost(e *Engine, sharedQT *transport.Shared, clst *cluster.Cluster) (*raft.NodeHost, error) {
 	nhc := config.NodeHostConfig{
 		WALDir:              e.cfg.WALDir,
 		NodeHostDir:         e.cfg.NodeHostDir,
@@ -305,6 +365,19 @@ func createNodeHost(e *Engine) (*raft.NodeHost, error) {
 	}
 	nhc.Expert.LogDB = buildLogDBConfig()
 
+	if !e.cfg.RaftTLS.Empty() {
+		serverTLS, err := e.cfg.RaftTLS.ServerConfig()
+		if err != nil {
+			return nil, fmt.Errorf("raft server TLS: %w", err)
+		}
+		clientTLS, err := e.cfg.RaftTLS.ClientConfig()
+		if err != nil {
+			return nil, fmt.Errorf("raft client TLS: %w", err)
+		}
+		nhc.ServerTLS = serverTLS
+		nhc.ClientTLS = clientTLS
+	}
+
 	if e.cfg.FS != nil {
 		nhc.Expert.FS = e.cfg.FS
 	}
@@ -314,7 +387,7 @@ func createNodeHost(e *Engine) (*raft.NodeHost, error) {
 		return nil, err
 	}
 
-	nh, err := raft.NewNodeHost(nhc)
+	nh, err := raft.NewNodeHost(nhc, raft.WithTransportOptions(transport.WithShared(sharedQT)), raft.WithRegistry(clst))
 	if err != nil {
 		return nil, err
 	}

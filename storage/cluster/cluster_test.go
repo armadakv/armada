@@ -18,7 +18,7 @@ import (
 
 func TestSingleNodeCluster(t *testing.T) {
 	address := getTestBindAddress()
-	cluster, err := New(address, "", "", "", func() Info { return Info{} })
+	cluster, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} })
 	require.NoError(t, err)
 	cluster.Start([]string{address})
 	require.Len(t, cluster.Nodes(), 1)
@@ -29,7 +29,7 @@ func TestMultiNodeCluster(t *testing.T) {
 	t.Log("start 3 node cluster")
 	for i := 0; i < 3; i++ {
 		address := getTestBindAddress()
-		cluster, err := New(address, address, "", strconv.Itoa(i), func() Info {
+		cluster, err := New(address, "", strconv.Itoa(i), nil, nil, nil, func() Info {
 			return Info{
 				NodeHostID:  util.RandString(64),
 				NodeID:      uint64(i),
@@ -120,9 +120,9 @@ func TestMultiNodeCluster(t *testing.T) {
 }
 
 func getTestBindAddress() string {
-	l, _ := net.Listen("tcp4", "127.0.0.1:0")
-	defer l.Close()
-	return l.Addr().String()
+	conn, _ := net.ListenPacket("udp4", "127.0.0.1:0")
+	defer conn.Close()
+	return conn.LocalAddr().String()
 }
 
 func keys(m map[string]*Cluster) []string {
@@ -139,4 +139,65 @@ func values(m map[string]*Cluster) []*Cluster {
 		ret = append(ret, val)
 	}
 	return ret
+}
+
+func TestCluster_INodeRegistry(t *testing.T) {
+	address := getTestBindAddress()
+	c, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} })
+	require.NoError(t, err)
+
+	t.Run("Resolve unknown returns error", func(t *testing.T) {
+		_, _, err := c.Resolve(1, 1)
+		require.ErrorIs(t, err, ErrUnknownTarget)
+	})
+
+	t.Run("Add then Resolve local cache", func(t *testing.T) {
+		c.Add(1, 1, "127.0.0.1:5000")
+		addr, key, err := c.Resolve(1, 1)
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1:5000", addr)
+		require.NotEmpty(t, key)
+	})
+
+	t.Run("Remove clears local cache entry", func(t *testing.T) {
+		c.Add(2, 1, "127.0.0.1:5001")
+		c.Remove(2, 1)
+		_, _, err := c.Resolve(2, 1)
+		require.ErrorIs(t, err, ErrUnknownTarget)
+	})
+
+	t.Run("RemoveShard clears all entries for shard", func(t *testing.T) {
+		c.Add(3, 1, "127.0.0.1:5002")
+		c.Add(3, 2, "127.0.0.1:5003")
+		c.Add(3, 3, "127.0.0.1:5004")
+		c.RemoveShard(3)
+		for _, rid := range []uint64{1, 2, 3} {
+			_, _, err := c.Resolve(3, rid)
+			require.ErrorIs(t, err, ErrUnknownTarget)
+		}
+	})
+
+	t.Run("Resolve falls back to gossip shard view", func(t *testing.T) {
+		c.shardView.update([]raft.ShardView{{
+			ShardID:           10,
+			Replicas:          map[uint64]string{5: "127.0.0.1:5010"},
+			ConfigChangeIndex: 1,
+		}})
+		addr, key, err := c.Resolve(10, 5)
+		require.NoError(t, err)
+		require.Equal(t, "127.0.0.1:5010", addr)
+		require.NotEmpty(t, key)
+	})
+
+	t.Run("Local cache takes precedence over gossip view", func(t *testing.T) {
+		c.shardView.update([]raft.ShardView{{
+			ShardID:           20,
+			Replicas:          map[uint64]string{1: "gossip-addr:6000"},
+			ConfigChangeIndex: 1,
+		}})
+		c.Add(20, 1, "local-addr:7000")
+		addr, _, err := c.Resolve(20, 1)
+		require.NoError(t, err)
+		require.Equal(t, "local-addr:7000", addr)
+	})
 }
