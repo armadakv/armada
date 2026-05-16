@@ -254,9 +254,9 @@ var firstError = utils.FirstError
 
 // nodeHostOptions holds optional overrides for NodeHost construction.
 type nodeHostOptions struct {
-	transport    raftio.ITransport
-	nodeRegistry raftio.INodeRegistry
-	quicShared   *transport.Shared
+	transport      raftio.ITransport
+	nodeRegistry   raftio.INodeRegistry
+	transportOpts  []transport.TransportOption
 }
 
 // Option is a functional option for NewNodeHost.
@@ -274,11 +274,10 @@ func WithRegistry(r raftio.INodeRegistry) Option {
 	return func(o *nodeHostOptions) { o.nodeRegistry = r }
 }
 
-// WithSharedQUICTransport configures NodeHost to use the provided shared QUIC
-// transport instead of binding its own UDP socket. This allows raft and gossip
-// subsystems to multiplex over a single UDP port via ALPN.
-func WithSharedQUICTransport(shared *transport.Shared) Option {
-	return func(o *nodeHostOptions) { o.quicShared = shared }
+// WithTransportOptions passes transport-level options (e.g. transport.WithShared)
+// to the transport constructor. This keeps transport concerns out of NodeHost.
+func WithTransportOptions(opts ...transport.TransportOption) Option {
+	return func(o *nodeHostOptions) { o.transportOpts = append(o.transportOpts, opts...) }
 }
 
 // NewNodeHost creates a new NodeHost instance. In a typical application, it is
@@ -350,7 +349,7 @@ func NewNodeHost(nhConfig config.NodeHostConfig, opts ...Option) (*NodeHost, err
 	}
 	nh.engine = newExecEngine(nh, nhConfig.Expert.Engine,
 		nh.nhConfig.NotifyCommit, errorInjection, nh.env, nh.mu.logdb)
-	if err := nh.createTransport(nhOpts.transport, nhOpts.quicShared); err != nil {
+	if err := nh.createTransport(nhOpts.transport, nhOpts.transportOpts...); err != nil {
 		nh.Close()
 		return nil, err
 	}
@@ -1711,13 +1710,16 @@ func (nh *NodeHost) createNodeRegistry(r raftio.INodeRegistry) error {
 	return nil
 }
 
-func (nh *NodeHost) createTransport(t raftio.ITransport, shared *transport.Shared) error {
+func (nh *NodeHost) createTransport(t raftio.ITransport, opts ...transport.TransportOption) error {
 	getSnapshotDir := func(cid uint64, nid uint64) string {
 		return nh.env.GetSnapshotDir(nh.nhConfig.GetDeploymentID(), cid, nid)
 	}
+	if t != nil {
+		opts = append(opts, transport.WithCustomTransport(t))
+	}
 	tsp, err := transport.NewTransport(nh.nhConfig,
 		nh.msgHandler, nh.env, nh.nodes, getSnapshotDir,
-		&transportEvent{nh: nh}, nh.fs, shared, t)
+		&transportEvent{nh: nh}, nh.fs, opts...)
 	if err != nil {
 		return err
 	}

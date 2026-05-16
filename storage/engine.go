@@ -384,7 +384,7 @@ func createNodeHost(e *Engine, sharedQT *transport.Shared, clst *cluster.Cluster
 		return nil, err
 	}
 
-	nh, err := raft.NewNodeHost(nhc, raft.WithSharedQUICTransport(sharedQT), raft.WithRegistry(clst))
+	nh, err := raft.NewNodeHost(nhc, raft.WithTransportOptions(transport.WithShared(sharedQT)), raft.WithRegistry(clst))
 	if err != nil {
 		return nil, err
 	}

@@ -338,7 +338,7 @@ func newNOOPTestTransport(handler IMessageHandler, fs vfs.FS) (*Transport,
 	}
 	noop := NewNOOPTransport(c, nil, nil)
 	transport, err := NewTransport(c,
-		handler, env, nodes, t.GetSnapshotRootDir, &dummyTransportEvent{}, fs, nil, noop)
+		handler, env, nodes, t.GetSnapshotRootDir, &dummyTransportEvent{}, fs, WithCustomTransport(noop))
 	if err != nil {
 		panic(err)
 	}
@@ -367,7 +367,7 @@ func newTestTransport(handler IMessageHandler,
 		panic(err)
 	}
 	transport, err := NewTransport(c,
-		handler, env, nodes, t.GetSnapshotRootDir, &dummyTransportEvent{}, fs, nil)
+		handler, env, nodes, t.GetSnapshotRootDir, &dummyTransportEvent{}, fs)
 	if err != nil {
 		panic(err)
 	}

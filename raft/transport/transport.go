@@ -78,6 +78,25 @@ var (
 	dn                  = logutil.DescribeNode
 )
 
+// TransportOption is a functional option for NewTransport.
+type TransportOption func(*transportConfig)
+
+type transportConfig struct {
+	shared      *Shared
+	customTrans raftio.ITransport
+}
+
+// WithShared configures NewTransport to multiplex raft traffic over the
+// provided shared QUIC transport instead of binding its own UDP socket.
+func WithShared(s *Shared) TransportOption {
+	return func(c *transportConfig) { c.shared = s }
+}
+
+// WithCustomTransport injects a pre-built low-level transport (used in tests).
+func WithCustomTransport(t raftio.ITransport) TransportOption {
+	return func(c *transportConfig) { c.customTrans = t }
+}
+
 // IMessageHandler is the interface required to handle incoming raft requests.
 type IMessageHandler interface {
 	HandleMessageBatch(batch pb.MessageBatch) (uint64, uint64)
@@ -184,9 +203,12 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	handler IMessageHandler, env *server.Env, resolver registry.IResolver,
 	dir server.SnapshotDirFunc, sysEvents ITransportEvent,
 	fs vfs.FS,
-	shared *Shared,
-	customTrans ...raftio.ITransport,
+	opts ...TransportOption,
 ) (*Transport, error) {
+	var tcfg transportConfig
+	for _, o := range opts {
+		o(&tcfg)
+	}
 	sourceID := nhConfig.RaftAddress
 	if nhConfig.NodeHostID != "" {
 		sourceID = env.NodeHostID()
@@ -204,10 +226,10 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	}
 	chunks := NewChunk(t.handleRequest,
 		t.snapshotReceived, t.dir, t.nhConfig.GetDeploymentID(), fs)
-	if len(customTrans) > 0 && customTrans[0] != nil {
-		t.trans = customTrans[0]
-	} else if shared != nil {
-		t.trans = NewQUICTransportWithShared(nhConfig, t.handleRequest, chunks.Add, shared)
+	if tcfg.customTrans != nil {
+		t.trans = tcfg.customTrans
+	} else if tcfg.shared != nil {
+		t.trans = NewQUICTransportWithShared(nhConfig, t.handleRequest, chunks.Add, tcfg.shared)
 	} else {
 		t.trans = NewQUICTransport(nhConfig, t.handleRequest, chunks.Add)
 	}
