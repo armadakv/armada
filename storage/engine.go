@@ -167,10 +167,10 @@ func (e *Engine) Start() error {
 func (e *Engine) Close() error {
 	close(e.stop)
 	e.Manager.Close()
-	e.NodeHost.Close()
 	if e.Cluster != nil {
 		_ = e.Cluster.Close()
 	}
+	e.NodeHost.Close()
 	if e.sharedQT != nil {
 		_ = e.sharedQT.Close()
 	}

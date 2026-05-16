@@ -350,8 +350,18 @@ func (c *Cluster) Close() error {
 		c.log.Warnf("broadcast messages left in queue %d", cnt)
 	}
 
-	if err := c.ml.Leave(20 * time.Second); err != nil {
-		return err
+	// Leave may panic if the transport was already closed (e.g. when a shared
+	// QUIC transport is torn down before Close is called). Recover gracefully.
+	leaveErr := func() (err error) {
+		defer func() {
+			if r := recover(); r != nil {
+				c.log.Warnf("memberlist Leave skipped: %v", r)
+			}
+		}()
+		return c.ml.Leave(20 * time.Second)
+	}()
+	if leaveErr != nil {
+		return leaveErr
 	}
 
 	close(c.stop)
