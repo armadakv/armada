@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package quictransport
+package transport
 
 import (
 	"context"

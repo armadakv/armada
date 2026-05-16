@@ -15,9 +15,9 @@ import (
 	"time"
 
 	"github.com/armadakv/armada/armadapb"
-	"github.com/armadakv/armada/internal/quictransport"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"
@@ -48,7 +48,7 @@ func New(cfg Config) (*Engine, error) {
 	if listenAddr == "" {
 		listenAddr = cfg.RaftAddress
 	}
-	sharedQT, err := quictransport.New(listenAddr, cfg.QUICUDPBufferSize)
+	sharedQT, err := transport.New(listenAddr, cfg.QUICUDPBufferSize)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create shared QUIC transport: %w", err)
 	}
@@ -142,7 +142,7 @@ type Engine struct {
 	Cluster    *cluster.Cluster
 	tableStore *kv.RaftStore
 	disk       *diskMetrics
-	sharedQT   *quictransport.Shared
+	sharedQT   *transport.Shared
 }
 
 func (e *Engine) Start() error {
@@ -346,7 +346,7 @@ func (e *Engine) Config() Config {
 	return e.cfg
 }
 
-func createNodeHost(e *Engine, sharedQT *quictransport.Shared, clst *cluster.Cluster) (*raft.NodeHost, error) {
+func createNodeHost(e *Engine, sharedQT *transport.Shared, clst *cluster.Cluster) (*raft.NodeHost, error) {
 	nhc := config.NodeHostConfig{
 		WALDir:              e.cfg.WALDir,
 		NodeHostDir:         e.cfg.NodeHostDir,

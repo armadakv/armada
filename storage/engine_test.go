@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/armadakv/armada/armadapb"
-	"github.com/armadakv/armada/internal/quictransport"
 	"github.com/armadakv/armada/pebble"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/storage/cluster"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"
@@ -949,7 +949,7 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	if listenAddr == "" {
 		listenAddr = cfg.RaftAddress
 	}
-	sharedQT, err := quictransport.New(listenAddr, cfg.QUICUDPBufferSize)
+	sharedQT, err := transport.New(listenAddr, cfg.QUICUDPBufferSize)
 	require.NoError(t, err)
 
 	e := &Engine{cfg: cfg, stop: make(chan struct{}), log: zaptest.NewLogger(t).Sugar()}

@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armadakv/armada/internal/quictransport"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/hashicorp/memberlist"
 	"github.com/quic-go/quic-go"
 )
@@ -60,7 +60,7 @@ type QUICTransport struct {
 
 	quicTransport *quic.Transport
 	udpConn       net.PacketConn
-	listener      quictransport.Listener
+	listener      transport.Listener
 
 	packetCh chan *memberlist.Packet
 	streamCh chan net.Conn
@@ -92,7 +92,7 @@ type QUICTransport struct {
 // When serverTLS / clientTLS are nil the transport generates a self-signed
 // certificate so that all traffic is encrypted (though peer identity is not
 // verified).  Pass non-nil configs for mutual TLS between cluster members.
-func NewQUICTransport(advAddr string, serverTLS, clientTLS *tls.Config, shared *quictransport.Shared) (*QUICTransport, error) {
+func NewQUICTransport(advAddr string, serverTLS, clientTLS *tls.Config, shared *transport.Shared) (*QUICTransport, error) {
 	if serverTLS == nil {
 		var err error
 		serverTLS, err = gossipSelfSignedTLSConfig()
@@ -117,7 +117,7 @@ func NewQUICTransport(advAddr string, serverTLS, clientTLS *tls.Config, shared *
 	var qt *quic.Transport
 	var udpConn net.PacketConn
 	ownsTransport := false
-	var ln quictransport.Listener
+	var ln transport.Listener
 
 	if shared != nil {
 		qt = shared.Transport

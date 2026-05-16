@@ -32,7 +32,6 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/quic-go/quic-go"
 
-	"github.com/armadakv/armada/internal/quictransport"
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/raft/internal/settings"
 	"github.com/armadakv/armada/raft/raftio"
@@ -220,7 +219,7 @@ type QUIC struct {
 	// quic-go Transport (which is the case when the Conn is passed in by us).
 	quicTransport *quic.Transport
 	udpConn       net.PacketConn
-	listener      quictransport.Listener
+	listener      Listener
 	cancelCtx     context.CancelFunc
 	// activeConns tracks all connections accepted by the server-side listener.
 	// We explicitly call CloseWithError on every entry during Close() — before
@@ -236,7 +235,7 @@ type QUIC struct {
 	// shared is the caller-provided shared transport. When non-nil, Start()
 	// registers an ALPN listener on it instead of creating a new UDP socket.
 	// The caller retains ownership; this instance will NOT close it.
-	shared *quictransport.Shared
+	shared *Shared
 }
 
 // NewQUICTransport creates and returns a new QUIC transport module.
@@ -259,7 +258,7 @@ func NewQUICTransportWithShared(
 	nhConfig config.NodeHostConfig,
 	requestHandler raftio.MessageHandler,
 	chunkHandler raftio.ChunkHandler,
-	shared *quictransport.Shared,
+	shared *Shared,
 ) raftio.ITransport {
 	return &QUIC{
 		nhConfig:       nhConfig,

@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/armadakv/armada/internal/quictransport"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftio"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/storage/cluster/dns"
 	"github.com/hashicorp/memberlist"
 	"go.uber.org/zap"
@@ -389,7 +389,7 @@ func (c *Cluster) Close() error {
 // serverTLS and clientTLS configure mutual TLS for the gossip transport.
 // When nil, a self-signed certificate is used (traffic is encrypted but peer
 // identity is not verified).
-func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config, shared *quictransport.Shared, f getClusterInfo) (*Cluster, error) {
+func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config, shared *transport.Shared, f getClusterInfo) (*Cluster, error) {
 	info := f()
 	log := zap.S().Named("memberlist")
 	cluster := &Cluster{

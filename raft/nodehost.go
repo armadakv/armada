@@ -27,13 +27,12 @@ import (
 
 	"github.com/armadakv/armada/raft/client"
 	"github.com/armadakv/armada/raft/config"
-	"github.com/armadakv/armada/internal/quictransport"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/raft/internal/id"
 	"github.com/armadakv/armada/raft/internal/registry"
 	"github.com/armadakv/armada/raft/internal/rsm"
 	"github.com/armadakv/armada/raft/internal/server"
 	"github.com/armadakv/armada/raft/internal/settings"
-	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/raft/internal/utils"
 	"github.com/armadakv/armada/raft/logreader"
 	"github.com/armadakv/armada/raft/raftio"
@@ -257,7 +256,7 @@ var firstError = utils.FirstError
 type nodeHostOptions struct {
 	transport    raftio.ITransport
 	nodeRegistry raftio.INodeRegistry
-	quicShared   *quictransport.Shared
+	quicShared   *transport.Shared
 }
 
 // Option is a functional option for NewNodeHost.
@@ -278,7 +277,7 @@ func WithRegistry(r raftio.INodeRegistry) Option {
 // WithSharedQUICTransport configures NodeHost to use the provided shared QUIC
 // transport instead of binding its own UDP socket. This allows raft and gossip
 // subsystems to multiplex over a single UDP port via ALPN.
-func WithSharedQUICTransport(shared *quictransport.Shared) Option {
+func WithSharedQUICTransport(shared *transport.Shared) Option {
 	return func(o *nodeHostOptions) { o.quicShared = shared }
 }
 
@@ -1712,7 +1711,7 @@ func (nh *NodeHost) createNodeRegistry(r raftio.INodeRegistry) error {
 	return nil
 }
 
-func (nh *NodeHost) createTransport(t raftio.ITransport, shared *quictransport.Shared) error {
+func (nh *NodeHost) createTransport(t raftio.ITransport, shared *transport.Shared) error {
 	getSnapshotDir := func(cid uint64, nid uint64) string {
 		return nh.env.GetSnapshotDir(nh.nhConfig.GetDeploymentID(), cid, nid)
 	}
