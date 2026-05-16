@@ -13,7 +13,6 @@ import (
 	"net/url"
 	"runtime"
 	"slices"
-	"strconv"
 	"sync"
 	"time"
 
@@ -155,16 +154,27 @@ func (tokenCredentials) RequireTransportSecurity() bool {
 	return true
 }
 
-func parseInitialMembers(members map[string]string) (map[uint64]string, error) {
-	initialMembers := make(map[uint64]string)
-	for kStr, v := range members {
-		kUint, err := strconv.ParseUint(kStr, 10, 64)
-		if err != nil {
-			return nil, err
+// parseInitialMembersList converts an ordered list of raft addresses into the
+// (nodeID, membersMap) pair required by the storage engine. The position in
+// the list (1-based) is the replica ID. The node's own replica ID is derived
+// by finding raftAddress in the list.
+//
+// An empty list is valid for nodes restarting after initial bootstrap — in
+// that case nodeID is 0 and membersMap is empty (raft recovers from disk).
+func parseInitialMembersList(members []string, raftAddress string) (nodeID uint64, membersMap map[uint64]string, err error) {
+	members = filterNonEmpty(members)
+	membersMap = make(map[uint64]string, len(members))
+	for i, addr := range members {
+		replicaID := uint64(i + 1)
+		membersMap[replicaID] = addr
+		if addr == raftAddress {
+			nodeID = replicaID
 		}
-		initialMembers[kUint] = v
 	}
-	return initialMembers, nil
+	if len(members) > 0 && nodeID == 0 {
+		return 0, nil, fmt.Errorf("raft address %q not found in initial-members list %v", raftAddress, members)
+	}
+	return nodeID, membersMap, nil
 }
 
 var dbLoggerOnce sync.Once

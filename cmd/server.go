@@ -43,7 +43,8 @@ func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal, 
 
 // createEngineConfig creates a common storage engine configuration for both leader and follower modes.
 func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table string, rev uint64)) (storage.Config, error) {
-	initialMembers, err := parseInitialMembers(viper.GetStringMapString("raft.initial-members"))
+	raftAddress := viper.GetString("raft.address")
+	nodeID, initialMembers, err := parseInitialMembersList(viper.GetStringSlice("raft.initial-members"), raftAddress)
 	if err != nil {
 		return storage.Config{}, fmt.Errorf("failed to parse raft.initial-members: %w", err)
 	}
@@ -61,12 +62,12 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 	return storage.Config{
 		Log:                 engineLog.Sugar(),
 		ClientAddress:       viper.GetString("api.advertise-address"),
-		NodeID:              viper.GetUint64("raft.node-id"),
+		NodeID:              nodeID,
 		InitialMembers:      initialMembers,
 		WALDir:              viper.GetString("raft.wal-dir"),
 		NodeHostDir:         viper.GetString("raft.node-host-dir"),
 		RTTMillisecond:      uint64(viper.GetDuration("raft.rtt").Milliseconds()),
-		RaftAddress:         viper.GetString("raft.address"),
+		RaftAddress:         raftAddress,
 		ListenAddress:       viper.GetString("raft.listen-address"),
 		EnableMetrics:       true,
 		MaxReceiveQueueSize: viper.GetUint64("raft.max-recv-queue-size"),

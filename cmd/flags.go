@@ -75,9 +75,10 @@ This is also the identifier for a Storage instance. RaftAddress should be set to
 		`ListenAddress is a hostname:port or IP:port address used by the Raft RPC module to listen on for Raft message and snapshots.
 When the ListenAddress field is not set, The Raft RPC module listens on RaftAddress. If 0.0.0.0 is specified as the IP of the ListenAddress, Armada listens to the specified port on all interfaces.
 When hostname or domain name is specified, it is locally resolved to IP addresses first and Armada listens to all resolved IP addresses.`)
-	raftFlagSet.Uint64("raft.node-id", 1, "Raft Node ID is a non-zero value used to identify a node within a Raft cluster.")
-	raftFlagSet.StringToString("raft.initial-members", map[string]string{}, `Raft cluster initial members defines a mapping of node IDs to their respective raft address.
-The node ID must be must be Integer >= 1. Example for the initial 3 node cluster setup on the localhost: "--raft.initial-members=1=127.0.0.1:5012,2=127.0.0.1:5013,3=127.0.0.1:5014".`)
+	raftFlagSet.StringSlice("raft.initial-members", []string{}, `Raft cluster initial members is an ordered list of raft addresses for the initial cluster nodes.
+The position in the list (1-based) determines the replica ID. Each node derives its own replica ID
+by finding its own raft.address in this list. All nodes must specify the same list in the same order.
+Example for a 3-node cluster: "--raft.initial-members=127.0.0.1:5012,127.0.0.1:5013,127.0.0.1:5014".`)
 	raftFlagSet.Uint64("raft.snapshot-entries", 10000,
 		`SnapshotEntries defines how often the state machine should be snapshot automatically.
 It is defined in terms of the number of applied Raft log entries.

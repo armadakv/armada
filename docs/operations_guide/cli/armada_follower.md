@@ -31,15 +31,18 @@ armada follower [flags]
       --log-level string                                      Log level: DEBUG/INFO/WARN/ERROR. (default "INFO")
       --maintenance.enabled                                   Whether maintenance API is enabled. (default true)
       --maintenance.token string                              Token to check for maintenance API access, if left empty (default) no token is checked.
-      --memberlist.address string                             Address is the address for the gossip service to bind to and listen on. Both UDP and TCP ports are used by the gossip service.
-                                                              The local gossip service should be able to receive gossip service related messages by binding to and listening on this address. BindAddress is usually in the format of IP:Port, Hostname:Port or DNS Name:Port. (default "0.0.0.0:7432")
       --memberlist.advertise-address string                   AdvertiseAddress is the address to advertise to other Armada instances used for NAT traversal.
                                                               Gossip services running on remote Armada instances will use AdvertiseAddress to exchange gossip service related messages. AdvertiseAddress is in the format of IP:Port, Hostname:Port or DNS Name:Port.
+                                                              When not set, the raft.address value is used (gossip shares the raft UDP port).
       --memberlist.cluster-name string                        Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.
                                                               All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value. (default "default")
-      --memberlist.members strings                            Seed is a list of AdvertiseAddress of remote Armada instances. Local Armada instance will try to contact all of them to bootstrap the gossip service. 
-                                                              At least one reachable Armada instance is required to successfully bootstrap the gossip service. Each seed address is in the format of IP:Port, Hostname:Port or DNS Name:Port.
+      --memberlist.members strings                            Seed is a list of addresses of remote Armada instances to bootstrap the gossip service.
+                                                              Each address should be the raft address (IP:Port) of a peer — gossip shares the same UDP port as raft via ALPN multiplexing.
+                                                              When not set, the raft.initial-members addresses are used automatically as gossip seeds.
       --memberlist.node-name string                           Node name override, MUST be unique in a cluster, if not specified random stable UUID will be used instead.
+      --memberlist.tls-ca-file string                         Path to the CA certificate file used to verify gossip peer certificates.
+      --memberlist.tls-cert-file string                       Path to the TLS certificate file for mutual TLS between gossip peers.
+      --memberlist.tls-key-file string                        Path to the TLS private key file for mutual TLS between gossip peers.
       --raft.address string                                   RaftAddress is a hostname:port or IP:port address used by the Raft RPC module for exchanging Raft messages and snapshots.
                                                               This is also the identifier for a Storage instance. RaftAddress should be set to the public address that can be accessed from remote Storage instances.
       --raft.compaction-overhead uint                         CompactionOverhead defines the number of most recent entries to keep after each Raft log compaction.
@@ -50,8 +53,10 @@ armada follower [flags]
                                                               When CheckQuorum is enabled, ElectionRTT also defines the interval for checking leader quorum. (default 20)
       --raft.heartbeat-rtt int                                HeartbeatRTT is the number of message RTT between heartbeats. Message RTT is defined by NodeHostConfig.RTTMillisecond. The Raft paper suggest the heartbeat interval to be close to the average RTT between nodes.
                                                               As an example, assuming NodeHostConfig.RTTMillisecond is 100 millisecond, to set the heartbeat interval to be every 200 milliseconds, then HeartbeatRTT should be set to 2. (default 1)
-      --raft.initial-members stringToString                   Raft cluster initial members defines a mapping of node IDs to their respective raft address.
-                                                              The node ID must be must be Integer >= 1. Example for the initial 3 node cluster setup on the localhost: "--raft.initial-members=1=127.0.0.1:5012,2=127.0.0.1:5013,3=127.0.0.1:5014". (default [])
+      --raft.initial-members strings                          Raft cluster initial members is an ordered list of raft addresses for the initial cluster nodes.
+                                                              The position in the list (1-based) determines the replica ID. Each node derives its own replica ID
+                                                              by finding its own raft.address in this list. All nodes must specify the same list in the same order.
+                                                              Example for a 3-node cluster: "--raft.initial-members=127.0.0.1:5012,127.0.0.1:5013,127.0.0.1:5014".
       --raft.listen-address string                            ListenAddress is a hostname:port or IP:port address used by the Raft RPC module to listen on for Raft message and snapshots.
                                                               When the ListenAddress field is not set, The Raft RPC module listens on RaftAddress. If 0.0.0.0 is specified as the IP of the ListenAddress, Armada listens to the specified port on all interfaces.
                                                               When hostname or domain name is specified, it is locally resolved to IP addresses first and Armada listens to all resolved IP addresses.
@@ -62,7 +67,9 @@ armada follower [flags]
       --raft.max-send-queue-size uint                         MaxSendQueueSize is the maximum size in bytes of each send queue. Once the maximum size is reached, further replication messages will be
                                                               dropped to restrict memory usage. When set to 0, it means the send queue size is unlimited.
       --raft.node-host-dir string                             NodeHostDir raft internal storage (default "/tmp/armada/raft")
-      --raft.node-id uint                                     Raft Node ID is a non-zero value used to identify a node within a Raft cluster. (default 1)
+      --raft.quic-udp-buffer-size int                         QUICUDPBufferSize is the UDP socket receive/send buffer size in bytes requested for the QUIC transport.
+                                                              When set to a positive value the QUIC library's buffer requests are capped at this value, preventing log warnings on systems
+                                                              where the kernel UDP buffer limit is lower than the library default (7 MiB). A value of 0 uses the library default.
       --raft.rtt duration                                     RTTMillisecond defines the average Round Trip Time (RTT) between two NodeHost instances.
                                                               Such a RTT interval is internally used as a logical clock tick, Raft heartbeat and election intervals are both defined in term of how many such RTT intervals.
                                                               Note that RTTMillisecond is the combined delays between two NodeHost instances including all delays caused by network transmission, delays caused by NodeHost queuing and processing. (default 50ms)
@@ -72,6 +79,9 @@ armada follower [flags]
       --raft.snapshot-recovery-type string                    Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems. 
                                                               Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.
       --raft.state-machine-dir string                         StateMachineDir persistent storage for the state machine. (default "/tmp/armada/state-machine")
+      --raft.tls-ca-file string                               Path to the CA certificate file used to verify raft peer certificates.
+      --raft.tls-cert-file string                             Path to the TLS certificate file for mutual TLS between raft peers. Must be set together with raft.tls-key-file and raft.tls-ca-file.
+      --raft.tls-key-file string                              Path to the TLS private key file for mutual TLS between raft peers.
       --raft.wal-dir string                                   WALDir is the directory used for storing the WAL of Raft entries. 
                                                               It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data. 
                                                               Leave WALDir to have zero value will have everything stored in NodeHostDir.
