@@ -784,17 +784,19 @@ func TestEngine_Status(t *testing.T) {
 	tests := []struct {
 		name    string
 		prepare func(t *testing.T, e *Engine)
-		want    *armadapb.StatusResponse
+		want    func(e *Engine) *armadapb.StatusResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name:    "no tables",
 			prepare: func(t *testing.T, e *Engine) {},
 			wantErr: require.NoError,
-			want: &armadapb.StatusResponse{
-				Id:      "1",
-				Version: version.Version,
-				Tables:  make(map[string]*armadapb.TableStatus),
+			want: func(e *Engine) *armadapb.StatusResponse {
+				return &armadapb.StatusResponse{
+					Id:      e.ID(),
+					Version: version.Version,
+					Tables:  make(map[string]*armadapb.TableStatus),
+				}
 			},
 		},
 		{
@@ -803,15 +805,19 @@ func TestEngine_Status(t *testing.T) {
 				createTable(t, e)
 			},
 			wantErr: require.NoError,
-			want: &armadapb.StatusResponse{
-				Id:      "1",
-				Version: version.Version,
-				Tables: map[string]*armadapb.TableStatus{
-					testTableName: {
-						Leader:   "1",
-						RaftTerm: 2,
+			want: func(e *Engine) *armadapb.StatusResponse {
+				// In tests gossip is not started so there are no live gossip nodes,
+				// nodehostID falls back to the numeric replica ID string.
+				return &armadapb.StatusResponse{
+					Id:      e.ID(),
+					Version: version.Version,
+					Tables: map[string]*armadapb.TableStatus{
+						testTableName: {
+							Leader:   "1",
+							RaftTerm: 2,
+						},
 					},
-				},
+				}
 			},
 		},
 		{
@@ -820,13 +826,15 @@ func TestEngine_Status(t *testing.T) {
 				e.Close()
 			},
 			wantErr: require.NoError,
-			want: &armadapb.StatusResponse{
-				Id:      "1",
-				Version: version.Version,
-				Tables:  make(map[string]*armadapb.TableStatus),
-				Errors: []string{
-					"dragonboat: closed",
-				},
+			want: func(e *Engine) *armadapb.StatusResponse {
+				return &armadapb.StatusResponse{
+					Id:      e.ID(),
+					Version: version.Version,
+					Tables:  make(map[string]*armadapb.TableStatus),
+					Errors: []string{
+						"dragonboat: closed",
+					},
+				}
 			},
 		},
 	}
@@ -841,7 +849,7 @@ func TestEngine_Status(t *testing.T) {
 			tt.prepare(t, e)
 			got, err := e.Status(context.Background(), &armadapb.StatusRequest{})
 			tt.wantErr(t, err)
-			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want(e), got)
 		})
 	}
 }

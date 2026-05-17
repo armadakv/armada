@@ -390,7 +390,6 @@ func (c *Cluster) Close() error {
 // When nil, a self-signed certificate is used (traffic is encrypted but peer
 // identity is not verified).
 func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config, shared *transport.Shared, f getClusterInfo) (*Cluster, error) {
-	info := f()
 	log := zap.S().Named("memberlist")
 	cluster := &Cluster{
 		name:            clusterName,
@@ -428,17 +427,11 @@ func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config
 	}
 
 	mcfg.Delegate = &delegate{
-		meta: NodeMeta{
-			ID:            info.NodeHostID,
-			NodeID:        info.NodeID,
-			RaftAddress:   info.RaftAddress,
-			ClientAddress: info.ClientAddress,
-			MemberAddress: advAddr,
-		},
 		broadcasts: cluster.broadcasts,
 		shardView:  cluster.shardView,
 		msgs:       cluster.msgs,
 		infoF:      f,
+		advAddr:    advAddr,
 	}
 	// init view
 	ml, err := memberlist.Create(mcfg)
@@ -487,15 +480,22 @@ type NodeMeta struct {
 }
 
 type delegate struct {
-	meta       NodeMeta
 	msgs       chan Message
 	broadcasts *memberlist.TransmitLimitedQueue
 	shardView  *shardView
 	infoF      getClusterInfo
+	advAddr    string
 }
 
 func (c *delegate) NodeMeta(_ int) []byte {
-	bytes, _ := json.Marshal(&c.meta)
+	info := c.infoF()
+	bytes, _ := json.Marshal(&NodeMeta{
+		ID:            info.NodeHostID,
+		NodeID:        info.NodeID,
+		ClientAddress: info.ClientAddress,
+		RaftAddress:   info.RaftAddress,
+		MemberAddress: c.advAddr,
+	})
 	return bytes
 }
 

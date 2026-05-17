@@ -54,19 +54,19 @@ Note that RTTMillisecond is the combined delays between two NodeHost instances i
 		`HeartbeatRTT is the number of message RTT between heartbeats. Message RTT is defined by NodeHostConfig.RTTMillisecond. The Raft paper suggest the heartbeat interval to be close to the average RTT between nodes.
 As an example, assuming NodeHostConfig.RTTMillisecond is 100 millisecond, to set the heartbeat interval to be every 200 milliseconds, then HeartbeatRTT should be set to 2.`)
 	raftFlagSet.Int("raft.election-rtt", 20,
-		`ElectionRTT is the minimum number of message RTT between elections. Message RTT is defined by NodeHostConfig.RTTMillisecond. 
+		`ElectionRTT is the minimum number of message RTT between elections. Message RTT is defined by NodeHostConfig.RTTMillisecond.
 The Raft paper suggests it to be a magnitude greater than HeartbeatRTT, which is the interval between two heartbeats. In Raft, the actual interval between elections is randomized to be between ElectionRTT and 2 * ElectionRTT.
 As an example, assuming NodeHostConfig.RTTMillisecond is 100 millisecond, to set the election interval to be 1 second, then ElectionRTT should be set to 10.
 When CheckQuorum is enabled, ElectionRTT also defines the interval for checking leader quorum.`)
 	raftFlagSet.String("raft.wal-dir", "",
-		`WALDir is the directory used for storing the WAL of Raft entries. 
-It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data. 
+		`WALDir is the directory used for storing the WAL of Raft entries.
+It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data.
 Leave WALDir to have zero value will have everything stored in NodeHostDir.`)
 	raftFlagSet.String("raft.node-host-dir", "/tmp/armada/raft", "NodeHostDir raft internal storage")
 	raftFlagSet.String("raft.state-machine-dir", "/tmp/armada/state-machine",
 		"StateMachineDir persistent storage for the state machine.")
 	raftFlagSet.String("raft.snapshot-recovery-type", "",
-		`Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems. 
+		`Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
 Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.`)
 	raftFlagSet.String("raft.address", "",
 		`RaftAddress is a hostname:port or IP:port address used by the Raft RPC module for exchanging Raft messages and snapshots.
