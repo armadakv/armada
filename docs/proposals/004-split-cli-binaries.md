@@ -5,7 +5,7 @@ section: "proposals"
 order: 6
 ---
 
-Proposal status: Proposed
+Proposal status: Accepted
 
 ## Summary
 

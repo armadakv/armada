@@ -5,7 +5,7 @@ section: "proposals"
 order: 5
 ---
 
-Accepted
+Proposal status: Implemented
 
 ## Summary
 
@@ -76,5 +76,3 @@ As the Armada evolved we run into problems with `dragonboat` library.
   overhaul would be needed nevertheless.
 
 ## Unresolved Questions
-
-
