@@ -1,4 +1,4 @@
-FROM golang:1.26.2-alpine3.23 AS builder
+FROM golang:1.26.3-alpine3.23 AS builder
 
 RUN apk add --update --no-cache build-base tzdata \
  && addgroup -g 1000 -S armada && adduser -u 1000 -S armada -G armada
