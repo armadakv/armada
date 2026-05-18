@@ -806,14 +806,12 @@ func TestEngine_Status(t *testing.T) {
 			},
 			wantErr: require.NoError,
 			want: func(e *Engine) *armadapb.StatusResponse {
-				// In tests gossip is not started so there are no live gossip nodes,
-				// nodehostID falls back to the numeric replica ID string.
 				return &armadapb.StatusResponse{
 					Id:      e.ID(),
 					Version: version.Version,
 					Tables: map[string]*armadapb.TableStatus{
 						testTableName: {
-							Leader:   "1",
+							Leader:   e.ID(),
 							RaftTerm: 2,
 						},
 					},
@@ -858,15 +856,16 @@ func TestEngine_MemberList(t *testing.T) {
 	tests := []struct {
 		name    string
 		prepare func(t *testing.T, e *Engine)
-		assert  func(t *testing.T, resp *armadapb.MemberListResponse)
+		assert  func(t *testing.T, e *Engine, resp *armadapb.MemberListResponse)
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name:    "no tables",
 			prepare: func(t *testing.T, e *Engine) {},
 			wantErr: require.NoError,
-			assert: func(t *testing.T, resp *armadapb.MemberListResponse) {
+			assert: func(t *testing.T, e *Engine, resp *armadapb.MemberListResponse) {
 				require.Len(t, resp.Members, 1)
+				require.Equal(t, e.ID(), resp.Members[0].Id)
 			},
 		},
 	}
@@ -881,7 +880,7 @@ func TestEngine_MemberList(t *testing.T) {
 			tt.prepare(t, e)
 			got, err := e.MemberList(context.Background(), &armadapb.MemberListRequest{})
 			tt.wantErr(t, err)
-			tt.assert(t, got)
+			tt.assert(t, e, got)
 		})
 	}
 }
@@ -969,7 +968,15 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, "", nil, nil, sharedQT, func() cluster.Info {
 		return cluster.Info{}
 	}, func() cluster.NodeMeta {
-		return cluster.NodeMeta{}
+		meta := cluster.NodeMeta{
+			NodeID:        cfg.NodeID,
+			RaftAddress:   cfg.RaftAddress,
+			ClientAddress: cfg.ClientAddress,
+		}
+		if e.NodeHost != nil {
+			meta.ID = e.ID()
+		}
+		return meta
 	})
 	require.NoError(t, err)
 	e.Cluster = clst
