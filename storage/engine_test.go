@@ -968,6 +968,8 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	}
 	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, "", nil, nil, sharedQT, func() cluster.Info {
 		return cluster.Info{}
+	}, func() cluster.NodeMeta {
+		return cluster.NodeMeta{}
 	})
 	require.NoError(t, err)
 	e.Cluster = clst

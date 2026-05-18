@@ -83,7 +83,7 @@ func New(cfg Config) (*Engine, error) {
 	if gossipNodeName == "" {
 		gossipNodeName = cfg.RaftAddress
 	}
-	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, gossipNodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo)
+	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, gossipNodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo, e.nodeMetaInfo)
 	if err != nil {
 		_ = sharedQT.Close()
 		return nil, fmt.Errorf("failed to bootstrap gossip cluster: %w", err)
@@ -350,6 +350,20 @@ func (e *Engine) clusterInfo() cluster.Info {
 		info.LogInfo = nhi.LogInfo
 	}
 	return info
+}
+
+// nodeMetaInfo returns lightweight node metadata (ID and addresses only) without
+// querying the LogDB or shard list. It is used on the hot gossip metadata path.
+func (e *Engine) nodeMetaInfo() cluster.NodeMeta {
+	meta := cluster.NodeMeta{
+		NodeID:        e.cfg.NodeID,
+		RaftAddress:   e.cfg.RaftAddress,
+		ClientAddress: e.cfg.ClientAddress,
+	}
+	if e.NodeHost != nil {
+		meta.ID = e.ID()
+	}
+	return meta
 }
 
 func (e *Engine) WaitUntilReady(ctx context.Context) error {
