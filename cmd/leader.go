@@ -12,6 +12,7 @@ import (
 	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/security"
 	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/snapshot"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -32,6 +33,7 @@ func init() {
 	leaderCmd.PersistentFlags().AddFlagSet(maintenanceFlagSet)
 	leaderCmd.PersistentFlags().AddFlagSet(tablesFlagSet)
 	leaderCmd.PersistentFlags().AddFlagSet(experimentalFlagSet)
+	leaderCmd.PersistentFlags().AddFlagSet(snapshotStoreFlagSet)
 
 	// Tables flags
 	leaderCmd.PersistentFlags().StringSlice("tables.names", nil, "Create Armada tables with given names.")
@@ -115,6 +117,27 @@ func leader(_ *cobra.Command, _ []string) error {
 			}
 		}
 	}()
+
+	// Start snapshot exporter and GC worker when a non-none backend is configured.
+	snapshotCtx, cancelSnapshot := context.WithCancel(context.Background())
+	defer cancelSnapshot()
+	if backend := viper.GetString("replication.snapshot-store.backend"); backend != "" && backend != "none" {
+		bkt, err := newSnapshotBucket(backend, viper.GetString("replication.snapshot-store.config"))
+		if err != nil {
+			return fmt.Errorf("snapshot-store: %w", err)
+		}
+		nodeID := viper.GetString("raft.address")
+
+		exp := snapshot.NewSnapshotExporter(
+			snapshot.NewEngineTableService(engine),
+			snapshotExporterConfig(nodeID, bkt),
+			logger.Sugar(),
+		)
+		go exp.Run(snapshotCtx)
+
+		gc := snapshot.NewGCWorker(snapshotGCConfig(bkt), logger.Sugar())
+		go gc.Run(snapshotCtx)
+	}
 
 	// Start servers
 	{

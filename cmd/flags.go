@@ -12,15 +12,16 @@ import (
 )
 
 var (
-	rootFlagSet         = pflag.NewFlagSet("root", pflag.ContinueOnError)
-	apiFlagSet          = pflag.NewFlagSet("api", pflag.ContinueOnError)
-	restFlagSet         = pflag.NewFlagSet("rest", pflag.ContinueOnError)
-	raftFlagSet         = pflag.NewFlagSet("raft", pflag.ContinueOnError)
-	memberlistFlagSet   = pflag.NewFlagSet("memberlist", pflag.ContinueOnError)
-	storageFlagSet      = pflag.NewFlagSet("storage", pflag.ContinueOnError)
-	maintenanceFlagSet  = pflag.NewFlagSet("maintenance", pflag.ContinueOnError)
-	tablesFlagSet       = pflag.NewFlagSet("tables", pflag.ContinueOnError)
-	experimentalFlagSet = pflag.NewFlagSet("experimental", pflag.ContinueOnError)
+	rootFlagSet          = pflag.NewFlagSet("root", pflag.ContinueOnError)
+	apiFlagSet           = pflag.NewFlagSet("api", pflag.ContinueOnError)
+	restFlagSet          = pflag.NewFlagSet("rest", pflag.ContinueOnError)
+	raftFlagSet          = pflag.NewFlagSet("raft", pflag.ContinueOnError)
+	memberlistFlagSet    = pflag.NewFlagSet("memberlist", pflag.ContinueOnError)
+	storageFlagSet       = pflag.NewFlagSet("storage", pflag.ContinueOnError)
+	maintenanceFlagSet   = pflag.NewFlagSet("maintenance", pflag.ContinueOnError)
+	tablesFlagSet        = pflag.NewFlagSet("tables", pflag.ContinueOnError)
+	experimentalFlagSet  = pflag.NewFlagSet("experimental", pflag.ContinueOnError)
+	snapshotStoreFlagSet = pflag.NewFlagSet("snapshotStore", pflag.ContinueOnError)
 )
 
 func init() {
@@ -126,6 +127,24 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 	// Tables flags
 	tablesFlagSet.Bool("tables.enabled", true, "Whether tables API is enabled.")
 	tablesFlagSet.String("tables.token", "", "Token to check for tables API access, if left empty (default) no token is checked.")
+
+	// Snapshot store flags (leader-side shared-storage snapshot export – proposal 005).
+	snapshotStoreFlagSet.String("replication.snapshot-store.backend", "none",
+		`Blob store backend used for leader-side snapshot export (proposal 005).
+Supported values: none (disabled), filesystem.
+When set to "filesystem" the replication.snapshot-store.config field must supply the store configuration (YAML).`)
+	snapshotStoreFlagSet.String("replication.snapshot-store.config", "",
+		"YAML configuration block for the selected snapshot-store backend (see backend-specific docs).")
+	snapshotStoreFlagSet.Duration("replication.snapshot-store.full-interval", 6*time.Hour,
+		"How often a full snapshot is exported to the shared store for each table.")
+	snapshotStoreFlagSet.Duration("replication.snapshot-store.incr-interval", 30*time.Minute,
+		"How often an incremental snapshot is exported to the shared store for each table.")
+	snapshotStoreFlagSet.Int("replication.snapshot-store.incr-max-chain", 8,
+		"Maximum number of consecutive incremental artefacts before a new full snapshot must be taken.")
+	snapshotStoreFlagSet.Duration("replication.snapshot-store.retention", 48*time.Hour,
+		"Maximum age of snapshot artefacts in the shared store. Older artefacts are eligible for GC.")
+	snapshotStoreFlagSet.Duration("replication.snapshot-store.gc-interval", time.Hour,
+		"How often the GC worker runs to delete expired artefacts from the shared store.")
 }
 
 func initConfig(set *pflag.FlagSet) {
