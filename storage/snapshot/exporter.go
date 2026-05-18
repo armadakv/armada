@@ -188,7 +188,9 @@ func (e *SnapshotExporter) ExportFull(ctx context.Context, tableName string) err
 		return err
 	}
 	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {
-		_ = e.cfg.Bucket.Delete(ctx, snapKey)
+		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !e.cfg.Bucket.IsObjNotFoundErr(cleanErr) {
+			e.log.Warnf("upload failed and cleanup of partial artefact %s also failed: %v", snapKey, cleanErr)
+		}
 		return fmt.Errorf("upload snapshot: %w", err)
 	}
 
@@ -288,7 +290,9 @@ func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName stri
 		return err
 	}
 	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {
-		_ = e.cfg.Bucket.Delete(ctx, snapKey)
+		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !e.cfg.Bucket.IsObjNotFoundErr(cleanErr) {
+			e.log.Warnf("upload failed and cleanup of partial artefact %s also failed: %v", snapKey, cleanErr)
+		}
 		return fmt.Errorf("upload snapshot: %w", err)
 	}
 

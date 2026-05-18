@@ -24,7 +24,7 @@ func newSnapshotBucket(backend, cfgYAML string) (objstore.Bucket, error) {
 		}
 		return bkt, nil
 	default:
-		return nil, fmt.Errorf("snapshot-store: unsupported backend %q (supported: none, filesystem)", backend)
+		return nil, fmt.Errorf("snapshot-store: unsupported backend %q (supported: none or empty string to disable, filesystem)", backend)
 	}
 }
 

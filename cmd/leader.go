@@ -126,11 +126,13 @@ func leader(_ *cobra.Command, _ []string) error {
 		if err != nil {
 			return fmt.Errorf("snapshot-store: %w", err)
 		}
-		nodeID := viper.GetString("raft.address")
+		// Use the Raft address as a human-readable, cluster-unique node identifier
+		// in snapshot meta files. There is no separate node-id config option.
+		nodeAddress := viper.GetString("raft.address")
 
 		exp := snapshot.NewSnapshotExporter(
 			snapshot.NewEngineTableService(engine),
-			snapshotExporterConfig(nodeID, bkt),
+			snapshotExporterConfig(nodeAddress, bkt),
 			logger.Sugar(),
 		)
 		go exp.Run(snapshotCtx)

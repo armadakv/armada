@@ -5,6 +5,7 @@ package snapshot
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -236,11 +237,27 @@ func (g *GCWorker) gcTable(ctx context.Context, artefacts []tableArtefact, lease
 // deleteArtefact writes a tombstone log entry and then deletes the snap and meta
 // objects from the bucket.
 func (g *GCWorker) deleteArtefact(ctx context.Context, a tableArtefact) error {
-	// Write tombstone for auditability.
-	tombstone := fmt.Sprintf("delete table=%s type=%s base=%d tip=%d key=%s\n",
-		a.meta.Table, a.meta.Type, a.meta.BaseIndex, a.meta.TipIndex, a.snapKey)
+	// Write a JSON tombstone for auditability before any deletion.
+	tombstone := struct {
+		Action    string       `json:"action"`
+		Table     string       `json:"table"`
+		Type      SnapshotType `json:"type"`
+		BaseIndex uint64       `json:"base_index"`
+		TipIndex  uint64       `json:"tip_index"`
+		Key       string       `json:"key"`
+		DeletedAt string       `json:"deleted_at"`
+	}{
+		Action:    "delete",
+		Table:     a.meta.Table,
+		Type:      a.meta.Type,
+		BaseIndex: a.meta.BaseIndex,
+		TipIndex:  a.meta.TipIndex,
+		Key:       a.snapKey,
+		DeletedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	tombstoneBytes, _ := json.Marshal(tombstone)
 	logKey := GCLogKey(time.Now())
-	if err := g.cfg.Bucket.Upload(ctx, logKey, bytes.NewBufferString(tombstone)); err != nil {
+	if err := g.cfg.Bucket.Upload(ctx, logKey, bytes.NewReader(tombstoneBytes)); err != nil {
 		g.log.Warnf("GC: failed to write tombstone for %s: %v", a.snapKey, err)
 		// Non-fatal — proceed with deletion.
 	}
