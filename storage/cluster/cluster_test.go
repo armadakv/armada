@@ -18,7 +18,7 @@ import (
 
 func TestSingleNodeCluster(t *testing.T) {
 	address := getTestBindAddress()
-	cluster, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} })
+	cluster, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} }, func() NodeMeta { return NodeMeta{} })
 	require.NoError(t, err)
 	cluster.Start([]string{address})
 	require.Len(t, cluster.Nodes(), 1)
@@ -29,11 +29,14 @@ func TestMultiNodeCluster(t *testing.T) {
 	t.Log("start 3 node cluster")
 	for i := 0; i < 3; i++ {
 		address := getTestBindAddress()
+		nodeHostID := util.RandString(64)
+		nodeID := uint64(i)
+		raftAddr := fmt.Sprintf("127.0.0.%d:5762", i)
 		cluster, err := New(address, "", strconv.Itoa(i), nil, nil, nil, func() Info {
 			return Info{
-				NodeHostID:  util.RandString(64),
-				NodeID:      uint64(i),
-				RaftAddress: fmt.Sprintf("127.0.0.%d:5762", i),
+				NodeHostID:  nodeHostID,
+				NodeID:      nodeID,
+				RaftAddress: raftAddr,
 				ShardInfoList: []raft.ShardInfo{
 					{
 						Replicas:          map[uint64]string{1: "127.0.0.1:5762", 2: "127.0.0.2:5762", 3: "127.0.0.3:5762"},
@@ -52,6 +55,12 @@ func TestMultiNodeCluster(t *testing.T) {
 						Term:              5,
 					},
 				},
+			}
+		}, func() NodeMeta {
+			return NodeMeta{
+				ID:          nodeHostID,
+				NodeID:      nodeID,
+				RaftAddress: raftAddr,
 			}
 		})
 		require.NoError(t, err)
@@ -143,7 +152,7 @@ func values(m map[string]*Cluster) []*Cluster {
 
 func TestCluster_INodeRegistry(t *testing.T) {
 	address := getTestBindAddress()
-	c, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} })
+	c, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} }, func() NodeMeta { return NodeMeta{} })
 	require.NoError(t, err)
 
 	t.Run("Resolve unknown returns error", func(t *testing.T) {

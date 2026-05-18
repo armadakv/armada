@@ -34,7 +34,7 @@ type Table struct {
 	RecoverID uint64 `json:"recover_id"`
 }
 
-// AsActive returns ActiveTable wrapper of this table.
+// AsActive returns an ActiveTable wrapper of this table.
 func (t Table) AsActive(host raftHandler) ActiveTable {
 	return ActiveTable{nh: host, session: host.GetNoOPSession(t.ClusterID), Table: t}
 }

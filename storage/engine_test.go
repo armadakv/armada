@@ -784,17 +784,19 @@ func TestEngine_Status(t *testing.T) {
 	tests := []struct {
 		name    string
 		prepare func(t *testing.T, e *Engine)
-		want    *armadapb.StatusResponse
+		want    func(e *Engine) *armadapb.StatusResponse
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name:    "no tables",
 			prepare: func(t *testing.T, e *Engine) {},
 			wantErr: require.NoError,
-			want: &armadapb.StatusResponse{
-				Id:      "1",
-				Version: version.Version,
-				Tables:  make(map[string]*armadapb.TableStatus),
+			want: func(e *Engine) *armadapb.StatusResponse {
+				return &armadapb.StatusResponse{
+					Id:      e.ID(),
+					Version: version.Version,
+					Tables:  make(map[string]*armadapb.TableStatus),
+				}
 			},
 		},
 		{
@@ -803,15 +805,17 @@ func TestEngine_Status(t *testing.T) {
 				createTable(t, e)
 			},
 			wantErr: require.NoError,
-			want: &armadapb.StatusResponse{
-				Id:      "1",
-				Version: version.Version,
-				Tables: map[string]*armadapb.TableStatus{
-					testTableName: {
-						Leader:   "1",
-						RaftTerm: 2,
+			want: func(e *Engine) *armadapb.StatusResponse {
+				return &armadapb.StatusResponse{
+					Id:      e.ID(),
+					Version: version.Version,
+					Tables: map[string]*armadapb.TableStatus{
+						testTableName: {
+							Leader:   e.ID(),
+							RaftTerm: 2,
+						},
 					},
-				},
+				}
 			},
 		},
 		{
@@ -820,13 +824,15 @@ func TestEngine_Status(t *testing.T) {
 				e.Close()
 			},
 			wantErr: require.NoError,
-			want: &armadapb.StatusResponse{
-				Id:      "1",
-				Version: version.Version,
-				Tables:  make(map[string]*armadapb.TableStatus),
-				Errors: []string{
-					"dragonboat: closed",
-				},
+			want: func(e *Engine) *armadapb.StatusResponse {
+				return &armadapb.StatusResponse{
+					Id:      e.ID(),
+					Version: version.Version,
+					Tables:  make(map[string]*armadapb.TableStatus),
+					Errors: []string{
+						"dragonboat: closed",
+					},
+				}
 			},
 		},
 	}
@@ -841,7 +847,7 @@ func TestEngine_Status(t *testing.T) {
 			tt.prepare(t, e)
 			got, err := e.Status(context.Background(), &armadapb.StatusRequest{})
 			tt.wantErr(t, err)
-			require.Equal(t, tt.want, got)
+			require.Equal(t, tt.want(e), got)
 		})
 	}
 }
@@ -850,15 +856,16 @@ func TestEngine_MemberList(t *testing.T) {
 	tests := []struct {
 		name    string
 		prepare func(t *testing.T, e *Engine)
-		assert  func(t *testing.T, resp *armadapb.MemberListResponse)
+		assert  func(t *testing.T, e *Engine, resp *armadapb.MemberListResponse)
 		wantErr require.ErrorAssertionFunc
 	}{
 		{
 			name:    "no tables",
 			prepare: func(t *testing.T, e *Engine) {},
 			wantErr: require.NoError,
-			assert: func(t *testing.T, resp *armadapb.MemberListResponse) {
+			assert: func(t *testing.T, e *Engine, resp *armadapb.MemberListResponse) {
 				require.Len(t, resp.Members, 1)
+				require.Equal(t, e.ID(), resp.Members[0].Id)
 			},
 		},
 	}
@@ -873,7 +880,7 @@ func TestEngine_MemberList(t *testing.T) {
 			tt.prepare(t, e)
 			got, err := e.MemberList(context.Background(), &armadapb.MemberListRequest{})
 			tt.wantErr(t, err)
-			tt.assert(t, got)
+			tt.assert(t, e, got)
 		})
 	}
 }
@@ -960,6 +967,16 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	}
 	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, "", nil, nil, sharedQT, func() cluster.Info {
 		return cluster.Info{}
+	}, func() cluster.NodeMeta {
+		meta := cluster.NodeMeta{
+			NodeID:        cfg.NodeID,
+			RaftAddress:   cfg.RaftAddress,
+			ClientAddress: cfg.ClientAddress,
+		}
+		if e.NodeHost != nil {
+			meta.ID = e.ID()
+		}
+		return meta
 	})
 	require.NoError(t, err)
 	e.Cluster = clst

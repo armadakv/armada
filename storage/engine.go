@@ -83,7 +83,7 @@ func New(cfg Config) (*Engine, error) {
 	if gossipNodeName == "" {
 		gossipNodeName = cfg.RaftAddress
 	}
-	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, gossipNodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo)
+	clst, err := cluster.New(gossipAdvAddr, cfg.Gossip.ClusterName, gossipNodeName, gossipServerTLS, gossipClientTLS, sharedQT, e.clusterInfo, e.nodeMetaInfo)
 	if err != nil {
 		_ = sharedQT.Close()
 		return nil, fmt.Errorf("failed to bootstrap gossip cluster: %w", err)
@@ -260,7 +260,7 @@ func (e *Engine) MemberList(ctx context.Context, r *armadapb.MemberListRequest) 
 		res := &armadapb.MemberListResponse{Cluster: e.Cluster.Name(), Members: make([]*armadapb.Member, len(nodes))}
 		for i, node := range nodes {
 			res.Members[i] = &armadapb.Member{
-				Id:         strconv.FormatUint(node.NodeID, 10),
+				Id:         node.ID,
 				Name:       node.Name,
 				PeerURLs:   []string{node.RaftAddress},
 				ClientURLs: []string{node.ClientAddress},
@@ -273,7 +273,7 @@ func (e *Engine) MemberList(ctx context.Context, r *armadapb.MemberListRequest) 
 func (e *Engine) Status(ctx context.Context, r *armadapb.StatusRequest) (*armadapb.StatusResponse, error) {
 	return withDefaultTimeout(ctx, r, func(ctx context.Context, _ *armadapb.StatusRequest) (*armadapb.StatusResponse, error) {
 		res := &armadapb.StatusResponse{
-			Id:      strconv.FormatUint(e.cfg.NodeID, 10),
+			Id:      e.ID(),
 			Version: version.Version,
 			Tables:  make(map[string]*armadapb.TableStatus),
 		}
@@ -297,8 +297,9 @@ func (e *Engine) Status(ctx context.Context, r *armadapb.StatusRequest) (*armada
 				res.Errors = append(res.Errors, fmt.Sprintf("%s: %v", t.Name, err.Error()))
 				continue
 			}
+			leaderID := e.nodehostID(lid)
 			res.Tables[at.Name] = &armadapb.TableStatus{
-				Leader:           strconv.FormatUint(lid, 10),
+				Leader:           leaderID,
 				RaftIndex:        index.Index,
 				RaftTerm:         term,
 				RaftAppliedIndex: index.Index,
@@ -320,6 +321,20 @@ func (e *Engine) getHeader(header *armadapb.ResponseHeader, shardID uint64) *arm
 	return header
 }
 
+// nodehostID returns the NodehostID of the gossip node that acts as the Raft
+// leader replica identified by replicaID. It iterates over the live gossip
+// members and returns the NodehostID of the first member whose NodeID matches.
+// When no matching gossip node is found (e.g. in tests where gossip is not
+// started), it falls back to the numeric replica ID string.
+func (e *Engine) nodehostID(replicaID uint64) string {
+	for _, node := range e.Cluster.Nodes() {
+		if node.NodeID == replicaID {
+			return node.ID
+		}
+	}
+	return strconv.FormatUint(replicaID, 10)
+}
+
 func (e *Engine) clusterInfo() cluster.Info {
 	info := cluster.Info{
 		NodeID:        e.cfg.NodeID,
@@ -335,6 +350,20 @@ func (e *Engine) clusterInfo() cluster.Info {
 		info.LogInfo = nhi.LogInfo
 	}
 	return info
+}
+
+// nodeMetaInfo returns lightweight node metadata (ID and addresses only) without
+// querying the LogDB or shard list. It is used on the hot gossip metadata path.
+func (e *Engine) nodeMetaInfo() cluster.NodeMeta {
+	meta := cluster.NodeMeta{
+		NodeID:        e.cfg.NodeID,
+		RaftAddress:   e.cfg.RaftAddress,
+		ClientAddress: e.cfg.ClientAddress,
+	}
+	if e.NodeHost != nil {
+		meta.ID = e.ID()
+	}
+	return meta
 }
 
 func (e *Engine) WaitUntilReady(ctx context.Context) error {

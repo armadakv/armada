@@ -109,6 +109,11 @@ type listenerStore struct {
 
 type getClusterInfo func() Info
 
+// getNodeMeta is a lightweight function that returns the node's identity
+// metadata (ID, NodeID, addresses) without triggering expensive LogDB or
+// shard-list queries. It is called on the hot gossip metadata path.
+type getNodeMeta func() NodeMeta
+
 // Cluster holds information about the memberlist cluster and active listeners.
 // streamConnections mirrors raft/internal/settings.StreamConnections.
 // The raft transport uses this many connections per remote nodehost for load
@@ -389,8 +394,7 @@ func (c *Cluster) Close() error {
 // serverTLS and clientTLS configure mutual TLS for the gossip transport.
 // When nil, a self-signed certificate is used (traffic is encrypted but peer
 // identity is not verified).
-func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config, shared *transport.Shared, f getClusterInfo) (*Cluster, error) {
-	info := f()
+func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config, shared *transport.Shared, f getClusterInfo, metaF getNodeMeta) (*Cluster, error) {
 	log := zap.S().Named("memberlist")
 	cluster := &Cluster{
 		name:            clusterName,
@@ -428,17 +432,12 @@ func New(advAddr, clusterName, nodeName string, serverTLS, clientTLS *tls.Config
 	}
 
 	mcfg.Delegate = &delegate{
-		meta: NodeMeta{
-			ID:            info.NodeHostID,
-			NodeID:        info.NodeID,
-			RaftAddress:   info.RaftAddress,
-			ClientAddress: info.ClientAddress,
-			MemberAddress: advAddr,
-		},
 		broadcasts: cluster.broadcasts,
 		shardView:  cluster.shardView,
 		msgs:       cluster.msgs,
 		infoF:      f,
+		metaF:      metaF,
+		advAddr:    advAddr,
 	}
 	// init view
 	ml, err := memberlist.Create(mcfg)
@@ -487,15 +486,18 @@ type NodeMeta struct {
 }
 
 type delegate struct {
-	meta       NodeMeta
 	msgs       chan Message
 	broadcasts *memberlist.TransmitLimitedQueue
 	shardView  *shardView
 	infoF      getClusterInfo
+	metaF      getNodeMeta
+	advAddr    string
 }
 
 func (c *delegate) NodeMeta(_ int) []byte {
-	bytes, _ := json.Marshal(&c.meta)
+	meta := c.metaF()
+	meta.MemberAddress = c.advAddr
+	bytes, _ := json.Marshal(&meta)
 	return bytes
 }
 
