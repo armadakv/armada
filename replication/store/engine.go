@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package snapshot
+package store
 
 import (
 	"context"

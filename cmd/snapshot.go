@@ -5,7 +5,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/armadakv/armada/storage/snapshot"
+	"github.com/armadakv/armada/replication/store"
 	"github.com/spf13/viper"
 	"github.com/thanos-io/objstore"
 	"github.com/thanos-io/objstore/providers/filesystem"
@@ -30,8 +30,8 @@ func newSnapshotBucket(backend, cfgYAML string) (objstore.Bucket, error) {
 
 // snapshotExporterConfig reads the snapshot-store Viper configuration and returns
 // an ExporterConfig. bucket must not be nil (caller is responsible for the check).
-func snapshotExporterConfig(nodeID string, bucket objstore.Bucket) snapshot.ExporterConfig {
-	return snapshot.ExporterConfig{
+func snapshotExporterConfig(nodeID string, bucket objstore.Bucket) store.ExporterConfig {
+	return store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       nodeID,
 		FullInterval: viper.GetDuration("replication.snapshot-store.full-interval"),
@@ -41,8 +41,8 @@ func snapshotExporterConfig(nodeID string, bucket objstore.Bucket) snapshot.Expo
 }
 
 // snapshotGCConfig reads the snapshot-store GC Viper configuration.
-func snapshotGCConfig(bucket objstore.Bucket) snapshot.GCConfig {
-	return snapshot.GCConfig{
+func snapshotGCConfig(bucket objstore.Bucket) store.GCConfig {
+	return store.GCConfig{
 		Bucket:    bucket,
 		Retention: viper.GetDuration("replication.snapshot-store.retention"),
 		Interval:  viper.GetDuration("replication.snapshot-store.gc-interval"),

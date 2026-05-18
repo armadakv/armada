@@ -1,11 +1,11 @@
 // Copyright JAMF Software, LLC
 
-// Package snapshot provides shared-storage snapshot export and garbage collection
+// Package store provides shared-storage snapshot export and garbage collection
 // for Armada leader clusters (proposal 005 – Phase A).
 //
 // The package defines the object-key scheme and the JSON commit-signal (Meta) that
 // governs the lifecycle of snapshot artefacts in the configured blob store.
-package snapshot
+package store
 
 import (
 	"encoding/json"

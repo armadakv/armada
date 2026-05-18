@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package snapshot_test
+package store_test
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	replicationSnapshot "github.com/armadakv/armada/replication/snapshot"
-	"github.com/armadakv/armada/storage/snapshot"
+	"github.com/armadakv/armada/replication/store"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/thanos-io/objstore"
@@ -84,7 +84,7 @@ func TestExportFull_Basic(t *testing.T) {
 		snapshotData: makeSnapshotData(t),
 	}
 
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "leader-1",
 		FullInterval: time.Hour,
@@ -95,8 +95,8 @@ func TestExportFull_Basic(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, exp.ExportFull(ctx, "orders"))
 
-	snapKey := snapshot.FullSnapKey("orders", 42)
-	metaKey := snapshot.FullMetaKey("orders", 42)
+	snapKey := store.FullSnapKey("orders", 42)
+	metaKey := store.FullMetaKey("orders", 42)
 
 	// Both artefact and meta must exist.
 	ok, err := bucket.Exists(ctx, snapKey)
@@ -114,15 +114,15 @@ func TestExportFull_Basic(t *testing.T) {
 	data, err := io.ReadAll(r)
 	require.NoError(t, err)
 
-	var m snapshot.Meta
+	var m store.Meta
 	require.NoError(t, json.Unmarshal(data, &m))
 
 	assert.Equal(t, "orders", m.Table)
-	assert.Equal(t, snapshot.SnapshotTypeFull, m.Type)
+	assert.Equal(t, store.SnapshotTypeFull, m.Type)
 	assert.Equal(t, uint64(0), m.BaseIndex)
 	assert.Equal(t, uint64(42), m.TipIndex)
 	assert.Equal(t, "leader-1", m.NodeID)
-	assert.Equal(t, snapshot.SnapshotFormat, m.Format)
+	assert.Equal(t, store.SnapshotFormat, m.Format)
 	assert.NotEmpty(t, m.SHA256)
 	assert.Greater(t, m.SizeBytes, int64(0))
 }
@@ -137,7 +137,7 @@ func TestExportFull_Idempotent(t *testing.T) {
 		snapshotData: makeSnapshotData(t),
 	}
 
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "leader-1",
 		FullInterval: time.Hour,
@@ -166,7 +166,7 @@ func TestExportFull_MultipleTablesAddsAllMeta(t *testing.T) {
 		snapshotData: makeSnapshotData(t),
 	}
 
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n1",
 		FullInterval: time.Hour,
@@ -180,7 +180,7 @@ func TestExportFull_MultipleTablesAddsAllMeta(t *testing.T) {
 	}
 
 	for _, tbl := range []string{"t1", "t2", "t3"} {
-		ok, err := bucket.Exists(ctx, snapshot.FullMetaKey(tbl, 10))
+		ok, err := bucket.Exists(ctx, store.FullMetaKey(tbl, 10))
 		require.NoError(t, err)
 		assert.True(t, ok, "meta for %s should exist", tbl)
 	}
@@ -192,7 +192,7 @@ func TestExportIncremental_RequiresFullFirst(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	svc := &fakeTableService{tables: []string{"orders"}, incrIdx: 50}
 
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n1",
 		FullInterval: time.Hour,
@@ -218,7 +218,7 @@ func TestExportIncremental_AfterFull(t *testing.T) {
 		snapshotData: makeSnapshotData(t),
 	}
 
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n1",
 		FullInterval: time.Hour,
@@ -227,13 +227,13 @@ func TestExportIncremental_AfterFull(t *testing.T) {
 	}, newTestLogger())
 
 	ctx := context.Background()
-	// First, create a full snapshot.
+	// First, create a full store.
 	require.NoError(t, exp.ExportFull(ctx, "orders"))
 	// Now take an incremental.
 	require.NoError(t, exp.ExportIncremental(ctx, "orders"))
 
-	incrSnapKey := snapshot.IncrSnapKey("orders", 100, 200)
-	incrMetaKey := snapshot.IncrMetaKey("orders", 100, 200)
+	incrSnapKey := store.IncrSnapKey("orders", 100, 200)
+	incrMetaKey := store.IncrMetaKey("orders", 100, 200)
 
 	ok, err := bucket.Exists(ctx, incrSnapKey)
 	require.NoError(t, err)
@@ -248,9 +248,9 @@ func TestExportIncremental_AfterFull(t *testing.T) {
 	defer r.Close()
 	data, _ := io.ReadAll(r)
 
-	var m snapshot.Meta
+	var m store.Meta
 	require.NoError(t, json.Unmarshal(data, &m))
-	assert.Equal(t, snapshot.SnapshotTypeIncremental, m.Type)
+	assert.Equal(t, store.SnapshotTypeIncremental, m.Type)
 	assert.Equal(t, uint64(100), m.BaseIndex)
 	assert.Equal(t, uint64(200), m.TipIndex)
 }
@@ -263,23 +263,23 @@ func TestExportIncremental_ChainLimitSkips(t *testing.T) {
 
 	// We'll manually insert meta objects simulating a chain of length maxChain.
 	ctx := context.Background()
-	writeMeta := func(m snapshot.Meta, key string) {
+	writeMeta := func(m store.Meta, key string) {
 		data, _ := json.Marshal(m)
 		require.NoError(t, bucket.Upload(ctx, key, bytes.NewReader(data)))
 	}
 
 	// Insert full meta at tip=100.
-	writeMeta(snapshot.Meta{
-		Table: "t", Type: snapshot.SnapshotTypeFull, TipIndex: 100, Format: snapshot.SnapshotFormat,
-	}, snapshot.FullMetaKey("t", 100))
+	writeMeta(store.Meta{
+		Table: "t", Type: store.SnapshotTypeFull, TipIndex: 100, Format: store.SnapshotFormat,
+	}, store.FullMetaKey("t", 100))
 
 	// Insert incremental chain: 100→110, 110→120, 120→130.
-	writeMeta(snapshot.Meta{Table: "t", Type: snapshot.SnapshotTypeIncremental, BaseIndex: 100, TipIndex: 110}, snapshot.IncrMetaKey("t", 100, 110))
-	writeMeta(snapshot.Meta{Table: "t", Type: snapshot.SnapshotTypeIncremental, BaseIndex: 110, TipIndex: 120}, snapshot.IncrMetaKey("t", 110, 120))
-	writeMeta(snapshot.Meta{Table: "t", Type: snapshot.SnapshotTypeIncremental, BaseIndex: 120, TipIndex: 130}, snapshot.IncrMetaKey("t", 120, 130))
+	writeMeta(store.Meta{Table: "t", Type: store.SnapshotTypeIncremental, BaseIndex: 100, TipIndex: 110}, store.IncrMetaKey("t", 100, 110))
+	writeMeta(store.Meta{Table: "t", Type: store.SnapshotTypeIncremental, BaseIndex: 110, TipIndex: 120}, store.IncrMetaKey("t", 110, 120))
+	writeMeta(store.Meta{Table: "t", Type: store.SnapshotTypeIncremental, BaseIndex: 120, TipIndex: 130}, store.IncrMetaKey("t", 120, 130))
 
 	svc := &fakeTableService{tables: []string{"t"}, snapshotIdx: 100, incrIdx: 140, snapshotData: makeSnapshotData(t)}
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n1",
 		FullInterval: time.Hour,
@@ -301,17 +301,17 @@ func TestExportIncremental_NoNewData(t *testing.T) {
 	ctx := context.Background()
 
 	// Pre-seed a full snapshot meta at index 50.
-	data, _ := json.Marshal(snapshot.Meta{
-		Table: "orders", Type: snapshot.SnapshotTypeFull, TipIndex: 50, Format: snapshot.SnapshotFormat,
+	data, _ := json.Marshal(store.Meta{
+		Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 50, Format: store.SnapshotFormat,
 	})
-	require.NoError(t, bucket.Upload(ctx, snapshot.FullMetaKey("orders", 50), bytes.NewReader(data)))
+	require.NoError(t, bucket.Upload(ctx, store.FullMetaKey("orders", 50), bytes.NewReader(data)))
 
 	svc := &fakeTableService{
 		tables:      []string{"orders"},
 		snapshotIdx: 50,
 		incrIdx:     50, // same as base → no new data
 	}
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n1",
 		FullInterval: time.Hour,
@@ -331,16 +331,16 @@ func TestListMeta(t *testing.T) {
 	bucket := objstore.NewInMemBucket()
 	ctx := context.Background()
 
-	uploadMeta := func(m snapshot.Meta, key string) {
+	uploadMeta := func(m store.Meta, key string) {
 		data, _ := json.Marshal(m)
 		require.NoError(t, bucket.Upload(ctx, key, bytes.NewReader(data)))
 	}
-	uploadMeta(snapshot.Meta{Table: "t", Type: snapshot.SnapshotTypeFull, TipIndex: 10}, snapshot.FullMetaKey("t", 10))
-	uploadMeta(snapshot.Meta{Table: "t", Type: snapshot.SnapshotTypeIncremental, BaseIndex: 10, TipIndex: 20}, snapshot.IncrMetaKey("t", 10, 20))
-	uploadMeta(snapshot.Meta{Table: "t", Type: snapshot.SnapshotTypeIncremental, BaseIndex: 20, TipIndex: 30}, snapshot.IncrMetaKey("t", 20, 30))
+	uploadMeta(store.Meta{Table: "t", Type: store.SnapshotTypeFull, TipIndex: 10}, store.FullMetaKey("t", 10))
+	uploadMeta(store.Meta{Table: "t", Type: store.SnapshotTypeIncremental, BaseIndex: 10, TipIndex: 20}, store.IncrMetaKey("t", 10, 20))
+	uploadMeta(store.Meta{Table: "t", Type: store.SnapshotTypeIncremental, BaseIndex: 20, TipIndex: 30}, store.IncrMetaKey("t", 20, 30))
 
 	svc := &fakeTableService{tables: []string{"t"}}
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n1",
 		FullInterval: time.Hour,
@@ -358,12 +358,12 @@ func TestListMeta(t *testing.T) {
 
 // TestObjectKeyScheme validates all key helpers produce expected paths.
 func TestObjectKeyScheme(t *testing.T) {
-	assert.Equal(t, "snapshots/orders/full/100.snap", snapshot.FullSnapKey("orders", 100))
-	assert.Equal(t, "snapshots/orders/full/100.snap.meta", snapshot.FullMetaKey("orders", 100))
-	assert.Equal(t, "snapshots/orders/incr/100_200.snap", snapshot.IncrSnapKey("orders", 100, 200))
-	assert.Equal(t, "snapshots/orders/incr/100_200.snap.meta", snapshot.IncrMetaKey("orders", 100, 200))
-	assert.Equal(t, "snapshots/orders/.lease/node1", snapshot.LeaseKey("orders", "node1"))
-	assert.True(t, strings.HasPrefix(snapshot.GCLogKey(time.Now()), "gc/"))
+	assert.Equal(t, "snapshots/orders/full/100.snap", store.FullSnapKey("orders", 100))
+	assert.Equal(t, "snapshots/orders/full/100.snap.meta", store.FullMetaKey("orders", 100))
+	assert.Equal(t, "snapshots/orders/incr/100_200.snap", store.IncrSnapKey("orders", 100, 200))
+	assert.Equal(t, "snapshots/orders/incr/100_200.snap.meta", store.IncrMetaKey("orders", 100, 200))
+	assert.Equal(t, "snapshots/orders/.lease/node1", store.LeaseKey("orders", "node1"))
+	assert.True(t, strings.HasPrefix(store.GCLogKey(time.Now()), "gc/"))
 }
 
 // Integration test: use a real filesystem bucket and simulate the full
@@ -377,21 +377,21 @@ func TestExporterGCIntegration(t *testing.T) {
 		incrIdx:      1100,
 		snapshotData: makeSnapshotData(t),
 	}
-	cfg := snapshot.ExporterConfig{
+	cfg := store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "integration-node",
 		FullInterval: time.Hour,
 		IncrInterval: 30 * time.Minute,
 		IncrMaxChain: 4,
 	}
-	exp := snapshot.NewSnapshotExporter(svc, cfg, newTestLogger())
+	exp := store.NewSnapshotExporter(svc, cfg, newTestLogger())
 
 	// --- Phase 1: Export full snapshot ---
 	require.NoError(t, exp.ExportFull(ctx, "users"))
 	metas, err := exp.ListMeta(ctx, "users")
 	require.NoError(t, err)
 	require.Len(t, metas, 1)
-	assert.Equal(t, snapshot.SnapshotTypeFull, metas[0].Type)
+	assert.Equal(t, store.SnapshotTypeFull, metas[0].Type)
 	assert.Equal(t, uint64(1000), metas[0].TipIndex)
 
 	// --- Phase 2: Export incremental ---
@@ -399,17 +399,17 @@ func TestExporterGCIntegration(t *testing.T) {
 	metas, err = exp.ListMeta(ctx, "users")
 	require.NoError(t, err)
 	require.Len(t, metas, 2)
-	assert.Equal(t, snapshot.SnapshotTypeIncremental, metas[1].Type)
+	assert.Equal(t, store.SnapshotTypeIncremental, metas[1].Type)
 	assert.Equal(t, uint64(1000), metas[1].BaseIndex)
 	assert.Equal(t, uint64(1100), metas[1].TipIndex)
 
 	// --- Phase 3: GC with long retention (nothing deleted) ---
-	gcCfg := snapshot.GCConfig{
+	gcCfg := store.GCConfig{
 		Bucket:    bucket,
 		Retention: 48 * time.Hour,
 		Interval:  time.Hour,
 	}
-	gcWorker := snapshot.NewGCWorker(gcCfg, newTestLogger())
+	gcWorker := store.NewGCWorker(gcCfg, newTestLogger())
 	require.NoError(t, gcWorker.RunOnce(ctx))
 
 	metas, err = exp.ListMeta(ctx, "users")
@@ -425,7 +425,7 @@ func TestExporterGCIntegration(t *testing.T) {
 
 	// --- Phase 5: GC with zero retention → old full + old incr deleted ---
 	gcCfg.Retention = 0
-	gcWorker = snapshot.NewGCWorker(gcCfg, newTestLogger())
+	gcWorker = store.NewGCWorker(gcCfg, newTestLogger())
 	require.NoError(t, gcWorker.RunOnce(ctx))
 
 	metas, err = exp.ListMeta(ctx, "users")
@@ -433,7 +433,7 @@ func TestExporterGCIntegration(t *testing.T) {
 	// Only the newest full should survive (the incr at base=1000 is before the new
 	// latest-full tip=2000 and should be deleted).
 	assert.Len(t, metas, 1)
-	assert.Equal(t, snapshot.SnapshotTypeFull, metas[0].Type)
+	assert.Equal(t, store.SnapshotTypeFull, metas[0].Type)
 	assert.Equal(t, uint64(2000), metas[0].TipIndex)
 }
 
@@ -447,7 +447,7 @@ func TestExporter_SHA256IsConsistent(t *testing.T) {
 		snapshotIdx:  1,
 		snapshotData: makeSnapshotData(t),
 	}
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n",
 		FullInterval: time.Hour,
@@ -456,11 +456,11 @@ func TestExporter_SHA256IsConsistent(t *testing.T) {
 	}, newTestLogger())
 	require.NoError(t, exp.ExportFull(ctx, "t"))
 
-	r, err := bucket.Get(ctx, snapshot.FullMetaKey("t", 1))
+	r, err := bucket.Get(ctx, store.FullMetaKey("t", 1))
 	require.NoError(t, err)
 	defer r.Close()
 	data, _ := io.ReadAll(r)
-	var m snapshot.Meta
+	var m store.Meta
 	require.NoError(t, json.Unmarshal(data, &m))
 
 	assert.Len(t, m.SHA256, 64, "SHA256 should be 64 hex characters")
@@ -486,7 +486,7 @@ func TestSnapshotFileFormat_WrittenToReader(t *testing.T) {
 		snapshotIdx:  7,
 		snapshotData: cmdBytes,
 	}
-	exp := snapshot.NewSnapshotExporter(svc, snapshot.ExporterConfig{
+	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
 		Bucket:       bucket,
 		NodeID:       "n",
 		FullInterval: time.Hour,
@@ -496,7 +496,7 @@ func TestSnapshotFileFormat_WrittenToReader(t *testing.T) {
 	require.NoError(t, exp.ExportFull(ctx, "test"))
 
 	// Download the snap and verify we can read back the commands.
-	r, err := bucket.Get(ctx, snapshot.FullSnapKey("test", 7))
+	r, err := bucket.Get(ctx, store.FullSnapKey("test", 7))
 	require.NoError(t, err)
 	defer r.Close()
 

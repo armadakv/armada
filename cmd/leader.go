@@ -12,7 +12,7 @@ import (
 	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/security"
 	serrors "github.com/armadakv/armada/storage/errors"
-	"github.com/armadakv/armada/storage/snapshot"
+	"github.com/armadakv/armada/replication/store"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -130,14 +130,14 @@ func leader(_ *cobra.Command, _ []string) error {
 		// in snapshot meta files. There is no separate node-id config option.
 		nodeAddress := viper.GetString("raft.address")
 
-		exp := snapshot.NewSnapshotExporter(
-			snapshot.NewEngineTableService(engine),
+		exp := store.NewSnapshotExporter(
+			store.NewEngineTableService(engine),
 			snapshotExporterConfig(nodeAddress, bkt),
 			logger.Sugar(),
 		)
 		go exp.Run(snapshotCtx)
 
-		gc := snapshot.NewGCWorker(snapshotGCConfig(bkt), logger.Sugar())
+		gc := store.NewGCWorker(snapshotGCConfig(bkt), logger.Sugar())
 		go gc.Run(snapshotCtx)
 	}
 
