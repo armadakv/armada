@@ -78,11 +78,7 @@ func (g *GCWorker) RunOnce(ctx context.Context) error {
 	var deleted int
 
 	for _, artefacts := range tableArtefacts {
-		d, err := g.gcTable(ctx, artefacts, leased, cutoff)
-		if err != nil {
-			g.log.Errorf("GC table: %v", err)
-			continue
-		}
+		d := g.gcTable(ctx, artefacts, leased, cutoff)
 		deleted += d
 	}
 
@@ -162,9 +158,9 @@ func (g *GCWorker) collectLeases(ctx context.Context) (map[string]struct{}, erro
 
 // gcTable applies GC rules to the artefacts of a single table and returns the
 // number of deleted artefacts.
-func (g *GCWorker) gcTable(ctx context.Context, artefacts []tableArtefact, leased map[string]struct{}, cutoff time.Time) (int, error) {
+func (g *GCWorker) gcTable(ctx context.Context, artefacts []tableArtefact, leased map[string]struct{}, cutoff time.Time) int {
 	if len(artefacts) == 0 {
-		return 0, nil
+		return 0
 	}
 
 	tableName := artefacts[0].meta.Table
@@ -172,7 +168,7 @@ func (g *GCWorker) gcTable(ctx context.Context, artefacts []tableArtefact, lease
 	if _, ok := leased[tablePrefix]; ok {
 		// A downloader holds a lease on this table; skip GC entirely this cycle.
 		g.log.Debugf("GC: table %s has active lease, skipping", tableName)
-		return 0, nil
+		return 0
 	}
 
 	// Separate fulls from incrementals.
@@ -231,7 +227,7 @@ func (g *GCWorker) gcTable(ctx context.Context, artefacts []tableArtefact, lease
 		deleted++
 	}
 
-	return deleted, nil
+	return deleted
 }
 
 // deleteArtefact writes a tombstone log entry and then deletes the snap and meta

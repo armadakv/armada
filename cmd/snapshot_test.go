@@ -9,7 +9,6 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 )
 
 func TestNewSnapshotBucket_None(t *testing.T) {
@@ -34,10 +33,6 @@ func TestNewSnapshotBucket_Filesystem(t *testing.T) {
 	bkt, err := newSnapshotBucket("filesystem", cfg)
 	require.NoError(t, err)
 	require.NotNil(t, bkt)
-
-	// Verify it's a usable bucket.
-	_, ok := bkt.(objstore.Bucket)
-	assert.True(t, ok)
 }
 
 func TestNewSnapshotBucket_FilesystemMissingDirectory(t *testing.T) {

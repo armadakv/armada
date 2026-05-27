@@ -31,7 +31,7 @@ func uploadTestSnap(t *testing.T, ctx context.Context, bucket *objstore.InMemBuc
 // setupFullAndIncrArtefacts inserts a full snapshot at tipFull and a chain of
 // `incrCount` incremental snapshots into bucket. It returns the tip index of the
 // last incremental (or tipFull when incrCount==0).
-func setupFullAndIncrArtefacts(t *testing.T, ctx context.Context, bucket *objstore.InMemBucket, table string, tipFull uint64, incrCount int, createdAt time.Time) uint64 {
+func setupFullAndIncrArtefacts(t *testing.T, ctx context.Context, bucket *objstore.InMemBucket, table string, tipFull uint64, incrCount int, createdAt time.Time) {
 	t.Helper()
 	uploadTestSnap(t, ctx, bucket, FullSnapKey(table, tipFull))
 	uploadTestMeta(t, ctx, bucket, Meta{
@@ -56,7 +56,6 @@ func setupFullAndIncrArtefacts(t *testing.T, ctx context.Context, bucket *objsto
 		}, IncrMetaKey(table, prev, next))
 		prev = next
 	}
-	return prev
 }
 
 // TestGC_NoArtefacts verifies GC handles an empty bucket without errors.

@@ -187,7 +187,7 @@ func (e *SnapshotExporter) ExportFull(ctx context.Context, tableName string) err
 		return fmt.Errorf("sync temp file: %w", err)
 	}
 
-	fi, err := sf.File.Stat()
+	fi, err := sf.Stat()
 	if err != nil {
 		return fmt.Errorf("stat temp file: %w", err)
 	}
@@ -209,7 +209,7 @@ func (e *SnapshotExporter) ExportFull(ctx context.Context, tableName string) err
 
 	// Upload the snapshot data.
 	snapKey := FullSnapKey(tableName, tipIndex)
-	if _, err := sf.File.Seek(0, io.SeekStart); err != nil {
+	if _, err := sf.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {
@@ -293,7 +293,7 @@ func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName stri
 		return fmt.Errorf("sync temp file: %w", err)
 	}
 
-	fi, err := sf.File.Stat()
+	fi, err := sf.Stat()
 	if err != nil {
 		return fmt.Errorf("stat temp file: %w", err)
 	}
@@ -311,7 +311,7 @@ func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName stri
 	}
 
 	snapKey := IncrSnapKey(tableName, baseIndex, tipIndex)
-	if _, err := sf.File.Seek(0, io.SeekStart); err != nil {
+	if _, err := sf.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {

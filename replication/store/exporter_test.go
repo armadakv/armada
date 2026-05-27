@@ -139,7 +139,7 @@ func TestExportFull_Basic(t *testing.T) {
 	assert.Equal(t, "leader-1", m.NodeID)
 	assert.Equal(t, SnapshotFormat, m.Format)
 	assert.NotEmpty(t, m.SHA256)
-	assert.Greater(t, m.SizeBytes, int64(0))
+	assert.Positive(t, m.SizeBytes)
 }
 
 // TestExportFull_Idempotent verifies that calling ExportFull twice with the same
@@ -219,7 +219,7 @@ func TestExportIncremental_RequiresFullFirst(t *testing.T) {
 	require.NoError(t, exp.ExportIncremental(ctx, "orders"))
 
 	// Bucket should remain empty.
-	assert.Equal(t, 0, len(bucket.Objects()))
+	assert.Empty(t, bucket.Objects())
 }
 
 // TestExportIncremental_AfterFull verifies that ExportIncremental produces an
@@ -525,7 +525,7 @@ func TestSnapshotFileFormat_WrittenToReader(t *testing.T) {
 	defer sf.Close()
 	_, err = sf.File.Write(snapData)
 	require.NoError(t, err)
-	_, err = sf.File.Seek(0, 0)
+	_, err = sf.Seek(0, 0)
 	require.NoError(t, err)
 
 	// Read back commands (should include the PUT command and the trailing DUMMY).
