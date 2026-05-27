@@ -339,8 +339,6 @@ func (m *Manager) cleanupLoop() {
 }
 
 func (m *Manager) cleanup() error {
-	ctx, cancel := context.WithTimeout(context.Background(), m.cleanupTimeout)
-	defer cancel()
 	ls, err := m.store.GetAll(fmt.Sprintf("/cleanup/%d/*", m.cfg.NodeID))
 	if err != nil {
 		return err
@@ -357,7 +355,7 @@ func (m *Manager) cleanup() error {
 				return m.store.Delete(l.Key, l.Ver)
 			}
 
-			if err := m.nh.SyncRemoveData(ctx, c.ClusterID, m.cfg.NodeID); err != nil {
+			if err := m.nh.RemoveData(c.ClusterID, m.cfg.NodeID); err != nil {
 				return err
 			}
 			if err := m.cfg.Table.FS.RemoveAll(c.SMDataPath); err != nil {

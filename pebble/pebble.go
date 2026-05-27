@@ -42,6 +42,7 @@ func split(b []byte) int {
 
 func DefaultOptions() *pebble.Options {
 	opts := &pebble.Options{
+		DisableWAL:                  true,
 		FormatMajorVersion:          pebble.FormatValueSeparation,
 		L0CompactionFileThreshold:   l0FileNumCompactionTrigger,
 		L0StopWritesThreshold:       l0StopWritesTrigger,

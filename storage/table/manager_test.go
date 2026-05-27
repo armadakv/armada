@@ -17,10 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var minimalTestConfig = func() Config {
+func minimalTestConfig(t *testing.T) Config {
+	t.Helper()
 	return Config{
 		NodeID: 1,
-		Table:  TableConfig{HeartbeatRTT: 1, ElectionRTT: 5, FS: pvfs.NewMem(), BlockCacheSize: 1024, TableCacheSize: 1024},
+		Table:  TableConfig{HeartbeatRTT: 1, ElectionRTT: 5, FS: pvfs.Default, BlockCacheSize: 1024, TableCacheSize: 1024, DataDir: t.TempDir() + "/data"},
 		Meta:   MetaConfig{HeartbeatRTT: 1, ElectionRTT: 5},
 	}
 }
@@ -31,7 +32,7 @@ func TestManager_CreateTable(t *testing.T) {
 	node, m := startRaftNode(t)
 	defer node.Close()
 
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig(t))
 	tm.Start()
 	defer tm.Close()
 
@@ -60,7 +61,7 @@ func TestManager_DeleteTable(t *testing.T) {
 	node, m := startRaftNode(t)
 	defer node.Close()
 
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig(t))
 	tm.cleanupGracePeriod = 0
 	tm.Start()
 	defer tm.Close()
@@ -93,7 +94,7 @@ func TestManager_DeleteTable(t *testing.T) {
 	r.ErrorIs(err, raft.ErrLogDBNotCreatedOrClosed)
 
 	// FS cleaned
-	files, err := tm.cfg.Table.FS.List("")
+	files, err := tm.cfg.Table.FS.List(tm.cfg.Table.DataDir)
 	r.NoError(err)
 	r.Len(files, 1, "FS should contain only a root directory (named after hostname)")
 }
@@ -120,7 +121,7 @@ func TestManager_LeaseTable(t *testing.T) {
 
 	node, m := startRaftNode(t)
 	defer node.Close()
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig(t))
 	tm.Start()
 	defer tm.Close()
 	_, err := tm.CreateTable(existingTable)
@@ -164,7 +165,7 @@ func TestManager_ReturnTable(t *testing.T) {
 
 	node, m := startRaftNode(t)
 	defer node.Close()
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig(t))
 	tm.Start()
 	defer tm.Close()
 	_, err := tm.CreateTable(existingTable)
@@ -210,7 +211,7 @@ func TestManager_GetTable(t *testing.T) {
 
 	node, m := startRaftNode(t)
 	defer node.Close()
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig(t))
 	tm.Start()
 	defer tm.Close()
 	_, err := tm.CreateTable(existingTable)
@@ -234,7 +235,7 @@ func TestManager_Restore(t *testing.T) {
 	const existingTable = "existingTable"
 	node, m := startRaftNode(t)
 	defer node.Close()
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig(t))
 	tm.Start()
 	defer tm.Close()
 	_, err := tm.CreateTable(existingTable)
@@ -260,7 +261,7 @@ func TestManager_reconcile(t *testing.T) {
 	defer node.Close()
 
 	const reconcileInterval = 1 * time.Second
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig(t))
 	tm.reconcileInterval = reconcileInterval
 
 	tm.Start()
