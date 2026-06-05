@@ -41,7 +41,7 @@ jobs:
           && mv armada dist/armada  \
           && tar -czvf armada-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz -C dist/ .
     - name: Release
-      uses: softprops/action-gh-release@v2
+      uses: softprops/action-gh-release@v3
       with:
         files: armada-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz
 
