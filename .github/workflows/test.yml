@@ -36,10 +36,23 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
+      - name: Install go-ctrf-json-reporter
+        shell: bash
+        run: go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@latest
       - name: Test
         shell: bash
         run: |
-          set -o pipefail && go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/... | go tool tparse -all
+          mkdir -p ctrf
+          set -o pipefail
+          go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/... | go-ctrf-json-reporter -output ctrf/go-test-report.json
+      - name: Publish test report
+        uses: ctrf-io/github-test-reporter@v1
+        with:
+          report-path: ./ctrf/*.json
+          github-report: true
+          summary-report: true
+          failed-report: true
+        if: always()
       - name: Coverage track
         uses: coverallsapp/github-action@v2
         with:
