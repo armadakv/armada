@@ -134,18 +134,25 @@ func (e *Engine) Collect(ch chan<- prometheus.Metric) {
 	e.disk.Collect(ch)
 }
 
+// SnapshotNotifier is implemented by the snapshot exporter and called when the
+// Raft log for a table shard is compacted on the leader.
+type SnapshotNotifier interface {
+	NotifyLogCompacted(tableName string)
+}
+
 type Engine struct {
 	*raft.NodeHost
 	*table.Manager
-	cfg        Config
-	log        *zap.SugaredLogger
-	events     *events
-	stop       chan struct{}
-	LogReader  logreader.Interface
-	Cluster    *cluster.Cluster
-	tableStore *kv.RaftStore
-	disk       *diskMetrics
-	sharedQT   *transport.Shared
+	cfg              Config
+	log              *zap.SugaredLogger
+	events           *events
+	stop             chan struct{}
+	LogReader        logreader.Interface
+	Cluster          *cluster.Cluster
+	tableStore       *kv.RaftStore
+	disk             *diskMetrics
+	sharedQT         *transport.Shared
+	SnapshotNotifier SnapshotNotifier
 }
 
 func (e *Engine) Start() error {
@@ -319,6 +326,27 @@ func (e *Engine) getHeader(header *armadapb.ResponseHeader, shardID uint64) *arm
 	header.RaftTerm = info.Term
 	header.RaftLeaderId = info.LeaderID
 	return header
+}
+
+// NotifyLogCompacted shadows Manager.NotifyLogCompacted and additionally
+// notifies the SnapshotNotifier (when set) so the snapshot exporter can
+// trigger an incremental export on log compaction. The leadership check is
+// performed by Manager.NotifyLogCompacted; we only notify the exporter when
+// the local node is the Raft leader for the shard.
+func (e *Engine) NotifyLogCompacted(shardID uint64, index uint64) {
+	e.Manager.NotifyLogCompacted(shardID, index)
+	if e.SnapshotNotifier == nil {
+		return
+	}
+	_, _, isLeader, err := e.GetLeaderID(shardID)
+	if err != nil || !isLeader {
+		return
+	}
+	at, err := e.GetTableByID(shardID)
+	if err != nil {
+		return
+	}
+	e.SnapshotNotifier.NotifyLogCompacted(at.Name)
 }
 
 // nodehostID returns the NodehostID of the gossip node that acts as the Raft

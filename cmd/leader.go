@@ -10,6 +10,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/armadaserver"
+	"github.com/armadakv/armada/replication/store"
 	"github.com/armadakv/armada/security"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
@@ -32,6 +33,7 @@ func init() {
 	leaderCmd.PersistentFlags().AddFlagSet(maintenanceFlagSet)
 	leaderCmd.PersistentFlags().AddFlagSet(tablesFlagSet)
 	leaderCmd.PersistentFlags().AddFlagSet(experimentalFlagSet)
+	leaderCmd.PersistentFlags().AddFlagSet(sharedStoreFlagSet)
 
 	// Tables flags
 	leaderCmd.PersistentFlags().StringSlice("tables.names", nil, "Create Armada tables with given names.")
@@ -115,6 +117,30 @@ func leader(_ *cobra.Command, _ []string) error {
 			}
 		}
 	}()
+
+	// Start snapshot exporter and GC worker when a non-none backend is configured.
+	snapshotCtx, cancelSnapshot := context.WithCancel(context.Background())
+	defer cancelSnapshot()
+	if backend := viper.GetString("shared-store.backend"); backend != "" && backend != "none" {
+		bkt, err := newSharedStoreBucket(backend, viper.GetString("shared-store.config"))
+		if err != nil {
+			return fmt.Errorf("snapshot-store: %w", err)
+		}
+		// Use the Raft address as a human-readable, cluster-unique node identifier
+		// in snapshot meta files. There is no separate node-id config option.
+		nodeAddress := viper.GetString("raft.address")
+
+		exp := store.NewSnapshotExporter(
+			store.NewEngineTableService(engine),
+			replicationExporterConfig(nodeAddress, bkt),
+			logger.Sugar(),
+		)
+		engine.SnapshotNotifier = exp
+		go exp.Run(snapshotCtx)
+
+		gc := store.NewGCWorker(sharedStoreGCConfig(bkt), logger.Sugar())
+		go gc.Run(snapshotCtx)
+	}
 
 	// Start servers
 	{

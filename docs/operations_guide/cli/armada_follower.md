@@ -47,7 +47,7 @@ armada follower [flags]
                                                               This is also the identifier for a Storage instance. RaftAddress should be set to the public address that can be accessed from remote Storage instances.
       --raft.compaction-overhead uint                         CompactionOverhead defines the number of most recent entries to keep after each Raft log compaction.
                                                               Raft log compaction is performed automatically every time when a snapshot is created. (default 5000)
-      --raft.election-rtt int                                 ElectionRTT is the minimum number of message RTT between elections. Message RTT is defined by NodeHostConfig.RTTMillisecond. 
+      --raft.election-rtt int                                 ElectionRTT is the minimum number of message RTT between elections. Message RTT is defined by NodeHostConfig.RTTMillisecond.
                                                               The Raft paper suggests it to be a magnitude greater than HeartbeatRTT, which is the interval between two heartbeats. In Raft, the actual interval between elections is randomized to be between ElectionRTT and 2 * ElectionRTT.
                                                               As an example, assuming NodeHostConfig.RTTMillisecond is 100 millisecond, to set the election interval to be 1 second, then ElectionRTT should be set to 10.
                                                               When CheckQuorum is enabled, ElectionRTT also defines the interval for checking leader quorum. (default 20)
@@ -76,14 +76,14 @@ armada follower [flags]
       --raft.snapshot-entries uint                            SnapshotEntries defines how often the state machine should be snapshot automatically.
                                                               It is defined in terms of the number of applied Raft log entries.
                                                               SnapshotEntries can be set to 0 to disable such automatic snapshotting. (default 10000)
-      --raft.snapshot-recovery-type string                    Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems. 
+      --raft.snapshot-recovery-type string                    Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
                                                               Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.
       --raft.state-machine-dir string                         StateMachineDir persistent storage for the state machine. (default "/tmp/armada/state-machine")
       --raft.tls-ca-file string                               Path to the CA certificate file used to verify raft peer certificates.
       --raft.tls-cert-file string                             Path to the TLS certificate file for mutual TLS between raft peers. Must be set together with raft.tls-key-file and raft.tls-ca-file.
       --raft.tls-key-file string                              Path to the TLS private key file for mutual TLS between raft peers.
-      --raft.wal-dir string                                   WALDir is the directory used for storing the WAL of Raft entries. 
-                                                              It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data. 
+      --raft.wal-dir string                                   WALDir is the directory used for storing the WAL of Raft entries.
+                                                              It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data.
                                                               Leave WALDir to have zero value will have everything stored in NodeHostDir.
       --replication.ca-filename string                        Path to the client CA cert file. The CA file is used to verify server authority. (default "hack/replication/ca.crt")
       --replication.cert-filename string                      Path to the client certificate. (default "hack/replication/client.crt")
