@@ -6,11 +6,12 @@ package armadapb
 
 import (
 	fmt "fmt"
-	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	io "io"
 	sync "sync"
 	unsafe "unsafe"
+
+	protohelpers "github.com/planetscale/vtprotobuf/protohelpers"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
