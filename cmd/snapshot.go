@@ -4,21 +4,32 @@ package cmd
 
 import (
 	"fmt"
+	"path/filepath"
 
 	"github.com/armadakv/armada/replication/store"
+	"github.com/armadakv/objfs"
 	"github.com/spf13/viper"
-	"github.com/thanos-io/objstore"
-	"github.com/thanos-io/objstore/providers/filesystem"
 )
 
-// newSharedStoreBucket creates an objstore.Bucket from the shared-store configuration.
+// newSharedStoreBucket creates an objfs.Bucket from the shared-store configuration.
 // Returns (nil, nil) when backend is "none" (feature disabled).
-func newSharedStoreBucket(backend, cfgYAML string) (objstore.Bucket, error) {
+func newSharedStoreBucket(backend string) (objfs.Bucket, error) {
 	switch backend {
 	case "", "none":
 		return nil, nil
 	case "filesystem":
-		bkt, err := filesystem.NewBucketFromConfig([]byte(cfgYAML))
+		dir := viper.GetString("shared-store.filesystem.directory")
+		if dir == "" {
+			return nil, fmt.Errorf("shared-store: filesystem config missing 'directory' (set --shared-store.filesystem.directory)")
+		}
+
+		// Ensure absolute path, or relative to current working dir
+		absDir, err := filepath.Abs(dir)
+		if err != nil {
+			return nil, fmt.Errorf("shared-store: invalid directory path: %w", err)
+		}
+
+		bkt, err := objfs.NewLocal(absDir)
 		if err != nil {
 			return nil, fmt.Errorf("shared-store: create filesystem bucket: %w", err)
 		}
@@ -30,7 +41,7 @@ func newSharedStoreBucket(backend, cfgYAML string) (objstore.Bucket, error) {
 
 // replicationExporterConfig builds an ExporterConfig for the snapshot exporter
 // from the replication-specific Viper keys.
-func replicationExporterConfig(nodeID string, bucket objstore.Bucket) store.ExporterConfig {
+func replicationExporterConfig(nodeID string, bucket objfs.Bucket) store.ExporterConfig {
 	return store.ExporterConfig{
 		Bucket:          bucket,
 		NodeID:          nodeID,
@@ -39,7 +50,7 @@ func replicationExporterConfig(nodeID string, bucket objstore.Bucket) store.Expo
 }
 
 // sharedStoreGCConfig builds a GCConfig from the shared-store Viper keys.
-func sharedStoreGCConfig(bucket objstore.Bucket) store.GCConfig {
+func sharedStoreGCConfig(bucket objfs.Bucket) store.GCConfig {
 	return store.GCConfig{
 		Bucket:    bucket,
 		Retention: viper.GetDuration("shared-store.retention"),

@@ -132,10 +132,9 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 	// Currently used for cross-cluster snapshot export but intentionally not
 	// namespaced under "replication" so other features can share it in future.
 	sharedStoreFlagSet.String("shared-store.backend", "none",
-		`Blob store backend. Supported values: none (disabled), filesystem.
-When set to "filesystem" the shared-store.config field must supply the store configuration (YAML).`)
-	sharedStoreFlagSet.String("shared-store.config", "",
-		"YAML configuration block for the selected shared-store backend (see backend-specific docs).")
+		`Blob store backend. Supported values: none (disabled), filesystem.`)
+	sharedStoreFlagSet.String("shared-store.filesystem.directory", "",
+		"Directory path to use for the filesystem backend.")
 	sharedStoreFlagSet.Duration("shared-store.retention", 48*time.Hour,
 		"Maximum age of artefacts in the shared store. Older artefacts are eligible for GC.")
 	sharedStoreFlagSet.Duration("shared-store.gc-interval", time.Hour,

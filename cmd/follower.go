@@ -113,7 +113,34 @@ func follower(_ *cobra.Command, _ []string) error {
 		_ = conn.Close()
 	}()
 	{
-		d := replication.NewManager(engine, nQueue, conn, replication.Config{
+		addr, secure, net := resolveURL(viper.GetString("replication.leader-address"))
+		httpClient, err := replication.NewHTTPClient(
+			logger.Named("replication.http").Sugar(),
+			addr,
+			viper.GetString("replication.cert-filename"),
+			viper.GetString("replication.key-filename"),
+			viper.GetString("replication.ca-filename"),
+			viper.GetBool("replication.insecure-skip-verify"),
+			viper.GetString("replication.server-name"),
+		)
+		if err != nil {
+			return fmt.Errorf("cannot create replication http client: %w", err)
+		}
+
+		scheme := "http"
+		if secure {
+			scheme = "https"
+		}
+		if net == "unix" || net == "unixs" {
+			// This handles simple local sockets if needed but
+			// standard Go HTTP client needs special transport for unix sockets.
+			// Let's assume TCP for remote HTTP downloads since this is standard.
+			scheme = "http"
+		}
+
+		leaderURL := fmt.Sprintf("%s://%s", scheme, addr)
+
+		d := replication.NewManager(engine, nQueue, conn, httpClient, leaderURL, replication.Config{
 			ReconcileInterval: viper.GetDuration("replication.reconcile-interval"),
 			Workers: replication.WorkerConfig{
 				PollInterval:        viper.GetDuration("replication.poll-interval"),

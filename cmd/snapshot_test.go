@@ -3,44 +3,46 @@
 package cmd
 
 import (
-	"os"
 	"testing"
 	"time"
 
+	"github.com/armadakv/objfs"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 )
 
 func TestNewSharedStoreBucket_None(t *testing.T) {
-	bkt, err := newSharedStoreBucket("none", "")
+	bkt, err := newSharedStoreBucket("none")
 	require.NoError(t, err)
 	assert.Nil(t, bkt, "none backend should return nil bucket")
 
-	bkt, err = newSharedStoreBucket("", "")
+	bkt, err = newSharedStoreBucket("")
 	require.NoError(t, err)
 	assert.Nil(t, bkt, "empty backend should return nil bucket")
 }
 
 func TestNewSharedStoreBucket_Unsupported(t *testing.T) {
-	_, err := newSharedStoreBucket("s3", "")
+	_, err := newSharedStoreBucket("s3")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported backend")
 }
 
 func TestNewSharedStoreBucket_Filesystem(t *testing.T) {
 	dir := t.TempDir()
-	cfg := "directory: " + dir
-	bkt, err := newSharedStoreBucket("filesystem", cfg)
+	viper.Set("shared-store.filesystem.directory", dir)
+	defer viper.Set("shared-store.filesystem.directory", "")
+	bkt, err := newSharedStoreBucket("filesystem")
 	require.NoError(t, err)
 	require.NotNil(t, bkt)
 
-	_, ok := bkt.(objstore.Bucket)
+	_, ok := bkt.(objfs.Bucket)
 	assert.True(t, ok)
 }
 
 func TestNewSharedStoreBucket_FilesystemMissingDirectory(t *testing.T) {
-	_, err := newSharedStoreBucket("filesystem", "")
+	viper.Set("shared-store.filesystem.directory", "")
+	_, err := newSharedStoreBucket("filesystem")
 	require.Error(t, err)
 }
 
@@ -57,11 +59,5 @@ func TestSharedStoreGCConfig_Defaults(t *testing.T) {
 
 	cfg := sharedStoreGCConfig(nil)
 	assert.Equal(t, 48*time.Hour, cfg.Retention)
-	assert.Equal(t, time.Hour, cfg.Interval)
-}
-
-func init() {
-	if os.Getenv("SKIP_LEADER_INIT") == "" {
-		os.Setenv("SKIP_LEADER_INIT", "1")
-	}
+	assert.Equal(t, 1*time.Hour, cfg.Interval)
 }
