@@ -10,7 +10,7 @@
 - `make test` runs the full suite locally with coverage and race detection: `go test ./... -cover -race -v`.
 - Run a single package with `go test ./path/to/package`.
 - Run a single test with `go test ./path/to/package -run '^TestName$'`.
-- CI coverage uses `go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/... | go tool tparse -all`.
+- CI coverage uses `go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/...`.
 - `make check` is the local lint entrypoint; it runs `make proto` first and then `golangci-lint run`.
 
 ## High-level architecture

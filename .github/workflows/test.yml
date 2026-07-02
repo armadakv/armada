@@ -38,8 +38,7 @@ jobs:
           go-version-file: go.mod
       - name: Test
         shell: bash
-        run: |
-          set -o pipefail && go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/... | go tool tparse -all
+        run: go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/...
       - name: Coverage track
         uses: coverallsapp/github-action@v2
         with:
