@@ -6,20 +6,21 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/thanos-io/objstore"
+	"github.com/armadakv/objfs"
 	"go.uber.org/zap"
 )
 
 // GCConfig holds the configuration for the GC worker.
 type GCConfig struct {
 	// Bucket is the blob store to garbage-collect. Must not be nil.
-	Bucket objstore.Bucket
+	Bucket objfs.Bucket
 	// Retention is the maximum age of snapshot artefacts. Artefacts older than
 	// this duration (subject to safety exceptions) are deleted.
 	Retention time.Duration
@@ -103,7 +104,8 @@ type tableArtefact struct {
 func (g *GCWorker) collectArtefacts(ctx context.Context) (map[string][]tableArtefact, error) {
 	result := make(map[string][]tableArtefact)
 
-	err := g.cfg.Bucket.Iter(ctx, "snapshots/", func(name string) error {
+	err := g.cfg.Bucket.List(ctx, "snapshots/", func(a objfs.Attributes) error {
+		name := a.Name
 		if !strings.HasSuffix(name, ".meta") {
 			return nil
 		}
@@ -114,7 +116,7 @@ func (g *GCWorker) collectArtefacts(ctx context.Context) (map[string][]tableArte
 
 		r, err := g.cfg.Bucket.Get(ctx, name)
 		if err != nil {
-			if g.cfg.Bucket.IsObjNotFoundErr(err) {
+			if errors.Is(err, objfs.ErrNotExist) {
 				return nil
 			}
 			return err
@@ -136,7 +138,7 @@ func (g *GCWorker) collectArtefacts(ctx context.Context) (map[string][]tableArte
 			metaKey: name,
 		})
 		return nil
-	}, objstore.WithRecursiveIter())
+	})
 
 	return result, err
 }
@@ -144,7 +146,8 @@ func (g *GCWorker) collectArtefacts(ctx context.Context) (map[string][]tableArte
 // collectLeases returns the set of object keys that have a downloader lease.
 func (g *GCWorker) collectLeases(ctx context.Context) (map[string]struct{}, error) {
 	leased := make(map[string]struct{})
-	err := g.cfg.Bucket.Iter(ctx, "snapshots/", func(name string) error {
+	err := g.cfg.Bucket.List(ctx, "snapshots/", func(a objfs.Attributes) error {
+		name := a.Name
 		if !strings.Contains(name, "/.lease/") {
 			return nil
 		}
@@ -156,7 +159,7 @@ func (g *GCWorker) collectLeases(ctx context.Context) (map[string]struct{}, erro
 			leased[parts[0]] = struct{}{}
 		}
 		return nil
-	}, objstore.WithRecursiveIter())
+	})
 	return leased, err
 }
 
@@ -263,12 +266,12 @@ func (g *GCWorker) deleteArtefact(ctx context.Context, a tableArtefact) error {
 	}
 
 	if err := g.cfg.Bucket.Delete(ctx, a.snapKey); err != nil {
-		if !g.cfg.Bucket.IsObjNotFoundErr(err) {
+		if !errors.Is(err, objfs.ErrNotExist) {
 			return fmt.Errorf("delete snap %s: %w", a.snapKey, err)
 		}
 	}
 	if err := g.cfg.Bucket.Delete(ctx, a.metaKey); err != nil {
-		if !g.cfg.Bucket.IsObjNotFoundErr(err) {
+		if !errors.Is(err, objfs.ErrNotExist) {
 			return fmt.Errorf("delete meta %s: %w", a.metaKey, err)
 		}
 	}

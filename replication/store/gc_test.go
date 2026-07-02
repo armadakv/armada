@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package store_test
+package store
 
 import (
 	"bytes"
@@ -9,14 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/armadakv/armada/replication/store"
+	"github.com/armadakv/objfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 )
 
 // uploadTestMeta is a helper that uploads a Meta object to the bucket.
-func uploadTestMeta(t *testing.T, ctx context.Context, bucket *objstore.InMemBucket, m store.Meta, key string) {
+func uploadTestMeta(t *testing.T, ctx context.Context, bucket objfs.Bucket, m Meta, key string) {
 	t.Helper()
 	data, err := json.Marshal(m)
 	require.NoError(t, err)
@@ -24,7 +23,7 @@ func uploadTestMeta(t *testing.T, ctx context.Context, bucket *objstore.InMemBuc
 }
 
 // uploadTestSnap uploads a placeholder snap artefact.
-func uploadTestSnap(t *testing.T, ctx context.Context, bucket *objstore.InMemBucket, key string) {
+func uploadTestSnap(t *testing.T, ctx context.Context, bucket objfs.Bucket, key string) {
 	t.Helper()
 	require.NoError(t, bucket.Upload(ctx, key, bytes.NewReader([]byte("snap-data"))))
 }
@@ -32,29 +31,29 @@ func uploadTestSnap(t *testing.T, ctx context.Context, bucket *objstore.InMemBuc
 // setupFullAndIncrArtefacts inserts a full snapshot at tipFull and a chain of
 // `incrCount` incremental snapshots into bucket. It returns the tip index of the
 // last incremental (or tipFull when incrCount==0).
-func setupFullAndIncrArtefacts(t *testing.T, ctx context.Context, bucket *objstore.InMemBucket, table string, tipFull uint64, incrCount int, createdAt time.Time) uint64 {
+func setupFullAndIncrArtefacts(t *testing.T, ctx context.Context, bucket objfs.Bucket, table string, tipFull uint64, incrCount int, createdAt time.Time) uint64 {
 	t.Helper()
-	uploadTestSnap(t, ctx, bucket, store.FullSnapKey(table, tipFull))
-	uploadTestMeta(t, ctx, bucket, store.Meta{
+	uploadTestSnap(t, ctx, bucket, FullSnapKey(table, tipFull))
+	uploadTestMeta(t, ctx, bucket, Meta{
 		Table:     table,
-		Type:      store.SnapshotTypeFull,
+		Type:      SnapshotTypeFull,
 		TipIndex:  tipFull,
 		CreatedAt: createdAt,
-		Format:    store.SnapshotFormat,
-	}, store.FullMetaKey(table, tipFull))
+		Format:    SnapshotFormat,
+	}, FullMetaKey(table, tipFull))
 
 	prev := tipFull
 	for i := 0; i < incrCount; i++ {
 		next := prev + 10
-		uploadTestSnap(t, ctx, bucket, store.IncrSnapKey(table, prev, next))
-		uploadTestMeta(t, ctx, bucket, store.Meta{
+		uploadTestSnap(t, ctx, bucket, IncrSnapKey(table, prev, next))
+		uploadTestMeta(t, ctx, bucket, Meta{
 			Table:     table,
-			Type:      store.SnapshotTypeIncremental,
+			Type:      SnapshotTypeIncremental,
 			BaseIndex: prev,
 			TipIndex:  next,
 			CreatedAt: createdAt,
-			Format:    store.SnapshotFormat,
-		}, store.IncrMetaKey(table, prev, next))
+			Format:    SnapshotFormat,
+		}, IncrMetaKey(table, prev, next))
 		prev = next
 	}
 	return prev
@@ -62,8 +61,8 @@ func setupFullAndIncrArtefacts(t *testing.T, ctx context.Context, bucket *objsto
 
 // TestGC_NoArtefacts verifies GC handles an empty bucket without errors.
 func TestGC_NoArtefacts(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
-	gc := store.NewGCWorker(store.GCConfig{
+	bucket := NewLocalBucket(t)
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: time.Hour,
 		Interval:  time.Minute,
@@ -75,12 +74,12 @@ func TestGC_NoArtefacts(t *testing.T) {
 // the retention window are not deleted.
 func TestGC_RetentionPreservesRecentArtefacts(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	now := time.Now().UTC()
 
 	setupFullAndIncrArtefacts(t, ctx, bucket, "t", 100, 2, now)
 
-	gc := store.NewGCWorker(store.GCConfig{
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: 24 * time.Hour, // objects are fresh
 		Interval:  time.Minute,
@@ -88,7 +87,7 @@ func TestGC_RetentionPreservesRecentArtefacts(t *testing.T) {
 	require.NoError(t, gc.RunOnce(ctx))
 
 	// Nothing should be deleted.
-	assert.Len(t, bucket.Objects(), 6, "all artefacts should survive (snap+meta x 3)")
+	assert.Equal(t, 6, ObjectCount(t, bucket, ""), "all artefacts should survive (snap+meta x 3)")
 }
 
 // TestGC_DeletesOldIncrementalButKeepsLatestFull verifies that old incremental
@@ -97,7 +96,7 @@ func TestGC_RetentionPreservesRecentArtefacts(t *testing.T) {
 // full tip so it is not part of the active chain.
 func TestGC_DeletesOldIncrementalButKeepsLatestFull(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	old := time.Now().UTC().Add(-48 * time.Hour)
 
 	// Insert an old full at 100 + 2 old incrementals (100→110, 110→120).
@@ -106,7 +105,7 @@ func TestGC_DeletesOldIncrementalButKeepsLatestFull(t *testing.T) {
 	// Insert a newer full at 200 — this makes the incrementals (base < 200) stale.
 	setupFullAndIncrArtefacts(t, ctx, bucket, "t", 200, 0, old)
 
-	gc := store.NewGCWorker(store.GCConfig{
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: time.Hour, // retention = 1h, objects are 48h old
 		Interval:  time.Minute,
@@ -114,25 +113,25 @@ func TestGC_DeletesOldIncrementalButKeepsLatestFull(t *testing.T) {
 	require.NoError(t, gc.RunOnce(ctx))
 
 	// The newest full snapshot (at 200) must survive.
-	ok, err := bucket.Exists(ctx, store.FullSnapKey("t", 200))
+	ok, err := bucket.Exists(ctx, FullSnapKey("t", 200))
 	require.NoError(t, err)
 	assert.True(t, ok, "latest full snap should survive")
 
-	ok, err = bucket.Exists(ctx, store.FullMetaKey("t", 200))
+	ok, err = bucket.Exists(ctx, FullMetaKey("t", 200))
 	require.NoError(t, err)
 	assert.True(t, ok, "latest full meta should survive")
 
 	// Old full at 100 should be gone.
-	ok, err = bucket.Exists(ctx, store.FullSnapKey("t", 100))
+	ok, err = bucket.Exists(ctx, FullSnapKey("t", 100))
 	require.NoError(t, err)
 	assert.False(t, ok, "old full at 100 should be deleted")
 
 	// Old incrementals (base < 200) should be gone.
-	ok, err = bucket.Exists(ctx, store.IncrSnapKey("t", 100, 110))
+	ok, err = bucket.Exists(ctx, IncrSnapKey("t", 100, 110))
 	require.NoError(t, err)
 	assert.False(t, ok, "old incr snap should be deleted")
 
-	ok, err = bucket.Exists(ctx, store.IncrMetaKey("t", 100, 110))
+	ok, err = bucket.Exists(ctx, IncrMetaKey("t", 100, 110))
 	require.NoError(t, err)
 	assert.False(t, ok, "old incr meta should be deleted")
 }
@@ -141,7 +140,7 @@ func TestGC_DeletesOldIncrementalButKeepsLatestFull(t *testing.T) {
 // (those chaining from the latest full) are not deleted even if they are old.
 func TestGC_KeepsActiveIncrementalChain(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	old := time.Now().UTC().Add(-72 * time.Hour)
 	recent := time.Now().UTC()
 
@@ -152,13 +151,13 @@ func TestGC_KeepsActiveIncrementalChain(t *testing.T) {
 	setupFullAndIncrArtefacts(t, ctx, bucket, "t", 200, 0, recent)
 
 	// Active incremental chain from the new full (200→210).
-	uploadTestSnap(t, ctx, bucket, store.IncrSnapKey("t", 200, 210))
-	uploadTestMeta(t, ctx, bucket, store.Meta{
-		Table: "t", Type: store.SnapshotTypeIncremental,
+	uploadTestSnap(t, ctx, bucket, IncrSnapKey("t", 200, 210))
+	uploadTestMeta(t, ctx, bucket, Meta{
+		Table: "t", Type: SnapshotTypeIncremental,
 		BaseIndex: 200, TipIndex: 210, CreatedAt: old, // old but part of active chain
-	}, store.IncrMetaKey("t", 200, 210))
+	}, IncrMetaKey("t", 200, 210))
 
-	gc := store.NewGCWorker(store.GCConfig{
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: time.Hour, // old (< retention cutoff)
 		Interval:  time.Minute,
@@ -166,17 +165,17 @@ func TestGC_KeepsActiveIncrementalChain(t *testing.T) {
 	require.NoError(t, gc.RunOnce(ctx))
 
 	// Old full at 100 should be gone (it's not the latest full).
-	ok, err := bucket.Exists(ctx, store.FullSnapKey("t", 100))
+	ok, err := bucket.Exists(ctx, FullSnapKey("t", 100))
 	require.NoError(t, err)
 	assert.False(t, ok, "old full at 100 should be deleted")
 
 	// Latest full at 200 must survive.
-	ok, err = bucket.Exists(ctx, store.FullSnapKey("t", 200))
+	ok, err = bucket.Exists(ctx, FullSnapKey("t", 200))
 	require.NoError(t, err)
 	assert.True(t, ok, "latest full at 200 must survive")
 
 	// Active incr chain (200→210) must survive even though it is old.
-	ok, err = bucket.Exists(ctx, store.IncrSnapKey("t", 200, 210))
+	ok, err = bucket.Exists(ctx, IncrSnapKey("t", 200, 210))
 	require.NoError(t, err)
 	assert.True(t, ok, "active incr 200→210 should survive")
 }
@@ -185,7 +184,7 @@ func TestGC_KeepsActiveIncrementalChain(t *testing.T) {
 // when the bucket contains artefacts for several tables.
 func TestGC_MultipleTablesGCedIndependently(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	old := time.Now().UTC().Add(-48 * time.Hour)
 	recent := time.Now().UTC()
 
@@ -197,7 +196,7 @@ func TestGC_MultipleTablesGCedIndependently(t *testing.T) {
 	// t2: single recent full (should survive unchanged).
 	setupFullAndIncrArtefacts(t, ctx, bucket, "t2", 20, 0, recent)
 
-	gc := store.NewGCWorker(store.GCConfig{
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: time.Hour,
 		Interval:  time.Minute,
@@ -205,34 +204,34 @@ func TestGC_MultipleTablesGCedIndependently(t *testing.T) {
 	require.NoError(t, gc.RunOnce(ctx))
 
 	// t1: latest full (100) survives.
-	ok, _ := bucket.Exists(ctx, store.FullSnapKey("t1", 100))
+	ok, _ := bucket.Exists(ctx, FullSnapKey("t1", 100))
 	assert.True(t, ok, "t1 latest full should survive")
 
 	// t1: old full (10) is deleted.
-	ok, _ = bucket.Exists(ctx, store.FullSnapKey("t1", 10))
+	ok, _ = bucket.Exists(ctx, FullSnapKey("t1", 10))
 	assert.False(t, ok, "t1 old full should be deleted")
 
 	// t1: old incr deleted.
-	ok, _ = bucket.Exists(ctx, store.IncrSnapKey("t1", 10, 20))
+	ok, _ = bucket.Exists(ctx, IncrSnapKey("t1", 10, 20))
 	assert.False(t, ok, "t1 old incr should be deleted")
 
 	// t2: all artefacts survive.
-	ok, _ = bucket.Exists(ctx, store.FullSnapKey("t2", 20))
+	ok, _ = bucket.Exists(ctx, FullSnapKey("t2", 20))
 	assert.True(t, ok, "t2 full should survive")
 }
 
 // TestGC_WithLease verifies that a leased table is entirely skipped by GC.
 func TestGC_WithLease(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	old := time.Now().UTC().Add(-48 * time.Hour)
 
 	setupFullAndIncrArtefacts(t, ctx, bucket, "leased", 100, 2, old)
 
 	// Upload a lease file for this table.
-	require.NoError(t, bucket.Upload(ctx, store.LeaseKey("leased", "downloader-node"), bytes.NewReader(nil)))
+	require.NoError(t, bucket.Upload(ctx, LeaseKey("leased", "downloader-node"), bytes.NewReader(nil)))
 
-	gc := store.NewGCWorker(store.GCConfig{
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: time.Hour,
 		Interval:  time.Minute,
@@ -240,7 +239,7 @@ func TestGC_WithLease(t *testing.T) {
 	require.NoError(t, gc.RunOnce(ctx))
 
 	// Nothing should have been deleted because the table is leased.
-	ok, _ := bucket.Exists(ctx, store.IncrSnapKey("leased", 100, 110))
+	ok, _ := bucket.Exists(ctx, IncrSnapKey("leased", 100, 110))
 	assert.True(t, ok, "leased table artefacts must not be deleted")
 }
 
@@ -248,7 +247,7 @@ func TestGC_WithLease(t *testing.T) {
 // entries before deleting artefacts.
 func TestGC_TombstonesWrittenBeforeDeletion(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	old := time.Now().UTC().Add(-48 * time.Hour)
 
 	// Single full + one old incremental.
@@ -256,7 +255,7 @@ func TestGC_TombstonesWrittenBeforeDeletion(t *testing.T) {
 	// Add a second full so the first one qualifies for deletion.
 	setupFullAndIncrArtefacts(t, ctx, bucket, "t", 200, 0, old)
 
-	gc := store.NewGCWorker(store.GCConfig{
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: time.Hour,
 		Interval:  time.Minute,
@@ -265,7 +264,7 @@ func TestGC_TombstonesWrittenBeforeDeletion(t *testing.T) {
 
 	// At least one gc/ log entry should have been written.
 	gcLogFound := false
-	err := bucket.Iter(ctx, "gc/", func(name string) error {
+	err := bucket.List(ctx, "gc/", func(a objfs.Attributes) error {
 		gcLogFound = true
 		return nil
 	})
@@ -276,8 +275,8 @@ func TestGC_TombstonesWrittenBeforeDeletion(t *testing.T) {
 // TestGC_RunLoopStopsOnContextCancel verifies that Run exits when the context
 // is cancelled (smoke test).
 func TestGC_RunLoopStopsOnContextCancel(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
-	gc := store.NewGCWorker(store.GCConfig{
+	bucket := NewLocalBucket(t)
+	gc := NewGCWorker(GCConfig{
 		Bucket:    bucket,
 		Retention: time.Hour,
 		Interval:  10 * time.Millisecond,

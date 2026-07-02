@@ -13,12 +13,14 @@ import (
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table"
 	"github.com/benbjohnson/clock"
+	"github.com/gogo/status"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -177,6 +179,105 @@ func TestWorker_do(t *testing.T) {
 		r.NoError(err)
 		return idx > uint64(200)
 	}, 5*time.Second, 100*time.Millisecond)
+}
+
+// mockSnapshotClient is a minimal stub of armadapb.SnapshotClient for negotiation tests.
+type mockSnapshotClient struct {
+	armadapb.UnimplementedSnapshotServer
+	queryResp *armadapb.SnapshotQueryResponse
+	queryErr  error
+}
+
+func (m *mockSnapshotClient) Query(_ context.Context, _ *armadapb.SnapshotQueryRequest, _ ...grpc.CallOption) (*armadapb.SnapshotQueryResponse, error) {
+	return m.queryResp, m.queryErr
+}
+
+func (m *mockSnapshotClient) Stream(_ context.Context, _ *armadapb.SnapshotRequest, _ ...grpc.CallOption) (armadapb.Snapshot_StreamClient, error) {
+	return nil, fmt.Errorf("legacy stream called unexpectedly")
+}
+
+// mockLegacySnapshotClient records that the legacy stream was invoked.
+type mockLegacySnapshotClient struct {
+	armadapb.UnimplementedSnapshotServer
+	queryErr     error
+	streamCalled bool
+}
+
+func (m *mockLegacySnapshotClient) Query(_ context.Context, _ *armadapb.SnapshotQueryRequest, _ ...grpc.CallOption) (*armadapb.SnapshotQueryResponse, error) {
+	return nil, m.queryErr
+}
+
+func (m *mockLegacySnapshotClient) Stream(_ context.Context, _ *armadapb.SnapshotRequest, _ ...grpc.CallOption) (armadapb.Snapshot_StreamClient, error) {
+	m.streamCalled = true
+	// Return a sentinel error so recover() surfaces it rather than panicking.
+	return nil, fmt.Errorf("legacy stream: sentinel")
+}
+
+// TestWorker_recover_negotiation tests the three negotiation outcomes without a
+// full Raft engine: Unimplemented → legacy fallback, NONE → error, real error → propagated.
+func TestWorker_recover_negotiation(t *testing.T) {
+	t.Run("unimplemented falls back to legacy stream", func(t *testing.T) {
+		legacy := &mockLegacySnapshotClient{
+			queryErr: status.Error(codes.Unimplemented, "no shared store"),
+		}
+		_, fe := prepareLeaderAndFollowerEngine(t)
+		require.NoError(t, fe.WaitUntilReady(t.Context()))
+		w := &worker{
+			table: "test",
+			workerFactory: &workerFactory{
+				snapshotTimeout: 5 * time.Second,
+				engine:          fe,
+				queue:           storage.NewNotificationQueue(),
+				snapshotClient:  legacy,
+			},
+			log: zaptest.NewLogger(t).Sugar(),
+		}
+		err := w.recover()
+		// Legacy stream returns a sentinel error; that error must propagate (not the query error).
+		require.ErrorContains(t, err, "legacy stream: sentinel")
+		require.True(t, legacy.streamCalled, "legacy stream should have been called")
+	})
+
+	t.Run("NONE response returns error without legacy fallback", func(t *testing.T) {
+		mock := &mockSnapshotClient{
+			queryResp: &armadapb.SnapshotQueryResponse{Type: armadapb.SnapshotQueryResponse_NONE},
+		}
+		_, fe := prepareLeaderAndFollowerEngine(t)
+		require.NoError(t, fe.WaitUntilReady(t.Context()))
+		w := &worker{
+			table: "test",
+			workerFactory: &workerFactory{
+				snapshotTimeout: 5 * time.Second,
+				engine:          fe,
+				queue:           storage.NewNotificationQueue(),
+				snapshotClient:  mock,
+			},
+			log: zaptest.NewLogger(t).Sugar(),
+		}
+		err := w.recover()
+		require.ErrorContains(t, err, "leader has no available snapshots")
+	})
+
+	t.Run("transient query error propagates without legacy fallback", func(t *testing.T) {
+		mock := &mockSnapshotClient{
+			queryErr: status.Error(codes.Internal, "internal server error"),
+		}
+		_, fe := prepareLeaderAndFollowerEngine(t)
+		require.NoError(t, fe.WaitUntilReady(t.Context()))
+		w := &worker{
+			table: "test",
+			workerFactory: &workerFactory{
+				snapshotTimeout: 5 * time.Second,
+				engine:          fe,
+				queue:           storage.NewNotificationQueue(),
+				snapshotClient:  mock,
+			},
+			log: zaptest.NewLogger(t).Sugar(),
+		}
+		err := w.recover()
+		require.ErrorContains(t, err, "snapshot query failed")
+		require.ErrorContains(t, err, "internal server error")
+	})
 }
 
 func fillData(keyCount int, at table.ActiveTable) error {

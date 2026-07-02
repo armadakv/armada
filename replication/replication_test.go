@@ -95,7 +95,7 @@ func TestManager_reconcile(t *testing.T) {
 
 	queue := storage.NewNotificationQueue()
 	go queue.Run()
-	m := NewManager(followerEngine, queue, conn, Config{
+	m := NewManager(followerEngine, queue, conn, nil, "", Config{
 		ReconcileInterval: 250 * time.Millisecond,
 		Workers: WorkerConfig{
 			PollInterval:        10 * time.Millisecond,
@@ -127,7 +127,7 @@ func TestManager_reconcileTables(t *testing.T) {
 	conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	r.NoError(err)
 
-	m := NewManager(followerEngine, nil, conn, Config{})
+	m := NewManager(followerEngine, nil, conn, nil, "", Config{})
 
 	t.Log("create table")
 	_, err = leaderEngine.CreateTable("test")
@@ -182,7 +182,7 @@ func TestManager_recover(t *testing.T) {
 
 	queue := storage.NewNotificationQueue()
 	go queue.Run()
-	m := NewManager(followerEngine, queue, conn, Config{
+	m := NewManager(followerEngine, queue, conn, nil, "", Config{
 		ReconcileInterval: 250 * time.Millisecond,
 		Workers: WorkerConfig{
 			PollInterval:        10 * time.Millisecond,

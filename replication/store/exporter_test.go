@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package store_test
+package store
 
 import (
 	"bytes"
@@ -13,10 +13,9 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	replicationSnapshot "github.com/armadakv/armada/replication/snapshot"
-	"github.com/armadakv/armada/replication/store"
+	"github.com/armadakv/objfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thanos-io/objstore"
 	"go.uber.org/zap"
 )
 
@@ -72,8 +71,8 @@ func newTestLogger() *zap.SugaredLogger {
 	return l.Sugar()
 }
 
-func newTestExporter(svc *fakeTableService, bucket *objstore.InMemBucket) *store.SnapshotExporter {
-	return store.NewSnapshotExporter(svc, store.ExporterConfig{
+func newTestExporter(svc *fakeTableService, bucket objfs.Bucket) *SnapshotExporter {
+	return NewSnapshotExporter(svc, ExporterConfig{
 		Bucket: bucket,
 		NodeID: "leader-1",
 	}, newTestLogger())
@@ -81,7 +80,7 @@ func newTestExporter(svc *fakeTableService, bucket *objstore.InMemBucket) *store
 
 // TestExportFull_Basic verifies that ExportFull uploads a .snap and .meta file.
 func TestExportFull_Basic(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	svc := &fakeTableService{
 		tables:       []string{"orders"},
 		snapshotIdx:  42,
@@ -92,8 +91,8 @@ func TestExportFull_Basic(t *testing.T) {
 	ctx := context.Background()
 	require.NoError(t, exp.ExportFull(ctx, "orders"))
 
-	snapKey := store.FullSnapKey("orders", 42)
-	metaKey := store.FullMetaKey("orders", 42)
+	snapKey := FullSnapKey("orders", 42)
+	metaKey := FullMetaKey("orders", 42)
 
 	ok, err := bucket.Exists(ctx, snapKey)
 	require.NoError(t, err)
@@ -109,14 +108,14 @@ func TestExportFull_Basic(t *testing.T) {
 	data, err := io.ReadAll(r)
 	require.NoError(t, err)
 
-	var m store.Meta
+	var m Meta
 	require.NoError(t, json.Unmarshal(data, &m))
 	assert.Equal(t, "orders", m.Table)
-	assert.Equal(t, store.SnapshotTypeFull, m.Type)
+	assert.Equal(t, SnapshotTypeFull, m.Type)
 	assert.Equal(t, uint64(0), m.BaseIndex)
 	assert.Equal(t, uint64(42), m.TipIndex)
 	assert.Equal(t, "leader-1", m.NodeID)
-	assert.Equal(t, store.SnapshotFormat, m.Format)
+	assert.Equal(t, SnapshotFormat, m.Format)
 	assert.NotEmpty(t, m.SHA256)
 	assert.Greater(t, m.SizeBytes, int64(0))
 }
@@ -124,7 +123,7 @@ func TestExportFull_Basic(t *testing.T) {
 // TestExportFull_Idempotent verifies that calling ExportFull twice at the same
 // index does not overwrite the artefact.
 func TestExportFull_Idempotent(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	svc := &fakeTableService{
 		tables:       []string{"orders"},
 		snapshotIdx:  100,
@@ -134,21 +133,21 @@ func TestExportFull_Idempotent(t *testing.T) {
 	ctx := context.Background()
 
 	require.NoError(t, exp.ExportFull(ctx, "orders"))
-	before := len(bucket.Objects())
+	before := ObjectCount(t, bucket, "")
 	require.NoError(t, exp.ExportFull(ctx, "orders"))
-	assert.Equal(t, before, len(bucket.Objects()), "second ExportFull should not add new objects")
+	assert.Equal(t, before, ObjectCount(t, bucket, ""), "second ExportFull should not add new objects")
 }
 
 // TestExportIncremental_StandaloneFromZero verifies that ExportIncremental
 // works without any prior artefact, producing an incremental from base 0.
 func TestExportIncremental_StandaloneFromZero(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	svc := &fakeTableService{tables: []string{"orders"}, incrIdx: 50, snapshotData: makeSnapshotData(t)}
 	exp := newTestExporter(svc, bucket)
 
 	require.NoError(t, exp.ExportIncremental(context.Background(), "orders"))
 
-	ok, err := bucket.Exists(context.Background(), store.IncrSnapKey("orders", 0, 50))
+	ok, err := bucket.Exists(context.Background(), IncrSnapKey("orders", 0, 50))
 	require.NoError(t, err)
 	assert.True(t, ok, "incremental from base 0 should be produced without a prior full")
 }
@@ -156,7 +155,7 @@ func TestExportIncremental_StandaloneFromZero(t *testing.T) {
 // TestExportIncremental_AfterFull verifies an incremental is produced once a
 // full snapshot exists. The incremental base is the full's tip.
 func TestExportIncremental_AfterFull(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	svc := &fakeTableService{
 		tables:       []string{"orders"},
 		snapshotIdx:  100,
@@ -169,17 +168,17 @@ func TestExportIncremental_AfterFull(t *testing.T) {
 	require.NoError(t, exp.ExportFull(ctx, "orders"))
 	require.NoError(t, exp.ExportIncremental(ctx, "orders"))
 
-	ok, err := bucket.Exists(ctx, store.IncrSnapKey("orders", 100, 200))
+	ok, err := bucket.Exists(ctx, IncrSnapKey("orders", 100, 200))
 	require.NoError(t, err)
 	assert.True(t, ok)
 
-	r, err := bucket.Get(ctx, store.IncrMetaKey("orders", 100, 200))
+	r, err := bucket.Get(ctx, IncrMetaKey("orders", 100, 200))
 	require.NoError(t, err)
 	defer r.Close()
 	data, _ := io.ReadAll(r)
-	var m store.Meta
+	var m Meta
 	require.NoError(t, json.Unmarshal(data, &m))
-	assert.Equal(t, store.SnapshotTypeIncremental, m.Type)
+	assert.Equal(t, SnapshotTypeIncremental, m.Type)
 	assert.Equal(t, uint64(100), m.BaseIndex)
 	assert.Equal(t, uint64(200), m.TipIndex)
 }
@@ -188,7 +187,7 @@ func TestExportIncremental_AfterFull(t *testing.T) {
 // incrementals chain off the highest tip regardless of whether it came from a
 // full or a prior incremental.
 func TestExportIncremental_ChainBuildsOnLatestTip(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	ctx := context.Background()
 
 	// Full at 100, then two incrementals: 100→200, 200→300.
@@ -206,7 +205,7 @@ func TestExportIncremental_ChainBuildsOnLatestTip(t *testing.T) {
 	svc.incrIdx = 300
 	require.NoError(t, exp.ExportIncremental(ctx, "t")) // 200→300
 
-	ok, err := bucket.Exists(ctx, store.IncrSnapKey("t", 200, 300))
+	ok, err := bucket.Exists(ctx, IncrSnapKey("t", 200, 300))
 	require.NoError(t, err)
 	assert.True(t, ok, "second incremental should chain from 200")
 }
@@ -214,27 +213,27 @@ func TestExportIncremental_ChainBuildsOnLatestTip(t *testing.T) {
 // TestExportIncremental_NoNewData verifies ExportIncremental is a no-op when
 // the table has not advanced since the last tip.
 func TestExportIncremental_NoNewData(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	ctx := context.Background()
 
-	data, _ := json.Marshal(store.Meta{
-		Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 50, Format: store.SnapshotFormat,
+	data, _ := json.Marshal(Meta{
+		Table: "orders", Type: SnapshotTypeFull, TipIndex: 50, Format: SnapshotFormat,
 	})
-	require.NoError(t, bucket.Upload(ctx, store.FullMetaKey("orders", 50), bytes.NewReader(data)))
+	require.NoError(t, bucket.Upload(ctx, FullMetaKey("orders", 50), bytes.NewReader(data)))
 
 	svc := &fakeTableService{tables: []string{"orders"}, snapshotIdx: 50, incrIdx: 50}
 	exp := newTestExporter(svc, bucket)
 
-	before := len(bucket.Objects())
+	before := ObjectCount(t, bucket, "")
 	require.NoError(t, exp.ExportIncremental(ctx, "orders"))
-	assert.Equal(t, before, len(bucket.Objects()), "no-op when tip == base")
+	assert.Equal(t, before, ObjectCount(t, bucket, ""), "no-op when tip == base")
 }
 
 // TestExportFull_AndIncrementalAreIndependent verifies that a new full snapshot
 // does not affect the incremental sequence — the next incremental after a new
 // full still chains off the highest tip (which is now the new full).
 func TestExportFull_AndIncrementalAreIndependent(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	ctx := context.Background()
 	svc := &fakeTableService{
 		tables:       []string{"t"},
@@ -255,23 +254,23 @@ func TestExportFull_AndIncrementalAreIndependent(t *testing.T) {
 	svc.incrIdx = 250
 	require.NoError(t, exp.ExportIncremental(ctx, "t"))
 
-	ok, err := bucket.Exists(ctx, store.IncrSnapKey("t", 200, 250))
+	ok, err := bucket.Exists(ctx, IncrSnapKey("t", 200, 250))
 	require.NoError(t, err)
 	assert.True(t, ok, "incremental should base off the latest tip (the new full at 200)")
 }
 
 // TestListMeta verifies ListMeta returns all artefacts sorted by TipIndex.
 func TestListMeta(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	ctx := context.Background()
 
-	upload := func(m store.Meta, key string) {
+	upload := func(m Meta, key string) {
 		data, _ := json.Marshal(m)
 		require.NoError(t, bucket.Upload(ctx, key, bytes.NewReader(data)))
 	}
-	upload(store.Meta{Table: "t", Type: store.SnapshotTypeFull, TipIndex: 10}, store.FullMetaKey("t", 10))
-	upload(store.Meta{Table: "t", Type: store.SnapshotTypeIncremental, BaseIndex: 10, TipIndex: 20}, store.IncrMetaKey("t", 10, 20))
-	upload(store.Meta{Table: "t", Type: store.SnapshotTypeIncremental, BaseIndex: 20, TipIndex: 30}, store.IncrMetaKey("t", 20, 30))
+	upload(Meta{Table: "t", Type: SnapshotTypeFull, TipIndex: 10}, FullMetaKey("t", 10))
+	upload(Meta{Table: "t", Type: SnapshotTypeIncremental, BaseIndex: 10, TipIndex: 20}, IncrMetaKey("t", 10, 20))
+	upload(Meta{Table: "t", Type: SnapshotTypeIncremental, BaseIndex: 20, TipIndex: 30}, IncrMetaKey("t", 20, 30))
 
 	exp := newTestExporter(&fakeTableService{tables: []string{"t"}}, bucket)
 	metas, err := exp.ListMeta(ctx, "t")
@@ -284,19 +283,19 @@ func TestListMeta(t *testing.T) {
 
 // TestObjectKeyScheme validates all key helpers produce expected paths.
 func TestObjectKeyScheme(t *testing.T) {
-	assert.Equal(t, "snapshots/orders/full/100.snap", store.FullSnapKey("orders", 100))
-	assert.Equal(t, "snapshots/orders/full/100.snap.meta", store.FullMetaKey("orders", 100))
-	assert.Equal(t, "snapshots/orders/incr/100_200.snap", store.IncrSnapKey("orders", 100, 200))
-	assert.Equal(t, "snapshots/orders/incr/100_200.snap.meta", store.IncrMetaKey("orders", 100, 200))
-	assert.Equal(t, "snapshots/orders/.lease/node1", store.LeaseKey("orders", "node1"))
-	assert.True(t, strings.HasPrefix(store.GCLogKey(time.Now()), "gc/"))
+	assert.Equal(t, "snapshots/orders/full/100.snap", FullSnapKey("orders", 100))
+	assert.Equal(t, "snapshots/orders/full/100.snap.meta", FullMetaKey("orders", 100))
+	assert.Equal(t, "snapshots/orders/incr/100_200.snap", IncrSnapKey("orders", 100, 200))
+	assert.Equal(t, "snapshots/orders/incr/100_200.snap.meta", IncrMetaKey("orders", 100, 200))
+	assert.Equal(t, "snapshots/orders/.lease/node1", LeaseKey("orders", "node1"))
+	assert.True(t, strings.HasPrefix(GCLogKey(time.Now()), "gc/"))
 }
 
 // TestNotifyLogCompacted_Run verifies that NotifyLogCompacted feeds the Run
 // loop and triggers an incremental export, starting from base 0 when no prior
 // artefact exists.
 func TestNotifyLogCompacted_Run(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	ctx := context.Background()
 
 	svc := &fakeTableService{
@@ -314,7 +313,7 @@ func TestNotifyLogCompacted_Run(t *testing.T) {
 	exp.NotifyLogCompacted("users")
 
 	require.Eventually(t, func() bool {
-		ok, _ := bucket.Exists(ctx, store.IncrSnapKey("users", 0, 600))
+		ok, _ := bucket.Exists(ctx, IncrSnapKey("users", 0, 600))
 		return ok
 	}, 2*time.Second, 10*time.Millisecond, "incremental from base 0 should appear after compaction")
 
@@ -325,14 +324,14 @@ func TestNotifyLogCompacted_Run(t *testing.T) {
 // TestExporterGCIntegration exercises the full lifecycle: full → incremental → GC.
 func TestExporterGCIntegration(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	svc := &fakeTableService{
 		tables:       []string{"users"},
 		snapshotIdx:  1000,
 		incrIdx:      1100,
 		snapshotData: makeSnapshotData(t),
 	}
-	exp := store.NewSnapshotExporter(svc, store.ExporterConfig{
+	exp := NewSnapshotExporter(svc, ExporterConfig{
 		Bucket: bucket,
 		NodeID: "integration-node",
 	}, newTestLogger())
@@ -345,7 +344,7 @@ func TestExporterGCIntegration(t *testing.T) {
 	require.Len(t, metas, 2)
 
 	// GC with long retention — nothing deleted.
-	gc := store.NewGCWorker(store.GCConfig{Bucket: bucket, Retention: 48 * time.Hour, Interval: time.Hour}, newTestLogger())
+	gc := NewGCWorker(GCConfig{Bucket: bucket, Retention: 48 * time.Hour, Interval: time.Hour}, newTestLogger())
 	require.NoError(t, gc.RunOnce(ctx))
 	metas, _ = exp.ListMeta(ctx, "users")
 	assert.Len(t, metas, 2)
@@ -357,26 +356,26 @@ func TestExporterGCIntegration(t *testing.T) {
 	assert.Len(t, metas, 3)
 
 	// GC with zero retention — old full and old incremental deleted.
-	gc = store.NewGCWorker(store.GCConfig{Bucket: bucket, Retention: 0, Interval: time.Hour}, newTestLogger())
+	gc = NewGCWorker(GCConfig{Bucket: bucket, Retention: 0, Interval: time.Hour}, newTestLogger())
 	require.NoError(t, gc.RunOnce(ctx))
 	metas, _ = exp.ListMeta(ctx, "users")
 	assert.Len(t, metas, 1)
-	assert.Equal(t, store.SnapshotTypeFull, metas[0].Type)
+	assert.Equal(t, SnapshotTypeFull, metas[0].Type)
 	assert.Equal(t, uint64(2000), metas[0].TipIndex)
 }
 
 // TestExporter_SHA256IsConsistent verifies SHA256 is stable across calls.
 func TestExporter_SHA256IsConsistent(t *testing.T) {
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 	svc := &fakeTableService{tables: []string{"t"}, snapshotIdx: 1, snapshotData: makeSnapshotData(t)}
 	exp := newTestExporter(svc, bucket)
 	require.NoError(t, exp.ExportFull(context.Background(), "t"))
 
-	r, err := bucket.Get(context.Background(), store.FullMetaKey("t", 1))
+	r, err := bucket.Get(context.Background(), FullMetaKey("t", 1))
 	require.NoError(t, err)
 	defer r.Close()
 	data, _ := io.ReadAll(r)
-	var m store.Meta
+	var m Meta
 	require.NoError(t, json.Unmarshal(data, &m))
 	assert.Len(t, m.SHA256, 64)
 }
@@ -385,7 +384,7 @@ func TestExporter_SHA256IsConsistent(t *testing.T) {
 // round-trips through the replication/snapshot reader.
 func TestSnapshotFileFormat_WrittenToReader(t *testing.T) {
 	ctx := context.Background()
-	bucket := objstore.NewInMemBucket()
+	bucket := NewLocalBucket(t)
 
 	cmd := &armadapb.Command{
 		Table: []byte("test"),
@@ -399,7 +398,7 @@ func TestSnapshotFileFormat_WrittenToReader(t *testing.T) {
 	exp := newTestExporter(svc, bucket)
 	require.NoError(t, exp.ExportFull(ctx, "test"))
 
-	r, err := bucket.Get(ctx, store.FullSnapKey("test", 7))
+	r, err := bucket.Get(ctx, FullSnapKey("test", 7))
 	require.NoError(t, err)
 	defer r.Close()
 	snapData, err := io.ReadAll(r)
