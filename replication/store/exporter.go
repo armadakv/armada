@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"sort"
-	"strings"
 	"time"
 
 	"github.com/armadakv/armada/armadapb"
@@ -312,39 +310,7 @@ func (e *SnapshotExporter) latestTip(ctx context.Context, tableName string) (uin
 
 // ListMeta lists all committed Meta artefacts for tableName, sorted by TipIndex ascending.
 func (e *SnapshotExporter) ListMeta(ctx context.Context, tableName string) ([]Meta, error) {
-	prefix := fmt.Sprintf("snapshots/%s/", tableName)
-	var metas []Meta
-	err := e.cfg.Bucket.List(ctx, prefix, func(a objfs.Attributes) error {
-		name := a.Name
-		if !strings.HasSuffix(name, ".meta") {
-			return nil
-		}
-		r, err := e.cfg.Bucket.Get(ctx, name)
-		if err != nil {
-			if errors.Is(err, objfs.ErrNotExist) {
-				return nil
-			}
-			return err
-		}
-		defer r.Close()
-		data, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-		var m Meta
-		if err := unmarshalMeta(data, &m); err != nil {
-			return nil
-		}
-		metas = append(metas, m)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	sort.Slice(metas, func(i, j int) bool {
-		return metas[i].TipIndex < metas[j].TipIndex
-	})
-	return metas, nil
+	return ListMeta(ctx, e.cfg.Bucket, tableName)
 }
 
 // uploadMeta marshals m and uploads it to key.

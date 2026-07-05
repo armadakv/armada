@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -26,7 +25,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 	"golang.org/x/sync/semaphore"
-	"golang.org/x/time/rate"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -57,16 +55,14 @@ type workerFactory struct {
 	leaseInterval     time.Duration
 	logTimeout        time.Duration
 	snapshotTimeout   time.Duration
-	maxSnapshotRecv   uint64
 	recoverySemaphore *semaphore.Weighted
 	log               *zap.SugaredLogger
 	store             replicationManagerStore
 	engine            *storage.Engine
 	queue             *storage.IndexNotificationQueue
 	logClient         armadapb.LogClient
-	snapshotClient    armadapb.SnapshotClient
-	httpClient        *http.Client
-	snapshotAddress   string
+	snapshotQuery     SnapshotQueryResolver
+	snapshotGetter    SnapshotObjectGetter
 	metrics           struct {
 		replicationIndex  *prometheus.GaugeVec
 		replicationLeased *prometheus.GaugeVec
@@ -522,30 +518,17 @@ func (w *worker) recover() error {
 		followerIndex = 0
 	}
 
-	// Query the leader for the best available snapshot.
-	// codes.Unimplemented means the leader has no shared store configured — use the
-	// legacy gRPC stream instead. Any other error is a real failure; do not silently
-	// fall back so that misconfiguration or transient errors surface clearly.
-	queryResp, err := w.snapshotClient.Query(ctx, new(armadapb.SnapshotQueryRequest{
-		Table:         w.table,
-		FollowerIndex: followerIndex,
-	}))
+	queryResp, err := w.querySnapshot(ctx, followerIndex)
 	if err != nil {
-		if c, ok := status.FromError(err); ok && c.Code() == codes.Unimplemented {
-			w.log.Info("leader has no shared store — falling back to legacy gRPC stream")
-			return w.recoverLegacy(ctx)
-		}
-		return fmt.Errorf("snapshot query failed: %w", err)
+		return err
 	}
 
 	if queryResp.Type == armadapb.SnapshotQueryResponse_NONE {
 		return fmt.Errorf("leader has no available snapshots for table %s", w.table)
 	}
 
-	// Leader advertised a snapshot in the shared store — download it via HTTP.
-	url := fmt.Sprintf("%s/%s", w.snapshotAddress, queryResp.ObjectKey)
-	w.log.Infof("downloading %s snapshot from %s (base=%d tip=%d)",
-		queryResp.Type, url, queryResp.BaseIndex, queryResp.TipIndex)
+	w.log.Infof("downloading %s snapshot object=%s (base=%d tip=%d)",
+		queryResp.Type, queryResp.ObjectKey, queryResp.BaseIndex, queryResp.TipIndex)
 
 	sf, err := snapshot.NewTemp()
 	if err != nil {
@@ -556,7 +539,7 @@ func (w *worker) recover() error {
 		_ = os.Remove(sf.Path())
 	}()
 
-	if err = snapshot.DownloadHTTP(ctx, w.httpClient, url, sf); err != nil {
+	if err = w.downloadSnapshot(ctx, queryResp.ObjectKey, sf.File); err != nil {
 		return fmt.Errorf("failed to download snapshot: %w", err)
 	}
 
@@ -574,46 +557,29 @@ func (w *worker) recover() error {
 	return nil
 }
 
-// recoverLegacy uses the deprecated gRPC Stream.
-func (w *worker) recoverLegacy(ctx context.Context) error {
-	w.log.Info("recovering from snapshot (legacy gRPC stream)")
-	stream, err := w.snapshotClient.Stream(ctx, &armadapb.SnapshotRequest{Table: []byte(w.table)})
-	if err != nil {
-		return err
+func (w *worker) querySnapshot(ctx context.Context, followerIndex uint64) (*armadapb.SnapshotQueryResponse, error) {
+	if w.snapshotQuery == nil {
+		return nil, fmt.Errorf("snapshot query resolver is not configured")
 	}
+	queryResp, err := w.snapshotQuery.Query(ctx, w.table, followerIndex)
+	if err != nil {
+		return nil, err
+	}
+	return queryResp, nil
+}
 
-	sf, err := snapshot.NewTemp()
+func (w *worker) downloadSnapshot(ctx context.Context, objectKey string, dst io.Writer) error {
+	if w.snapshotGetter == nil {
+		return fmt.Errorf("snapshot getter is not configured")
+	}
+	reader, err := w.snapshotGetter.Get(ctx, objectKey)
 	if err != nil {
 		return err
 	}
-	defer func() {
-		_ = sf.Close()
-		_ = os.Remove(sf.Path())
-	}()
+	defer reader.Close()
 
-	r := &snapshot.Reader{Stream: stream}
-	if w.maxSnapshotRecv != 0 {
-		r.Limiter = rate.NewLimiter(rate.Limit(w.maxSnapshotRecv), int(w.maxSnapshotRecv))
-	}
-
-	_, err = io.Copy(sf.File, r)
-	if err != nil {
+	if _, err := io.Copy(dst, reader); err != nil {
 		return err
 	}
-
-	err = sf.Sync()
-	if err != nil {
-		return err
-	}
-	_, err = sf.Seek(0, io.SeekStart)
-	if err != nil {
-		return err
-	}
-	w.log.Info("snapshot stream saved, loading table")
-	err = w.engine.Restore(w.table, sf)
-	if err != nil {
-		return err
-	}
-	w.log.Info("table recovered")
 	return nil
 }

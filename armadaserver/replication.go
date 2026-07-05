@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"cmp"
 	"context"
+	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -16,8 +17,10 @@ import (
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftpb"
 	"github.com/armadakv/armada/replication/snapshot"
+	"github.com/armadakv/armada/replication/store"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table"
+	"github.com/armadakv/objfs"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -55,7 +58,8 @@ func (m *MetadataServer) Get(context.Context, *armadapb.MetadataRequest) (*armad
 // SnapshotServer implements Snapshot service from proto/replication.proto.
 type SnapshotServer struct {
 	armadapb.UnimplementedSnapshotServer
-	Tables TableService
+	Tables        TableService
+	SnapshotStore objfs.Bucket
 }
 
 func (s *SnapshotServer) Stream(req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer) error {
@@ -174,6 +178,55 @@ func (s *SnapshotServer) streamIncremental(ctx context.Context, req *armadapb.Sn
 
 	_, err = io.Copy(&snapshot.Writer{Sender: srv}, bufio.NewReaderSize(sf.File, snapshot.DefaultSnapshotChunkSize))
 	return err
+}
+
+func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryRequest) (*armadapb.SnapshotQueryResponse, error) {
+	if req.GetTable() == "" {
+		return nil, status.Error(codes.InvalidArgument, "table is required")
+	}
+	if s.SnapshotStore == nil {
+		return nil, status.Error(codes.FailedPrecondition, "shared snapshot store is not configured")
+	}
+	metas, err := store.ListMeta(ctx, s.SnapshotStore, req.GetTable())
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "failed to read snapshot metadata: %v", err)
+	}
+	meta, ok := store.SelectBestSnapshot(metas, req.GetFollowerIndex())
+	if !ok {
+		return &armadapb.SnapshotQueryResponse{
+			Type: armadapb.SnapshotQueryResponse_NONE,
+		}, nil
+	}
+
+	var snapType armadapb.SnapshotQueryResponse_SnapshotType
+	var key string
+	switch meta.Type {
+	case store.SnapshotTypeFull:
+		snapType = armadapb.SnapshotQueryResponse_FULL
+		key = store.FullSnapKey(meta.Table, meta.TipIndex)
+	case store.SnapshotTypeIncremental:
+		snapType = armadapb.SnapshotQueryResponse_INCREMENTAL
+		key = store.IncrSnapKey(meta.Table, meta.BaseIndex, meta.TipIndex)
+	default:
+		return nil, status.Errorf(codes.Internal, "unsupported snapshot type %q", meta.Type)
+	}
+
+	var sha []byte
+	if meta.SHA256 != "" {
+		sha, err = hex.DecodeString(meta.SHA256)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "invalid snapshot checksum metadata: %v", err)
+		}
+	}
+
+	return &armadapb.SnapshotQueryResponse{
+		Type:      snapType,
+		BaseIndex: meta.BaseIndex,
+		TipIndex:  meta.TipIndex,
+		ObjectKey: key,
+		Sha256:    sha,
+		SizeBytes: meta.SizeBytes,
+	}, nil
 }
 
 // LogServer implements Log service from proto/replication.proto.

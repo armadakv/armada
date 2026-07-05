@@ -23,9 +23,16 @@ func TestNewSharedStoreBucket_None(t *testing.T) {
 }
 
 func TestNewSharedStoreBucket_Unsupported(t *testing.T) {
-	_, err := newSharedStoreBucket("s3")
+	_, err := newSharedStoreBucket("gcs")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported backend")
+}
+
+func TestNewSharedStoreBucket_S3MissingBucket(t *testing.T) {
+	viper.Set("shared-store.s3.bucket", "")
+	_, err := newSharedStoreBucket("s3")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "shared-store: s3 config missing 'bucket'")
 }
 
 func TestNewSharedStoreBucket_Filesystem(t *testing.T) {

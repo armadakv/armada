@@ -36,6 +36,8 @@ type testReplicationServer struct {
 	repResp      []*armadapb.ReplicateResponse
 	repErr       error
 	snapshotFile string
+	queryResp    *armadapb.SnapshotQueryResponse
+	queryErr     error
 }
 
 func (t testReplicationServer) Get(context.Context, *armadapb.MetadataRequest) (*armadapb.MetadataResponse, error) {
@@ -56,6 +58,18 @@ func (t testReplicationServer) Stream(_ *armadapb.SnapshotRequest, s armadapb.Sn
 	}
 	_, err = io.Copy(&snapshot.Writer{Sender: s}, f)
 	return err
+}
+
+func (t testReplicationServer) Query(context.Context, *armadapb.SnapshotQueryRequest) (*armadapb.SnapshotQueryResponse, error) {
+	return t.queryResp, t.queryErr
+}
+
+type testSnapshotGetter struct {
+	path string
+}
+
+func (t testSnapshotGetter) Get(_ context.Context, _ string) (io.ReadCloser, error) {
+	return os.Open(t.path)
 }
 
 func testServer(t *testing.T, regf func(server *grpc.Server)) *grpc.ClientConn {
@@ -95,7 +109,7 @@ func TestManager_reconcile(t *testing.T) {
 
 	queue := storage.NewNotificationQueue()
 	go queue.Run()
-	m := NewManager(followerEngine, queue, conn, nil, "", Config{
+	m := NewManager(followerEngine, queue, conn, nil, nil, Config{
 		ReconcileInterval: 250 * time.Millisecond,
 		Workers: WorkerConfig{
 			PollInterval:        10 * time.Millisecond,
@@ -103,7 +117,6 @@ func TestManager_reconcile(t *testing.T) {
 			LogRPCTimeout:       100 * time.Millisecond,
 			SnapshotRPCTimeout:  100 * time.Millisecond,
 			MaxRecoveryInFlight: 1,
-			MaxSnapshotRecv:     0,
 		},
 	})
 	m.Start()
@@ -127,7 +140,7 @@ func TestManager_reconcileTables(t *testing.T) {
 	conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	r.NoError(err)
 
-	m := NewManager(followerEngine, nil, conn, nil, "", Config{})
+	m := NewManager(followerEngine, nil, conn, nil, nil, Config{})
 
 	t.Log("create table")
 	_, err = leaderEngine.CreateTable("test")
@@ -174,6 +187,12 @@ func TestManager_recover(t *testing.T) {
 				},
 			},
 			snapshotFile: "snapshot/testdata/snapshot.bin",
+			queryResp: &armadapb.SnapshotQueryResponse{
+				Type:      armadapb.SnapshotQueryResponse_FULL,
+				BaseIndex: 0,
+				TipIndex:  100,
+				ObjectKey: "snapshots/test/full/100.snap",
+			},
 		}
 		armadapb.RegisterMetadataServer(server, s)
 		armadapb.RegisterLogServer(server, s)
@@ -182,7 +201,7 @@ func TestManager_recover(t *testing.T) {
 
 	queue := storage.NewNotificationQueue()
 	go queue.Run()
-	m := NewManager(followerEngine, queue, conn, nil, "", Config{
+	m := NewManager(followerEngine, queue, conn, testSnapshotGetter{path: "snapshot/testdata/snapshot.bin"}, nil, Config{
 		ReconcileInterval: 250 * time.Millisecond,
 		Workers: WorkerConfig{
 			PollInterval:        10 * time.Millisecond,
@@ -190,7 +209,6 @@ func TestManager_recover(t *testing.T) {
 			LogRPCTimeout:       100 * time.Millisecond,
 			SnapshotRPCTimeout:  10 * time.Second,
 			MaxRecoveryInFlight: 1,
-			MaxSnapshotRecv:     512,
 		},
 	})
 	r.NoError(m.Start())
