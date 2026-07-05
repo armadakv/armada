@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -16,7 +17,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	replicationSnapshot "github.com/armadakv/armada/replication/snapshot"
-	"github.com/thanos-io/objstore"
+	"github.com/armadakv/objfs"
 	"go.uber.org/zap"
 )
 
@@ -40,7 +41,7 @@ type TableSnapshotService interface {
 // ExporterConfig holds the operational parameters for a SnapshotExporter.
 type ExporterConfig struct {
 	// Bucket is the target blob store. Must not be nil.
-	Bucket objstore.Bucket
+	Bucket objfs.Bucket
 	// NodeID uniquely identifies the node writing artefacts (written into Meta.NodeID).
 	NodeID string
 	// SnapshotTimeout is the maximum time allowed for a single incremental
@@ -180,7 +181,7 @@ func (e *SnapshotExporter) ExportFull(ctx context.Context, tableName string) err
 		return err
 	}
 	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {
-		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !e.cfg.Bucket.IsObjNotFoundErr(cleanErr) {
+		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !errors.Is(cleanErr, objfs.ErrNotExist) {
 			e.log.Warnf("upload failed and cleanup of partial artefact %s also failed: %v", snapKey, cleanErr)
 		}
 		return fmt.Errorf("upload snapshot: %w", err)
@@ -271,7 +272,7 @@ func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName stri
 		return err
 	}
 	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {
-		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !e.cfg.Bucket.IsObjNotFoundErr(cleanErr) {
+		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !errors.Is(cleanErr, objfs.ErrNotExist) {
 			e.log.Warnf("upload failed and cleanup of partial artefact %s also failed: %v", snapKey, cleanErr)
 		}
 		return fmt.Errorf("upload snapshot: %w", err)
@@ -298,49 +299,29 @@ func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName stri
 // latestTip returns the highest committed tip index across all artefacts
 // (full and incremental) for tableName. Returns 0 if no artefacts exist yet.
 func (e *SnapshotExporter) latestTip(ctx context.Context, tableName string) (uint64, error) {
-	prefix := fmt.Sprintf("snapshots/%s/", tableName)
-	var latest uint64
-
-	iterErr := e.cfg.Bucket.Iter(ctx, prefix, func(name string) error {
-		if !strings.HasSuffix(name, ".meta") {
-			return nil
-		}
-		r, err := e.cfg.Bucket.Get(ctx, name)
-		if err != nil {
-			if e.cfg.Bucket.IsObjNotFoundErr(err) {
-				return nil
-			}
-			return err
-		}
-		defer r.Close()
-		data, err := io.ReadAll(r)
-		if err != nil {
-			return err
-		}
-		var m Meta
-		if err := unmarshalMeta(data, &m); err != nil {
-			return nil // skip malformed meta
-		}
-		if m.TipIndex > latest {
-			latest = m.TipIndex
-		}
-		return nil
-	}, objstore.WithRecursiveIter())
-
-	return latest, iterErr
+	metas, err := e.ListMeta(ctx, tableName)
+	if err != nil {
+		return 0, err
+	}
+	if len(metas) == 0 {
+		return 0, nil
+	}
+	last := metas[len(metas)-1]
+	return last.TipIndex, nil
 }
 
 // ListMeta lists all committed Meta artefacts for tableName, sorted by TipIndex ascending.
 func (e *SnapshotExporter) ListMeta(ctx context.Context, tableName string) ([]Meta, error) {
 	prefix := fmt.Sprintf("snapshots/%s/", tableName)
 	var metas []Meta
-	err := e.cfg.Bucket.Iter(ctx, prefix, func(name string) error {
+	err := e.cfg.Bucket.List(ctx, prefix, func(a objfs.Attributes) error {
+		name := a.Name
 		if !strings.HasSuffix(name, ".meta") {
 			return nil
 		}
 		r, err := e.cfg.Bucket.Get(ctx, name)
 		if err != nil {
-			if e.cfg.Bucket.IsObjNotFoundErr(err) {
+			if errors.Is(err, objfs.ErrNotExist) {
 				return nil
 			}
 			return err
@@ -356,7 +337,7 @@ func (e *SnapshotExporter) ListMeta(ctx context.Context, tableName string) ([]Me
 		}
 		metas = append(metas, m)
 		return nil
-	}, objstore.WithRecursiveIter())
+	})
 	if err != nil {
 		return nil, err
 	}

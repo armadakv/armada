@@ -10,6 +10,7 @@ package replication
 import (
 	"context"
 	"errors"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
@@ -49,7 +50,7 @@ type replicationManagerStore interface {
 }
 
 // NewManager constructs a new replication Manager out of tables.Manager, dragonboat.NodeHost and replication API grpc.ClientConn.
-func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *grpc.ClientConn, cfg Config) *Manager {
+func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *grpc.ClientConn, httpClient *http.Client, snapshotAddress string, cfg Config) *Manager {
 	replicationLog := zap.S().Named("replication")
 
 	replicationIndexGauge := prometheus.NewGaugeVec(
@@ -83,9 +84,11 @@ func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *
 				NodeHost:  e.NodeHost,
 				ClusterID: replicationStoreID,
 			},
-			log:            replicationLog,
-			logClient:      armadapb.NewLogClient(conn),
-			snapshotClient: armadapb.NewSnapshotClient(conn),
+			log:             replicationLog,
+			logClient:       armadapb.NewLogClient(conn),
+			snapshotClient:  armadapb.NewSnapshotClient(conn),
+			httpClient:      httpClient,
+			snapshotAddress: snapshotAddress,
 			metrics: struct {
 				replicationIndex  *prometheus.GaugeVec
 				replicationLeased *prometheus.GaugeVec

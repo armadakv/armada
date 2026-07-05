@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -64,6 +65,8 @@ type workerFactory struct {
 	queue             *storage.IndexNotificationQueue
 	logClient         armadapb.LogClient
 	snapshotClient    armadapb.SnapshotClient
+	httpClient        *http.Client
+	snapshotAddress   string
 	metrics           struct {
 		replicationIndex  *prometheus.GaugeVec
 		replicationLeased *prometheus.GaugeVec
@@ -510,6 +513,70 @@ func (w *worker) recover() error {
 	w.log.Info("recovering from snapshot")
 	ctx, cancel := context.WithTimeout(context.Background(), w.snapshotTimeout)
 	defer cancel()
+
+	followerIndex, _, err := w.tableState()
+	if err != nil {
+		if !errors.Is(err, serrors.ErrTableNotFound) {
+			return fmt.Errorf("failed to get table state: %w", err)
+		}
+		followerIndex = 0
+	}
+
+	// Query the leader for the best available snapshot.
+	// codes.Unimplemented means the leader has no shared store configured — use the
+	// legacy gRPC stream instead. Any other error is a real failure; do not silently
+	// fall back so that misconfiguration or transient errors surface clearly.
+	queryResp, err := w.snapshotClient.Query(ctx, new(armadapb.SnapshotQueryRequest{
+		Table:         w.table,
+		FollowerIndex: followerIndex,
+	}))
+	if err != nil {
+		if c, ok := status.FromError(err); ok && c.Code() == codes.Unimplemented {
+			w.log.Info("leader has no shared store — falling back to legacy gRPC stream")
+			return w.recoverLegacy(ctx)
+		}
+		return fmt.Errorf("snapshot query failed: %w", err)
+	}
+
+	if queryResp.Type == armadapb.SnapshotQueryResponse_NONE {
+		return fmt.Errorf("leader has no available snapshots for table %s", w.table)
+	}
+
+	// Leader advertised a snapshot in the shared store — download it via HTTP.
+	url := fmt.Sprintf("%s/%s", w.snapshotAddress, queryResp.ObjectKey)
+	w.log.Infof("downloading %s snapshot from %s (base=%d tip=%d)",
+		queryResp.Type, url, queryResp.BaseIndex, queryResp.TipIndex)
+
+	sf, err := snapshot.NewTemp()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = sf.Close()
+		_ = os.Remove(sf.Path())
+	}()
+
+	if err = snapshot.DownloadHTTP(ctx, w.httpClient, url, sf); err != nil {
+		return fmt.Errorf("failed to download snapshot: %w", err)
+	}
+
+	if err = sf.Sync(); err != nil {
+		return err
+	}
+	if _, err = sf.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	w.log.Info("snapshot downloaded, loading table")
+	if err = w.engine.Restore(w.table, sf); err != nil {
+		return err
+	}
+	w.log.Info("table recovered")
+	return nil
+}
+
+// recoverLegacy uses the deprecated gRPC Stream.
+func (w *worker) recoverLegacy(ctx context.Context) error {
+	w.log.Info("recovering from snapshot (legacy gRPC stream)")
 	stream, err := w.snapshotClient.Stream(ctx, &armadapb.SnapshotRequest{Table: []byte(w.table)})
 	if err != nil {
 		return err
@@ -520,10 +587,7 @@ func (w *worker) recover() error {
 		return err
 	}
 	defer func() {
-		err := sf.Close()
-		if err != nil {
-			return
-		}
+		_ = sf.Close()
 		_ = os.Remove(sf.Path())
 	}()
 

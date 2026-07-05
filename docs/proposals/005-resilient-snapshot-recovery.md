@@ -32,7 +32,7 @@ This design has several compounding weaknesses:
 
 ### Shared Storage Abstraction
 
-[**Thanos objstore**](https://github.com/thanos-io/objstore) (`github.com/thanos-io/objstore`) is used as the blob store interface. It provides:
+[**objfs**](https://github.com/armadakv/objfs) (`github.com/armadakv/objfs`) is used as the blob store interface. It provides:
 
 * A common `Bucket` interface (`Upload`, `Get`, `GetRange`, `Attributes`, `Iter`, `Delete`).
 * Concrete backends: S3, GCS, Azure, Swift, filesystem (suitable for NFS mounts), in-memory (for tests).
@@ -278,7 +278,7 @@ For S3/GCS downloads, HTTP `Range` requests provide native resumability; only th
 
 ### Configuration
 
-New settings live under `replication.snapshot-store` in Viper config, mirroring the Thanos objstore YAML embedding pattern:
+New settings live under `replication.snapshot-store` in Viper config, mirroring the objfs YAML embedding pattern:
 
 ```yaml
 replication:
@@ -308,7 +308,7 @@ Each phase is independently deployable and backward compatible with the existing
 
 ## Alternatives
 
-**Thanos objstore vs. `gocloud.dev/blob`.** The Go Cloud Development Kit blob package was considered. It was rejected because it has fewer production-grade backends, less operational adoption in the Go infrastructure ecosystem, and no built-in `GetRange` semantics needed for resumable downloads.
+**objfs vs. `gocloud.dev/blob`.** The Go Cloud Development Kit blob package was considered. It was rejected because it has fewer production-grade backends, less operational adoption in the Go infrastructure ecosystem, and no built-in `GetRange` semantics needed for resumable downloads.
 
 **Pre-signed URLs vs. always-proxy through the leader.** Always proxying snapshot data through the leader gRPC server was considered. This was rejected because the leader becomes a bandwidth bottleneck when several follower shards recover concurrently. Pre-signed URLs shift the transfer directly between the follower and the object store; the leader is only involved in signing (milliseconds of overhead).
 

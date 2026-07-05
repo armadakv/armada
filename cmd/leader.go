@@ -122,7 +122,7 @@ func leader(_ *cobra.Command, _ []string) error {
 	snapshotCtx, cancelSnapshot := context.WithCancel(context.Background())
 	defer cancelSnapshot()
 	if backend := viper.GetString("shared-store.backend"); backend != "" && backend != "none" {
-		bkt, err := newSharedStoreBucket(backend, viper.GetString("shared-store.config"))
+		bkt, err := newSharedStoreBucket(backend)
 		if err != nil {
 			return fmt.Errorf("snapshot-store: %w", err)
 		}

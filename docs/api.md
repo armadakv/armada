@@ -579,6 +579,7 @@ Metadata service provides method to get Armada metadata, e.g. tables.
 | Method | Request | Response | Description |
 | ------ | ------- | -------- | ----------- |
 | **Stream** | [SnapshotRequest](#snapshotrequest) | [SnapshotChunk](#snapshotchunk) |  |
+| **Query** | [SnapshotQueryRequest](#snapshotqueryrequest) | [SnapshotQueryResponse](#snapshotqueryresponse) |  |
 
 
 
@@ -647,6 +648,26 @@ ReplicateResponse response to the ReplicateRequest
 | `index` | [uint64](#uint64) |  | index the index for which the snapshot was created |
 
 
+#### SnapshotQueryRequest {#snapshotqueryrequest}
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `table` | [string](#string) |  |  |
+| `follower_index` | [uint64](#uint64) |  | follower_index is the current applied index on the follower |
+
+
+#### SnapshotQueryResponse {#snapshotqueryresponse}
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `type` | [SnapshotQueryResponse.SnapshotType](#snapshotqueryresponsesnapshottype) |  |  |
+| `base_index` | [uint64](#uint64) |  |  |
+| `tip_index` | [uint64](#uint64) |  |  |
+| `object_key` | [string](#string) |  | object_key is the path in the shared storage bucket |
+| `sha256` | [bytes](#bytes) |  |  |
+| `size_bytes` | [int64](#int64) |  |  |
+
+
 #### SnapshotRequest {#snapshotrequest}
 
 | Field | Type | Label | Description |
@@ -671,6 +692,16 @@ ReplicateResponse response to the ReplicateRequest
 | ---- | ------ | ----------- |
 | `USE_SNAPSHOT` | 0 | USE_SNAPSHOT occurs when leader has no longer the specified `leader_index` in the log. Follower must use `GetSnapshot` to catch up. |
 | `LEADER_BEHIND` | 1 | LEADER_BEHIND occurs when the index of the leader is smaller than requested `leader_index`. This should never happen. Manual intervention needed. |
+
+
+
+#### SnapshotQueryResponse.SnapshotType {#snapshotqueryresponsesnapshottype}
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| `NONE` | 0 |  |
+| `FULL` | 1 |  |
+| `INCREMENTAL` | 2 |  |
 
 
 
