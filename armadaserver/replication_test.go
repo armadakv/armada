@@ -3,13 +3,17 @@
 package armadaserver
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft/raftpb"
+	"github.com/armadakv/armada/replication/store"
+	"github.com/armadakv/objfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	"google.golang.org/grpc"
@@ -210,6 +214,37 @@ func TestSnapshotServer_Stream(t *testing.T) {
 		}
 		require.NotEmpty(t, raw, "snapshot data must not be empty for a table with data")
 	})
+}
+
+func TestSnapshotServer_Query(t *testing.T) {
+	bucket, err := objfs.NewLocal(t.TempDir())
+	require.NoError(t, err)
+	meta := store.Meta{
+		Table:     "orders",
+		Type:      store.SnapshotTypeIncremental,
+		BaseIndex: 100,
+		TipIndex:  150,
+		SizeBytes: 1024,
+		SHA256:    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+	}
+	raw, err := json.Marshal(meta)
+	require.NoError(t, err)
+	require.NoError(t, bucket.Upload(context.Background(), store.IncrMetaKey("orders", 100, 150), bytes.NewReader(raw)))
+
+	s := &SnapshotServer{
+		Tables:        newInMemTestEngine(t, "orders"),
+		SnapshotStore: bucket,
+	}
+	resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+		Table:         "orders",
+		FollowerIndex: 120,
+	})
+	require.NoError(t, err)
+	require.Equal(t, armadapb.SnapshotQueryResponse_INCREMENTAL, resp.Type)
+	require.Equal(t, uint64(100), resp.BaseIndex)
+	require.Equal(t, uint64(150), resp.TipIndex)
+	require.Equal(t, store.IncrSnapKey("orders", 100, 150), resp.ObjectKey)
+	require.Len(t, resp.Sha256, 32)
 }
 
 type captureLogStream struct {

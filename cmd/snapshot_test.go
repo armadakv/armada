@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/armadakv/objfs"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,9 +22,16 @@ func TestNewSharedStoreBucket_None(t *testing.T) {
 }
 
 func TestNewSharedStoreBucket_Unsupported(t *testing.T) {
-	_, err := newSharedStoreBucket("s3")
+	_, err := newSharedStoreBucket("gcs")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported backend")
+}
+
+func TestNewSharedStoreBucket_S3MissingBucket(t *testing.T) {
+	viper.Set("shared-store.s3.bucket", "")
+	_, err := newSharedStoreBucket("s3")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "shared-store: s3 config missing 'bucket'")
 }
 
 func TestNewSharedStoreBucket_Filesystem(t *testing.T) {
@@ -35,9 +41,6 @@ func TestNewSharedStoreBucket_Filesystem(t *testing.T) {
 	bkt, err := newSharedStoreBucket("filesystem")
 	require.NoError(t, err)
 	require.NotNil(t, bkt)
-
-	_, ok := bkt.(objfs.Bucket)
-	assert.True(t, ok)
 }
 
 func TestNewSharedStoreBucket_FilesystemMissingDirectory(t *testing.T) {

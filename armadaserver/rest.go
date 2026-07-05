@@ -39,6 +39,7 @@ func init() {
 // RESTServer is server exposing debug/healthcheck/metrics services of Regatta.
 type RESTServer struct {
 	addr       string
+	mux        *http.ServeMux
 	httpServer *http.Server
 	log        *zap.SugaredLogger
 }
@@ -87,6 +88,7 @@ func NewRESTServer(addr string, readTimeout time.Duration) *RESTServer {
 
 	return &RESTServer{
 		addr: addr,
+		mux:  mux,
 		httpServer: &http.Server{
 			Addr:        addr,
 			Handler:     gzhttp.GzipHandler(mux),
@@ -95,6 +97,11 @@ func NewRESTServer(addr string, readTimeout time.Duration) *RESTServer {
 		},
 		log: l,
 	}
+}
+
+// Handle registers an additional handler on the REST mux.
+func (s *RESTServer) Handle(pattern string, handler http.Handler) {
+	s.mux.Handle(pattern, handler)
 }
 
 // ListenAndServe starts underlying HTTP server.

@@ -1,3 +1,5 @@
+// Copyright Armada Contributors
+
 package store
 
 import (
@@ -8,6 +10,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/table"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -21,7 +25,7 @@ func TestSnapshotHTTPHandler(t *testing.T) {
 	err := bucket.Upload(context.Background(), "snapshots/t/full/1.snap", bytes.NewReader([]byte("testdata")))
 	require.NoError(t, err)
 
-	handler := NewSnapshotHTTPHandler(bucket, log)
+	handler := NewSnapshotHTTPHandler(bucket, testLiveTableService{}, log)
 
 	tests := []struct {
 		name           string
@@ -41,7 +45,7 @@ func TestSnapshotHTTPHandler(t *testing.T) {
 			name:           "invalid path prefix",
 			method:         http.MethodGet,
 			path:           "/other/path/file",
-			expectedStatus: http.StatusBadRequest,
+			expectedStatus: http.StatusNotFound,
 		},
 		{
 			name:           "not found",
@@ -80,9 +84,10 @@ func TestSnapshotHTTPHandler(t *testing.T) {
 			assert.Equal(t, tt.expectedStatus, resp.StatusCode)
 
 			if tt.expectedStatus == http.StatusOK {
-				if tt.method == http.MethodGet {
+				switch tt.method {
+				case http.MethodGet:
 					assert.Equal(t, tt.expectedBody, string(body))
-				} else if tt.method == http.MethodHead {
+				case http.MethodHead:
 					assert.Empty(t, string(body))
 				}
 				assert.Equal(t, tt.expectedLength, resp.Header.Get("Content-Length"))
@@ -100,7 +105,7 @@ func TestSnapshotHTTPHandlerContinuation(t *testing.T) {
 	err := bucket.Upload(context.Background(), "snapshots/t/full/1.snap", bytes.NewReader(testData))
 	require.NoError(t, err)
 
-	handler := NewSnapshotHTTPHandler(bucket, log)
+	handler := NewSnapshotHTTPHandler(bucket, testLiveTableService{}, log)
 
 	req := httptest.NewRequest(http.MethodGet, "/snapshots/t/full/1.snap", nil)
 	w := httptest.NewRecorder()
@@ -125,4 +130,61 @@ func TestSnapshotHTTPHandlerContinuation(t *testing.T) {
 	require.NoError(t, resp.Body.Close())
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.Equal(t, string(testData[1:]), string(body), "rest read")
+}
+
+func TestSnapshotHTTPHandler_LiveSnapshot(t *testing.T) {
+	log := zaptest.NewLogger(t).Sugar()
+	handler := NewSnapshotHTTPHandler(nil, testLiveTableService{
+		getTable: func(name string) (table.ActiveTable, error) {
+			return table.ActiveTable{}, serrors.ErrTableNotFound
+		},
+	}, log)
+
+	req := httptest.NewRequest(http.MethodGet, "/snapshots-live/orders", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	_, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+func TestSnapshotHTTPHandler_NoSharedStore(t *testing.T) {
+	log := zaptest.NewLogger(t).Sugar()
+	handler := NewSnapshotHTTPHandler(nil, testLiveTableService{}, log)
+
+	req := httptest.NewRequest(http.MethodGet, "/snapshots/t/full/1.snap", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+}
+
+type testLiveTableService struct {
+	getTable func(name string) (table.ActiveTable, error)
+}
+
+func (s testLiveTableService) GetTable(name string) (table.ActiveTable, error) {
+	return s.getTable(name)
+}
+
+func TestSnapshotHTTPHandler_LiveTableNotFound(t *testing.T) {
+	log := zaptest.NewLogger(t).Sugar()
+	handler := NewSnapshotHTTPHandler(nil, testLiveTableService{
+		getTable: func(name string) (table.ActiveTable, error) {
+			return table.ActiveTable{}, serrors.ErrTableNotFound
+		},
+	}, log)
+
+	req := httptest.NewRequest(http.MethodGet, "/snapshots-live/missing", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 }

@@ -3,11 +3,13 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
 
 	"github.com/armadakv/armada/replication/store"
 	"github.com/armadakv/objfs"
+	objfss3 "github.com/armadakv/objfs/s3"
 	"github.com/spf13/viper"
 )
 
@@ -34,8 +36,18 @@ func newSharedStoreBucket(backend string) (objfs.Bucket, error) {
 			return nil, fmt.Errorf("shared-store: create filesystem bucket: %w", err)
 		}
 		return bkt, nil
+	case "s3":
+		bucket := viper.GetString("shared-store.s3.bucket")
+		if bucket == "" {
+			return nil, fmt.Errorf("shared-store: s3 config missing 'bucket' (set --shared-store.s3.bucket)")
+		}
+		bkt, err := objfss3.Open(context.Background(), bucket)
+		if err != nil {
+			return nil, fmt.Errorf("shared-store: create s3 bucket: %w", err)
+		}
+		return bkt, nil
 	default:
-		return nil, fmt.Errorf("shared-store: unsupported backend %q (supported: none or empty string to disable, filesystem)", backend)
+		return nil, fmt.Errorf("shared-store: unsupported backend %q (supported: none, filesystem, s3)", backend)
 	}
 }
 

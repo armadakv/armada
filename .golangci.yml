@@ -8,7 +8,7 @@ linters:
     - godot
     - goheader
     - gomoddirectives
-    - gomodguard
+    - gomodguard_v2
     - gosec
     - govet
     - ineffassign
@@ -22,7 +22,10 @@ linters:
     - whitespace
   settings:
     goheader:
-      template: Copyright JAMF Software, LLC
+      values:
+        regexp:
+          COPYRIGHT_HOLDER: (JAMF Software, LLC|Armada Contributors)
+      template: Copyright {{ COPYRIGHT_HOLDER }}
     gosec:
       excludes:
         - G104
@@ -45,7 +48,7 @@ linters:
         path: _test\.go
       - linters:
           - staticcheck
-        text: 'SA4006:'
+        text: "SA4006:"
     paths:
       - raft
       - vfs

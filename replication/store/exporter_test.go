@@ -117,7 +117,7 @@ func TestExportFull_Basic(t *testing.T) {
 	assert.Equal(t, "leader-1", m.NodeID)
 	assert.Equal(t, SnapshotFormat, m.Format)
 	assert.NotEmpty(t, m.SHA256)
-	assert.Greater(t, m.SizeBytes, int64(0))
+	assert.Positive(t, m.SizeBytes, int64(0))
 }
 
 // TestExportFull_Idempotent verifies that calling ExportFull twice at the same
@@ -410,7 +410,7 @@ func TestSnapshotFileFormat_WrittenToReader(t *testing.T) {
 	defer sf.Close()
 	_, err = sf.File.Write(snapData)
 	require.NoError(t, err)
-	_, err = sf.File.Seek(0, 0)
+	_, err = sf.Seek(0, 0)
 	require.NoError(t, err)
 
 	var readCmds []*armadapb.Command

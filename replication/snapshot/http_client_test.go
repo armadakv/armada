@@ -1,3 +1,5 @@
+// Copyright Armada Contributors
+
 package snapshot
 
 import (

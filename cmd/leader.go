@@ -4,15 +4,18 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/replication/store"
 	"github.com/armadakv/armada/security"
 	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/objfs"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -121,11 +124,13 @@ func leader(_ *cobra.Command, _ []string) error {
 	// Start snapshot exporter and GC worker when a non-none backend is configured.
 	snapshotCtx, cancelSnapshot := context.WithCancel(context.Background())
 	defer cancelSnapshot()
+	var sharedStoreBucket objfs.Bucket
 	if backend := viper.GetString("shared-store.backend"); backend != "" && backend != "none" {
 		bkt, err := newSharedStoreBucket(backend)
 		if err != nil {
 			return fmt.Errorf("snapshot-store: %w", err)
 		}
+		sharedStoreBucket = bkt
 		// Use the Raft address as a human-readable, cluster-unique node identifier
 		// in snapshot meta files. There is no separate node-id config option.
 		nodeAddress := viper.GetString("raft.address")
@@ -187,9 +192,11 @@ func leader(_ *cobra.Command, _ []string) error {
 					viper.GetUint64("replication.max-send-message-size-bytes"),
 				)
 				armadapb.RegisterMetadataServer(r, &armadaserver.MetadataServer{Tables: engine})
-				armadapb.RegisterSnapshotServer(r, &armadaserver.SnapshotServer{Tables: engine})
+				armadapb.RegisterSnapshotServer(r, &armadaserver.SnapshotServer{Tables: engine, SnapshotStore: sharedStoreBucket})
 				armadapb.RegisterKVServer(r, &armadaserver.KVServer{Storage: engine})
 				armadapb.RegisterLogServer(r, ls)
+			}, func(mux *http.ServeMux) {
+				mux.Handle("/", store.NewSnapshotHTTPHandler(sharedStoreBucket, engine, logger.Named("snapshot-http").Sugar()))
 			})
 			if err != nil {
 				return fmt.Errorf("failed to create Replication server: %w", err)
@@ -214,7 +221,12 @@ func leader(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar)) (*armadaserver.Server, error) {
+type replicationServer interface {
+	Serve() error
+	Shutdown()
+}
+
+func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar), httpReg func(mux *http.ServeMux)) (replicationServer, error) {
 	addr, secure, nw := resolveURL(viper.GetString("replication.address"))
 	lopts := []logging.Option{logging.WithLogOnEvents(logging.FinishCall), logging.WithLevels(codeToLevel)}
 	opts := []grpc.ServerOption{
@@ -227,6 +239,7 @@ func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar))
 			logging.UnaryServerInterceptor(interceptorLogger(log), lopts...),
 		),
 	}
+	var tlsCfg *tls.Config
 	if secure {
 		ti := security.TLSInfo{
 			CertFile:        viper.GetString("replication.cert-filename"),
@@ -241,7 +254,10 @@ func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar))
 		if err != nil {
 			return nil, fmt.Errorf("cannot build tls config: %w", err)
 		}
-		opts = append(opts, grpc.Creds(credentials.NewTLS(cfg)))
+		tlsCfg = cfg
+		if httpReg == nil {
+			opts = append(opts, grpc.Creds(credentials.NewTLS(cfg)))
+		}
 	}
 	// Create replication server
 	l, err := net.Listen(nw, addr)
@@ -251,7 +267,17 @@ func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar))
 	server := armadaserver.NewServer(l, log.Sugar(), opts...)
 	reg(server)
 	grpcmetrics.InitializeMetrics(server.Server)
-	return server, nil
+	if httpReg == nil {
+		return server, nil
+	}
+
+	mux := http.NewServeMux()
+	httpReg(mux)
+	listener := l
+	if secure {
+		listener = tls.NewListener(l, tlsCfg)
+	}
+	return armadaserver.NewMixedServer(listener, server, mux, log.Sugar()), nil
 }
 
 func codeToLevel(code codes.Code) logging.Level {
