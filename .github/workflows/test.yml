@@ -41,9 +41,6 @@ jobs:
         run: go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@v0.1.0
       - name: Test
         shell: bash
-<<<<<<< HEAD
-        run: go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/...
-=======
         run: |
           mkdir -p ctrf
           set -o pipefail
@@ -56,7 +53,6 @@ jobs:
           summary-report: true
           failed-report: true
         if: always()
->>>>>>> origin/master
       - name: Coverage track
         uses: coverallsapp/github-action@v2
         with:

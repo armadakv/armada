@@ -3,12 +3,8 @@ module github.com/armadakv/armada
 go 1.26.0
 
 require (
-<<<<<<< HEAD
-	github.com/VictoriaMetrics/metrics v1.43.2
-	github.com/armadakv/objfs v0.2.0
-=======
 	github.com/VictoriaMetrics/metrics v1.44.0
->>>>>>> origin/master
+	github.com/armadakv/objfs v0.2.0
 	github.com/armon/go-metrics v0.4.1
 	github.com/benbjohnson/clock v1.3.5
 	github.com/cenkalti/backoff/v4 v4.3.0
@@ -109,10 +105,7 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/mod v0.36.0 // indirect
-<<<<<<< HEAD
-=======
 	golang.org/x/term v0.44.0 // indirect
->>>>>>> origin/master
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/tools v0.45.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect
