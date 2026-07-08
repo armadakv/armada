@@ -14,9 +14,11 @@ import (
 	"github.com/armadakv/armada/armadaserver"
 	"github.com/armadakv/armada/replication/store"
 	"github.com/armadakv/armada/security"
+	"github.com/armadakv/armada/storage"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/objfs"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -84,44 +86,23 @@ func leader(_ *cobra.Command, _ []string) error {
 
 	engineLog := logger.Named("engine")
 
-	// Create and start the engine
+	// Create the engine (but do not start it yet) so that SnapshotNotifier can
+	// be wired before any event-dispatch goroutines are running.
 	config, err := createEngineConfig(engineLog, nil)
 	if err != nil {
 		return err
 	}
 
-	engine, err := startEngine(config)
+	engine, err := storage.New(config)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create engine: %w", err)
 	}
+	prometheus.MustRegister(engine)
 	defer engine.Close()
 
-	go func() {
-		waitForEngine(context.Background(), engine, log)
-
-		// Create and delete tables as specified in configuration
-		tNames := viper.GetStringSlice("tables.names")
-		for _, table := range tNames {
-			log.Debugf("creating table %s", table)
-			if _, err := engine.CreateTable(table); err != nil {
-				if errors.Is(err, serrors.ErrTableExists) {
-					log.Infof("table %s already exist, skipping creation", table)
-				} else {
-					log.Errorf("failed to create table %s: %v", table, err)
-				}
-			}
-		}
-		dNames := viper.GetStringSlice("tables.delete")
-		for _, table := range dNames {
-			log.Debugf("deleting table %s", table)
-			err := engine.DeleteTable(table)
-			if err != nil {
-				log.Errorf("failed to delete table %s: %v", table, err)
-			}
-		}
-	}()
-
 	// Start snapshot exporter and GC worker when a non-none backend is configured.
+	// This must happen before engine.Start() to avoid a data race on SnapshotNotifier
+	// and to ensure no compaction notifications are dropped.
 	snapshotCtx, cancelSnapshot := context.WithCancel(context.Background())
 	defer cancelSnapshot()
 	var sharedStoreBucket objfs.Bucket
@@ -147,7 +128,35 @@ func leader(_ *cobra.Command, _ []string) error {
 		go gc.Run(snapshotCtx)
 	}
 
-	// Start servers
+	if err := engine.Start(); err != nil {
+		return fmt.Errorf("failed to start engine: %w", err)
+	}
+
+	go func() {
+		waitForEngine(context.Background(), engine, log)
+
+		// Create and delete tables as specified in configuration.
+		tNames := viper.GetStringSlice("tables.names")
+		for _, table := range tNames {
+			log.Debugf("creating table %s", table)
+			if _, err := engine.CreateTable(table); err != nil {
+				if errors.Is(err, serrors.ErrTableExists) {
+					log.Infof("table %s already exist, skipping creation", table)
+				} else {
+					log.Errorf("failed to create table %s: %v", table, err)
+				}
+			}
+		}
+		dNames := viper.GetStringSlice("tables.delete")
+		for _, table := range dNames {
+			log.Debugf("deleting table %s", table)
+			err := engine.DeleteTable(table)
+			if err != nil {
+				log.Errorf("failed to delete table %s: %v", table, err)
+			}
+		}
+	}()
+
 	{
 		// Create API server
 		{

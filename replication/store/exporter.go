@@ -57,8 +57,9 @@ type ExporterConfig struct {
 // previous tip (full or incremental). Because log compaction only fires on
 // the Raft leader, only the leader writes incremental artefacts.
 //
-// Full and incremental artefacts are independent: GC ages them out by
-// retention time without any relationship between the two types.
+// GC treats the most recent full snapshot as the active anchor: it is always
+// retained, and only incremental artefacts whose base index falls at or after
+// the latest full tip are preserved as part of the active chain.
 type SnapshotExporter struct {
 	cfg    ExporterConfig
 	tables TableSnapshotService
@@ -164,7 +165,11 @@ func (e *SnapshotExporter) ExportFull(ctx context.Context, tableName string) err
 	metaKey := FullMetaKey(tableName, tipIndex)
 
 	// Idempotency: skip if already committed.
-	if exists, _ := e.cfg.Bucket.Exists(ctx, metaKey); exists {
+	exists, err := e.cfg.Bucket.Exists(ctx, metaKey)
+	if err != nil {
+		return fmt.Errorf("check existing full snapshot: %w", err)
+	}
+	if exists {
 		e.log.Debugf("full snapshot for table %s at index %d already committed, skipping", tableName, tipIndex)
 		return nil
 	}
@@ -255,7 +260,11 @@ func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName stri
 	size := fi.Size()
 
 	metaKey := IncrMetaKey(tableName, baseIndex, tipIndex)
-	if exists, _ := e.cfg.Bucket.Exists(ctx, metaKey); exists {
+	exists, err := e.cfg.Bucket.Exists(ctx, metaKey)
+	if err != nil {
+		return fmt.Errorf("check existing incremental snapshot: %w", err)
+	}
+	if exists {
 		e.log.Debugf("incremental snapshot for table %s (%d→%d) already committed, skipping", tableName, baseIndex, tipIndex)
 		return nil
 	}
@@ -326,7 +335,8 @@ func (e *SnapshotExporter) uploadMeta(ctx context.Context, key string, m Meta) e
 }
 
 // fileSHA256 computes the hex-encoded SHA-256 of the raw file content,
-// seeking to the start before reading and restoring the position afterwards.
+// seeking to the start before reading. The file is left positioned at EOF
+// after the call; callers that need to re-read must seek themselves.
 func fileSHA256(f *os.File) (string, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return "", err

@@ -36,7 +36,11 @@ type GCWorker struct {
 }
 
 // NewGCWorker creates a new GCWorker. The caller must call Run to start it.
+// If cfg.Interval is zero or negative it defaults to 1 hour.
 func NewGCWorker(cfg GCConfig, log *zap.SugaredLogger) *GCWorker {
+	if cfg.Interval <= 0 {
+		cfg.Interval = time.Hour
+	}
 	return &GCWorker{
 		cfg: cfg,
 		log: log.Named("snapshot-gc"),
@@ -65,6 +69,9 @@ func (g *GCWorker) Run(ctx context.Context) {
 
 // RunOnce performs a single GC cycle. It is exported so tests can trigger it directly.
 func (g *GCWorker) RunOnce(ctx context.Context) error {
+	if g.cfg.Bucket == nil {
+		return fmt.Errorf("GCConfig.Bucket must not be nil")
+	}
 	tableArtefacts, err := g.collectArtefacts(ctx)
 	if err != nil {
 		return fmt.Errorf("collect artefacts: %w", err)
@@ -253,7 +260,11 @@ func (g *GCWorker) deleteArtefact(ctx context.Context, a tableArtefact) error {
 		Key:       a.snapKey,
 		DeletedAt: time.Now().UTC().Format(time.RFC3339),
 	}
-	tombstoneBytes, _ := json.Marshal(tombstone)
+	tombstoneBytes, err := json.Marshal(tombstone)
+	if err != nil {
+		g.log.Warnf("GC: failed to marshal tombstone for %s: %v", a.snapKey, err)
+		tombstoneBytes = []byte{}
+	}
 	logKey := GCLogKey(time.Now())
 	if err := g.cfg.Bucket.Upload(ctx, logKey, bytes.NewReader(tombstoneBytes)); err != nil {
 		g.log.Warnf("GC: failed to write tombstone for %s: %v", a.snapKey, err)

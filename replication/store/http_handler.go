@@ -7,7 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"path/filepath"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -59,7 +59,7 @@ func (h *SnapshotHTTPHandler) serveSharedSnapshot(w http.ResponseWriter, r *http
 		return
 	}
 
-	objectKey := filepath.Clean(filepath.Join("snapshots", r.PathValue("object")))
+	objectKey := path.Clean(path.Join("snapshots", r.PathValue("object")))
 	if objectKey == "snapshots" || !strings.HasPrefix(objectKey, "snapshots/") {
 		http.Error(w, "Invalid path", http.StatusBadRequest)
 		return

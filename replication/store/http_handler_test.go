@@ -122,13 +122,14 @@ func TestSnapshotHTTPHandlerContinuation(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodGet, "/snapshots/t/full/1.snap", nil)
 	req.Header.Set("Range", "bytes=1-")
-	handler.ServeHTTP(w, req)
+	w2 := httptest.NewRecorder()
+	handler.ServeHTTP(w2, req)
 
-	resp = w.Result()
+	resp = w2.Result()
 	body, err := io.ReadAll(resp.Body)
 	require.NoError(t, err)
 	require.NoError(t, resp.Body.Close())
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusPartialContent, resp.StatusCode)
 	require.Equal(t, string(testData[1:]), string(body), "rest read")
 }
 

@@ -16,7 +16,6 @@ import (
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table"
 	"github.com/benbjohnson/clock"
-	"github.com/gogo/status"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
@@ -25,6 +24,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
 
 func TestTableQueueLenStore(t *testing.T) {
