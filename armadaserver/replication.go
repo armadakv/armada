@@ -191,7 +191,17 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "failed to read snapshot metadata: %v", err)
 	}
-	meta, ok := store.SelectBestSnapshot(metas, req.GetFollowerIndex())
+
+	// TODO: once incremental restore is implemented in engine.Restore, remove
+	// the filter below and pass all metas to SelectBestSnapshot directly.
+	var fullMetas []store.Meta
+	for _, m := range metas {
+		if m.Type == store.SnapshotTypeFull {
+			fullMetas = append(fullMetas, m)
+		}
+	}
+
+	meta, ok := store.SelectBestSnapshot(fullMetas, req.GetFollowerIndex())
 	if !ok {
 		return &armadapb.SnapshotQueryResponse{
 			Type: armadapb.SnapshotQueryResponse_NONE,
@@ -205,6 +215,8 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 		snapType = armadapb.SnapshotQueryResponse_FULL
 		key = store.FullSnapKey(meta.Table, meta.TipIndex)
 	case store.SnapshotTypeIncremental:
+		// TODO: incremental restore is not yet implemented; this branch is
+		// unreachable until the full-only filter above is removed.
 		snapType = armadapb.SnapshotQueryResponse_INCREMENTAL
 		key = store.IncrSnapKey(meta.Table, meta.BaseIndex, meta.TipIndex)
 	default:

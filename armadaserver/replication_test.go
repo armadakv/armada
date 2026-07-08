@@ -217,34 +217,64 @@ func TestSnapshotServer_Stream(t *testing.T) {
 }
 
 func TestSnapshotServer_Query(t *testing.T) {
-	bucket, err := objfs.NewLocal(t.TempDir())
-	require.NoError(t, err)
-	meta := store.Meta{
-		Table:     "orders",
-		Type:      store.SnapshotTypeIncremental,
-		BaseIndex: 100,
-		TipIndex:  150,
-		SizeBytes: 1024,
-		SHA256:    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
-	}
-	raw, err := json.Marshal(meta)
-	require.NoError(t, err)
-	require.NoError(t, bucket.Upload(context.Background(), store.IncrMetaKey("orders", 100, 150), bytes.NewReader(raw)))
+	t.Run("incremental only returns NONE (incremental restore not yet supported)", func(t *testing.T) {
+		bucket, err := objfs.NewLocal(t.TempDir())
+		require.NoError(t, err)
+		meta := store.Meta{
+			Table:     "orders",
+			Type:      store.SnapshotTypeIncremental,
+			BaseIndex: 100,
+			TipIndex:  150,
+			SizeBytes: 1024,
+			SHA256:    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+		}
+		raw, err := json.Marshal(meta)
+		require.NoError(t, err)
+		require.NoError(t, bucket.Upload(context.Background(), store.IncrMetaKey("orders", 100, 150), bytes.NewReader(raw)))
 
-	s := &SnapshotServer{
-		Tables:        newInMemTestEngine(t, "orders"),
-		SnapshotStore: bucket,
-	}
-	resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
-		Table:         "orders",
-		FollowerIndex: 120,
+		s := &SnapshotServer{
+			Tables:        newInMemTestEngine(t, "orders"),
+			SnapshotStore: bucket,
+		}
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+		})
+		require.NoError(t, err)
+		// No full snapshot available — incremental restore is not yet supported.
+		require.Equal(t, armadapb.SnapshotQueryResponse_NONE, resp.Type)
 	})
-	require.NoError(t, err)
-	require.Equal(t, armadapb.SnapshotQueryResponse_INCREMENTAL, resp.Type)
-	require.Equal(t, uint64(100), resp.BaseIndex)
-	require.Equal(t, uint64(150), resp.TipIndex)
-	require.Equal(t, store.IncrSnapKey("orders", 100, 150), resp.ObjectKey)
-	require.Len(t, resp.Sha256, 32)
+
+	t.Run("full snapshot is selected and returned", func(t *testing.T) {
+		bucket, err := objfs.NewLocal(t.TempDir())
+		require.NoError(t, err)
+		meta := store.Meta{
+			Table:     "orders",
+			Type:      store.SnapshotTypeFull,
+			BaseIndex: 0,
+			TipIndex:  150,
+			SizeBytes: 2048,
+			SHA256:    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+		}
+		raw, err := json.Marshal(meta)
+		require.NoError(t, err)
+		require.NoError(t, bucket.Upload(context.Background(), store.FullMetaKey("orders", 150), bytes.NewReader(raw)))
+
+		s := &SnapshotServer{
+			Tables:        newInMemTestEngine(t, "orders"),
+			SnapshotStore: bucket,
+		}
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
+		require.Equal(t, uint64(0), resp.BaseIndex)
+		require.Equal(t, uint64(150), resp.TipIndex)
+		require.Equal(t, store.FullSnapKey("orders", 150), resp.ObjectKey)
+		require.Len(t, resp.Sha256, 32)
+	})
 }
 
 type captureLogStream struct {
