@@ -330,16 +330,21 @@ func (e *Engine) getHeader(header *armadapb.ResponseHeader, shardID uint64) *arm
 
 // NotifyLogCompacted shadows Manager.NotifyLogCompacted and additionally
 // notifies the SnapshotNotifier (when set) so the snapshot exporter can
-// trigger an incremental export on log compaction. The leadership check is
-// performed by Manager.NotifyLogCompacted; we only notify the exporter when
-// the local node is the Raft leader for the shard.
+// trigger an incremental export on log compaction. Only the Raft leader for
+// the shard triggers the export; followers are skipped.
 func (e *Engine) NotifyLogCompacted(shardID uint64, index uint64) {
 	e.Manager.NotifyLogCompacted(shardID, index)
 	if e.SnapshotNotifier == nil {
 		return
 	}
-	_, _, isLeader, err := e.GetLeaderID(shardID)
-	if err != nil || !isLeader {
+	leaderReplicaID, _, valid, err := e.GetLeaderID(shardID)
+	if err != nil || !valid {
+		return
+	}
+	// GetNodeUser gives us the local replica ID for this shard so we can
+	// compare it against the leader replica ID returned above.
+	nu, err := e.NodeHost.GetNodeUser(shardID)
+	if err != nil || nu.ReplicaID() != leaderReplicaID {
 		return
 	}
 	at, err := e.GetTableByID(shardID)
