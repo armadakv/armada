@@ -341,10 +341,7 @@ func (e *Engine) NotifyLogCompacted(shardID uint64, index uint64) {
 	if err != nil || !valid {
 		return
 	}
-	// GetNodeUser gives us the local replica ID for this shard so we can
-	// compare it against the leader replica ID returned above.
-	nu, err := e.NodeHost.GetNodeUser(shardID)
-	if err != nil || nu.ReplicaID() != leaderReplicaID {
+	if e.cfg.NodeID != leaderReplicaID {
 		return
 	}
 	at, err := e.GetTableByID(shardID)

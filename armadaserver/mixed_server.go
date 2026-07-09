@@ -51,6 +51,6 @@ func (s *MixedServer) Serve() error {
 func (s *MixedServer) Shutdown() {
 	s.log.Infof("stopping replication HTTP+gRPC on: %s", s.listener.Addr())
 	_ = s.httpServer.Shutdown(context.Background())
-	s.grpcServer.Server.Stop()
+	s.grpcServer.Stop()
 	s.log.Infof("stopped replication HTTP+gRPC on: %s", s.listener.Addr())
 }
