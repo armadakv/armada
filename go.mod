@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/VictoriaMetrics/metrics v1.44.0
 	github.com/armadakv/objfs v0.2.0
+	github.com/armadakv/objfs/s3 v0.2.0
 	github.com/armon/go-metrics v0.4.1
 	github.com/benbjohnson/clock v1.3.5
 	github.com/cenkalti/backoff/v4 v4.3.0
@@ -13,20 +14,19 @@ require (
 	github.com/cockroachdb/errors v1.14.0
 	github.com/cockroachdb/pebble/v2 v2.1.6
 	github.com/cockroachdb/redact v1.1.8
-	github.com/gogo/status v1.1.1
 	github.com/golang/snappy v1.0.0
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus v1.1.0
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
-	github.com/hashicorp/memberlist v0.5.4
-	github.com/klauspost/compress v1.18.6
+	github.com/hashicorp/memberlist v0.6.0
+	github.com/klauspost/compress v1.19.0
 	github.com/kr/pretty v0.3.1
 	github.com/lni/goutils v1.4.0
 	github.com/oxtoacart/bpool v0.0.0-20190530202638-03653db5a59c
 	github.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.69.0
+	github.com/prometheus/common v0.70.0
 	github.com/quic-go/quic-go v0.60.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -36,11 +36,11 @@ require (
 	go.uber.org/automaxprocs v1.6.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f
-	golang.org/x/net v0.56.0
-	golang.org/x/sync v0.21.0
-	golang.org/x/sys v0.46.0
+	golang.org/x/net v0.57.0
+	golang.org/x/sync v0.22.0
+	golang.org/x/sys v0.47.0
 	golang.org/x/time v0.15.0
-	google.golang.org/grpc v1.81.1
+	google.golang.org/grpc v1.82.0
 	google.golang.org/protobuf v1.36.11
 )
 
@@ -52,7 +52,6 @@ require (
 	github.com/Masterminds/sprig v2.22.0+incompatible // indirect
 	github.com/RaduBerinde/axisds v0.1.0 // indirect
 	github.com/RaduBerinde/btreemap v0.0.0-20260105202824-d3184786f603 // indirect
-	github.com/armadakv/objfs/s3 v0.2.0 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.42.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.13 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.32.25 // indirect
@@ -83,13 +82,12 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/getsentry/sentry-go v0.46.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/gogo/googleapis v1.4.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.3.1 // indirect
-	github.com/hashicorp/go-metrics v0.5.4 // indirect
+	github.com/hashicorp/go-metrics v0.6.0 // indirect
 	github.com/hashicorp/go-msgpack/v2 v2.1.5 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
@@ -108,7 +106,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.3.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/procfs v0.20.1 // indirect
+	github.com/prometheus/procfs v0.21.0 // indirect
 	github.com/pseudomuto/protoc-gen-doc v1.5.1 // indirect
 	github.com/pseudomuto/protokit v0.2.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
@@ -123,13 +121,12 @@ require (
 	github.com/valyala/histogram v1.2.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
-	golang.org/x/crypto v0.53.0 // indirect
-	golang.org/x/mod v0.36.0 // indirect
-	golang.org/x/term v0.44.0 // indirect
-	golang.org/x/text v0.38.0 // indirect
-	golang.org/x/tools v0.45.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260226221140-a57be14db171 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260406210006-6f92a3bedf2d // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/mod v0.37.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/tools v0.47.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
 	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.6.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
