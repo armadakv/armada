@@ -27,7 +27,6 @@ import (
 
 	"github.com/armadakv/armada/raft/client"
 	"github.com/armadakv/armada/raft/config"
-	"github.com/armadakv/armada/raft/transport"
 	"github.com/armadakv/armada/raft/internal/id"
 	"github.com/armadakv/armada/raft/internal/registry"
 	"github.com/armadakv/armada/raft/internal/rsm"
@@ -39,6 +38,7 @@ import (
 	pb "github.com/armadakv/armada/raft/raftpb"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/raft/tan"
+	"github.com/armadakv/armada/raft/transport"
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/syncutil"
@@ -254,9 +254,9 @@ var firstError = utils.FirstError
 
 // nodeHostOptions holds optional overrides for NodeHost construction.
 type nodeHostOptions struct {
-	transport      raftio.ITransport
-	nodeRegistry   raftio.INodeRegistry
-	transportOpts  []transport.TransportOption
+	transport     raftio.ITransport
+	nodeRegistry  raftio.INodeRegistry
+	transportOpts []transport.TransportOption
 }
 
 // Option is a functional option for NewNodeHost.

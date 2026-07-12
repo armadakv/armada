@@ -47,7 +47,7 @@ armada leader [flags]
                                                                This is also the identifier for a Storage instance. RaftAddress should be set to the public address that can be accessed from remote Storage instances.
       --raft.compaction-overhead uint                          CompactionOverhead defines the number of most recent entries to keep after each Raft log compaction.
                                                                Raft log compaction is performed automatically every time when a snapshot is created. (default 5000)
-      --raft.election-rtt int                                  ElectionRTT is the minimum number of message RTT between elections. Message RTT is defined by NodeHostConfig.RTTMillisecond. 
+      --raft.election-rtt int                                  ElectionRTT is the minimum number of message RTT between elections. Message RTT is defined by NodeHostConfig.RTTMillisecond.
                                                                The Raft paper suggests it to be a magnitude greater than HeartbeatRTT, which is the interval between two heartbeats. In Raft, the actual interval between elections is randomized to be between ElectionRTT and 2 * ElectionRTT.
                                                                As an example, assuming NodeHostConfig.RTTMillisecond is 100 millisecond, to set the election interval to be 1 second, then ElectionRTT should be set to 10.
                                                                When CheckQuorum is enabled, ElectionRTT also defines the interval for checking leader quorum. (default 20)
@@ -76,14 +76,14 @@ armada leader [flags]
       --raft.snapshot-entries uint                             SnapshotEntries defines how often the state machine should be snapshot automatically.
                                                                It is defined in terms of the number of applied Raft log entries.
                                                                SnapshotEntries can be set to 0 to disable such automatic snapshotting. (default 10000)
-      --raft.snapshot-recovery-type string                     Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems. 
+      --raft.snapshot-recovery-type string                     Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
                                                                Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.
       --raft.state-machine-dir string                          StateMachineDir persistent storage for the state machine. (default "/tmp/armada/state-machine")
       --raft.tls-ca-file string                                Path to the CA certificate file used to verify raft peer certificates.
       --raft.tls-cert-file string                              Path to the TLS certificate file for mutual TLS between raft peers. Must be set together with raft.tls-key-file and raft.tls-ca-file.
       --raft.tls-key-file string                               Path to the TLS private key file for mutual TLS between raft peers.
-      --raft.wal-dir string                                    WALDir is the directory used for storing the WAL of Raft entries. 
-                                                               It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data. 
+      --raft.wal-dir string                                    WALDir is the directory used for storing the WAL of Raft entries.
+                                                               It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data.
                                                                Leave WALDir to have zero value will have everything stored in NodeHostDir.
       --replication.address string                             Replication API server address. The address the server listens on. (default "http://0.0.0.0:8444")
       --replication.ca-filename string                         Path to the API server CA cert file.
@@ -93,8 +93,14 @@ armada leader [flags]
       --replication.key-filename string                        Path to the API server private key file.
       --replication.max-send-message-size-bytes uint           The target maximum size of single replication message allowed to send.
                                                                Under some circumstances, a larger message could be sent. Followers should be able to accept slightly larger messages. (default 4194304)
+      --replication.snapshot-timeout duration                  Timeout for a single incremental snapshot export triggered by log compaction. (default 10m0s)
       --rest.address string                                    REST API server address. (default "http://127.0.0.1:8079")
       --rest.read-timeout duration                             Maximum duration for reading the entire request. (default 5s)
+      --shared-store.backend string                            Blob store backend. Supported values: none (disabled), filesystem, s3. (default "none")
+      --shared-store.filesystem.directory string               Directory path to use for the filesystem backend.
+      --shared-store.gc-interval duration                      How often the GC worker runs to delete expired artefacts from the shared store. (default 1h0m0s)
+      --shared-store.retention duration                        Maximum age of artefacts in the shared store. Older artefacts are eligible for GC. (default 48h0m0s)
+      --shared-store.s3.bucket string                          Bucket name to use for the S3 shared-store backend.
       --storage.block-cache-size int                           Shared block cache size in bytes, the cache is used to hold uncompressed blocks of data in memory. (default 16777216)
       --storage.table-cache-size int                           Shared table cache size, the cache is used to hold handles to open SSTs. (default 1024)
       --tables.enabled                                         Whether tables API is enabled. (default true)

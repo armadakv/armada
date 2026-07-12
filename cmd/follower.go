@@ -33,6 +33,7 @@ func init() {
 	followerCmd.PersistentFlags().AddFlagSet(maintenanceFlagSet)
 	followerCmd.PersistentFlags().AddFlagSet(tablesFlagSet)
 	followerCmd.PersistentFlags().AddFlagSet(experimentalFlagSet)
+	followerCmd.PersistentFlags().AddFlagSet(sharedStoreFlagSet)
 
 	// Replication flags
 	followerCmd.PersistentFlags().String("replication.leader-address", "localhost:8444", "Address of the leader replication API to connect to.")
@@ -50,7 +51,7 @@ func init() {
 	followerCmd.PersistentFlags().Duration("replication.snapshot-rpc-timeout", 1*time.Hour, "The snapshot RPC timeout.")
 	followerCmd.PersistentFlags().Uint64("replication.max-recv-message-size-bytes", 8*1024*1024, "The maximum size of single replication message allowed to receive.")
 	followerCmd.PersistentFlags().Uint64("replication.max-recovery-in-flight", 1, "The maximum number of recovery goroutines allowed to run in this instance.")
-	followerCmd.PersistentFlags().Uint64("replication.max-snapshot-recv-bytes-per-second", 0, "Maximum bytes per second received by the snapshot API client, default value 0 means unlimited.")
+	followerCmd.PersistentFlags().String("replication.snapshot-source", "auto", "Snapshot object source: auto, direct, or proxy. direct uses shared-store backend from follower config; proxy uses leader HTTP endpoint.")
 }
 
 var followerCmd = &cobra.Command{
@@ -113,7 +114,11 @@ func follower(_ *cobra.Command, _ []string) error {
 		_ = conn.Close()
 	}()
 	{
-		d := replication.NewManager(engine, nQueue, conn, replication.Config{
+		snapshotGetter, snapshotQuery, err := createSnapshotAccess(logger)
+		if err != nil {
+			return err
+		}
+		d := replication.NewManager(engine, nQueue, conn, snapshotGetter, snapshotQuery, replication.Config{
 			ReconcileInterval: viper.GetDuration("replication.reconcile-interval"),
 			Workers: replication.WorkerConfig{
 				PollInterval:        viper.GetDuration("replication.poll-interval"),
@@ -121,7 +126,6 @@ func follower(_ *cobra.Command, _ []string) error {
 				LogRPCTimeout:       viper.GetDuration("replication.log-rpc-timeout"),
 				SnapshotRPCTimeout:  viper.GetDuration("replication.snapshot-rpc-timeout"),
 				MaxRecoveryInFlight: int64(viper.GetUint64("replication.max-recovery-in-flight")),
-				MaxSnapshotRecv:     viper.GetUint64("replication.max-snapshot-recv-bytes-per-second"),
 			},
 		})
 		prometheus.MustRegister(d)
@@ -216,4 +220,46 @@ func createReplicationConn(log *zap.Logger) (*grpc.ClientConn, error) {
 		return nil, err
 	}
 	return replConn, nil
+}
+
+func createSnapshotAccess(logger *zap.Logger) (replication.SnapshotObjectGetter, replication.SnapshotQueryResolver, error) {
+	source := viper.GetString("replication.snapshot-source")
+	backend := viper.GetString("shared-store.backend")
+	if source == "direct" || (source == "auto" && backend != "" && backend != "none") {
+		bkt, err := newSharedStoreBucket(backend)
+		if err != nil {
+			return nil, nil, fmt.Errorf("cannot create shared-store bucket for direct snapshot mode: %w", err)
+		}
+		if bkt == nil {
+			return nil, nil, fmt.Errorf("snapshot source %q requires shared-store backend configuration", source)
+		}
+		return replication.NewBucketSnapshotObjectGetter(bkt), replication.NewBucketSnapshotQueryResolver(bkt), nil
+	}
+	if source != "proxy" && source != "auto" {
+		return nil, nil, fmt.Errorf("invalid replication.snapshot-source %q: must be one of auto,direct,proxy", source)
+	}
+
+	addr, secure, net := resolveURL(viper.GetString("replication.leader-address"))
+	httpClient, err := replication.NewHTTPClient(
+		logger.Named("replication.http").Sugar(),
+		addr,
+		viper.GetString("replication.cert-filename"),
+		viper.GetString("replication.key-filename"),
+		viper.GetString("replication.ca-filename"),
+		viper.GetBool("replication.insecure-skip-verify"),
+		viper.GetString("replication.server-name"),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("cannot create replication http client: %w", err)
+	}
+
+	scheme := "http"
+	if secure {
+		scheme = "https"
+	}
+	if net == "unix" || net == "unixs" {
+		scheme = "http"
+	}
+	baseURL := fmt.Sprintf("%s://%s", scheme, addr)
+	return replication.NewHTTPSnapshotObjectGetter(httpClient, baseURL), nil, nil
 }

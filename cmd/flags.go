@@ -21,6 +21,7 @@ var (
 	maintenanceFlagSet  = pflag.NewFlagSet("maintenance", pflag.ContinueOnError)
 	tablesFlagSet       = pflag.NewFlagSet("tables", pflag.ContinueOnError)
 	experimentalFlagSet = pflag.NewFlagSet("experimental", pflag.ContinueOnError)
+	sharedStoreFlagSet  = pflag.NewFlagSet("sharedStore", pflag.ContinueOnError)
 )
 
 func init() {
@@ -126,6 +127,22 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 	// Tables flags
 	tablesFlagSet.Bool("tables.enabled", true, "Whether tables API is enabled.")
 	tablesFlagSet.String("tables.token", "", "Token to check for tables API access, if left empty (default) no token is checked.")
+
+	// Shared store flags — a general-purpose blob store used by leader nodes.
+	// Currently used for cross-cluster snapshot export but intentionally not
+	// namespaced under "replication" so other features can share it in future.
+	sharedStoreFlagSet.String("shared-store.backend", "none",
+		`Blob store backend. Supported values: none (disabled), filesystem, s3.`)
+	sharedStoreFlagSet.String("shared-store.filesystem.directory", "",
+		"Directory path to use for the filesystem backend.")
+	sharedStoreFlagSet.String("shared-store.s3.bucket", "",
+		"Bucket name to use for the S3 shared-store backend.")
+	sharedStoreFlagSet.Duration("shared-store.retention", 48*time.Hour,
+		"Maximum age of artefacts in the shared store. Older artefacts are eligible for GC.")
+	sharedStoreFlagSet.Duration("shared-store.gc-interval", time.Hour,
+		"How often the GC worker runs to delete expired artefacts from the shared store.")
+	sharedStoreFlagSet.Duration("replication.snapshot-timeout", 10*time.Minute,
+		"Timeout for a single incremental snapshot export triggered by log compaction.")
 }
 
 func initConfig(set *pflag.FlagSet) {

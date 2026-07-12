@@ -129,12 +129,14 @@ func TestReaderWriter(t *testing.T) {
 	})
 
 	sc := armadapb.NewSnapshotClient(conn)
+	//nolint: staticcheck
 	s, err := sc.Stream(context.Background(), &armadapb.SnapshotRequest{})
 	require.NoError(t, err)
 
 	_, err = io.Copy(io.Discard, &Reader{Stream: s})
 	require.NoError(t, err)
 
+	//nolint: staticcheck
 	s, err = sc.Stream(context.Background(), &armadapb.SnapshotRequest{})
 	require.NoError(t, err)
 

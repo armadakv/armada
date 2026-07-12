@@ -19,6 +19,31 @@ run-follower: build
  --replication.leader-address=https://127.0.0.1:8444 --replication.ca-filename=hack/replication/ca.crt --replication.cert-filename=hack/replication/client.crt --replication.key-filename=hack/replication/client.key \
  --raft.node-host-dir=/tmp/armada-follower/raft --raft.state-machine-dir=/tmp/armada-follower/state-machine
 
+# Three-node leader cluster with shared-store enabled (filesystem backend).
+# Run `make run-cluster-follower-dev` in a second terminal to attach a follower cluster.
+.PHONY: run-cluster-dev
+run-cluster-dev: build
+	@mkdir -p \
+		/tmp/armada-cluster/shared-store \
+		/tmp/armada-cluster/leader-1/raft /tmp/armada-cluster/leader-1/state-machine \
+		/tmp/armada-cluster/leader-2/raft /tmp/armada-cluster/leader-2/state-machine \
+		/tmp/armada-cluster/leader-3/raft /tmp/armada-cluster/leader-3/state-machine
+	goreman -f hack/Procfile.cluster.dev start
+
+# Three-node follower cluster that replicates from the leader cluster started by run-cluster-dev.
+# Requires run-cluster-dev to already be running.
+.PHONY: run-cluster-follower-dev
+run-cluster-follower-dev: build
+	@mkdir -p \
+		/tmp/armada-cluster/follower-1/raft /tmp/armada-cluster/follower-1/state-machine \
+		/tmp/armada-cluster/follower-2/raft /tmp/armada-cluster/follower-2/state-machine \
+		/tmp/armada-cluster/follower-3/raft /tmp/armada-cluster/follower-3/state-machine
+	goreman -f hack/Procfile.cluster-follower.dev start
+
+.PHONY: clean-cluster-dev
+clean-cluster-dev:
+	rm -rf /tmp/armada-cluster
+
 # Run golangci-lint on the code
 .PHONY: check
 check: proto

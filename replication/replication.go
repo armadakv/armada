@@ -34,7 +34,6 @@ type WorkerConfig struct {
 	LogRPCTimeout       time.Duration
 	SnapshotRPCTimeout  time.Duration
 	MaxRecoveryInFlight int64
-	MaxSnapshotRecv     uint64
 }
 
 type Config struct {
@@ -49,8 +48,18 @@ type replicationManagerStore interface {
 }
 
 // NewManager constructs a new replication Manager out of tables.Manager, dragonboat.NodeHost and replication API grpc.ClientConn.
-func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *grpc.ClientConn, cfg Config) *Manager {
+func NewManager(
+	e *storage.Engine,
+	queue *storage.IndexNotificationQueue,
+	conn *grpc.ClientConn,
+	snapshotGetter SnapshotObjectGetter,
+	snapshotQuery SnapshotQueryResolver,
+	cfg Config,
+) *Manager {
 	replicationLog := zap.S().Named("replication")
+	if snapshotQuery == nil {
+		snapshotQuery = NewGRPCSnapshotQueryResolver(armadapb.NewSnapshotClient(conn))
+	}
 
 	replicationIndexGauge := prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -76,7 +85,6 @@ func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *
 			leaseInterval:     cfg.Workers.LeaseInterval,
 			logTimeout:        cfg.Workers.LogRPCTimeout,
 			snapshotTimeout:   cfg.Workers.SnapshotRPCTimeout,
-			maxSnapshotRecv:   cfg.Workers.MaxSnapshotRecv,
 			recoverySemaphore: semaphore.NewWeighted(cfg.Workers.MaxRecoveryInFlight),
 			engine:            e,
 			store: &kv.RaftStore{
@@ -85,7 +93,8 @@ func NewManager(e *storage.Engine, queue *storage.IndexNotificationQueue, conn *
 			},
 			log:            replicationLog,
 			logClient:      armadapb.NewLogClient(conn),
-			snapshotClient: armadapb.NewSnapshotClient(conn),
+			snapshotQuery:  snapshotQuery,
+			snapshotGetter: snapshotGetter,
 			metrics: struct {
 				replicationIndex  *prometheus.GaugeVec
 				replicationLeased *prometheus.GaugeVec
