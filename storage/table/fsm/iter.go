@@ -81,6 +81,7 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 			return
 		}
 		i := 0
+		var responseSize uint64
 		for {
 			k, err := key.DecodeBytes(piter.Key())
 			if err != nil {
@@ -102,14 +103,22 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 				yield(response)
 				return
 			}
-			if (uint64(response.SizeVT()) + sf(k.Key, piter.ValueAndErr)) >= maxRangeSize {
+			// Track response size incrementally to avoid calling SizeVT() on every
+			// iteration, which re-walks all accumulated KV pairs and makes large
+			// range scans O(n²). sf() returns only the entry payload size, so we
+			// accept a small underestimate of proto framing bytes — negligible vs
+			// the 4 MiB limit.
+			entrySize := sf(k.Key, piter.ValueAndErr)
+			if responseSize+entrySize >= maxRangeSize {
 				response.More = true
 				if !yield(response) {
 					return
 				}
 				response = &armadapb.ResponseOp_Range{}
+				responseSize = 0
 			}
 			i++
+			responseSize += entrySize
 			fill(k.Key, piter.ValueAndErr, response)
 			// iterNextUserKey skips all older MVCC versions of the same user key,
 			// positioning the iterator on the first entry of the next distinct
