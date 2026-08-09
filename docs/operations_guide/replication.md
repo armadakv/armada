@@ -74,11 +74,24 @@ independent Raft group for each table. This means:
 
 If the requested log position is no longer available on the leader (because the Raft log was
 compacted or the GC horizon has advanced), the leader signals the follower to perform a
-**snapshot recovery** instead of a log replay. The follower then:
+**snapshot recovery** instead of a log replay. 
 
-1. Receives a full or incremental snapshot from the `Snapshot` service.
-2. Replays the streamed commands into a temporary recovery shard.
-3. Atomically swaps the recovered shard for the live table, minimizing downtime.
+#### Resilient Snapshot Modes
+
+Snapshot recovery utilizes a robust pipeline built on object storage concepts, completely replacing legacy, non-resumable gRPC streaming. Depending on your configuration, it operates in one of two modes:
+
+* **HTTP Live Fallback (Default):** The follower queries the leader via gRPC to find the best snapshot, then securely downloads the payload over a resumable HTTP endpoint exposed by the leader. This enables reliable transfers of massive snapshots without dropped gRPC streams.
+* **Shared Object Storage (S3/GCS/NFS):** If the leader is configured to export snapshots to a shared object store using the built-in `objfs` module, the follower directly accesses the object store (or gets pre-signed URLs) to download the snapshot. This completely removes heavy I/O and network loads from the leader nodes and parallelizes recoveries.
+
+Additionally, Armada supports **Incremental Snapshots**. Instead of downloading the full multi-gigabyte state, the follower checks if an incremental snapshot exists between its current state and the leader's state. If available, only the delta is downloaded, drastically cutting down recovery times and network bandwidth.
+
+#### Recovery Lifecycle
+
+The full follower recovery process is as follows:
+1. Queries the leader for the optimal snapshot artefact (Incremental or Full, from Shared Storage or Direct).
+2. Downloads the snapshot using either resumable HTTP or directly via signed S3/GCS URLs.
+3. Replays the snapshot into a temporary recovery shard using a learner-first promotion strategy.
+4. Atomically swaps the recovered shard for the live table, minimizing downtime while continuing to serve stale-but-consistent reads during the transfer.
 
 Snapshot recovery is also used when a brand-new follower cluster is bootstrapped for the first
 time (before it has any local state to resume from).

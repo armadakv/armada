@@ -82,9 +82,14 @@ are available. This is not only useful for disaster scenarios but also enables t
 The `raft/` package is a fork of [dragonboat](https://github.com/lni/dragonboat) by Lei Ni
 (copyright 2017-2021 Lei Ni and other contributors, Apache 2.0 licensed). It was forked to give Armada
 full control over transport, log storage, snapshots, and configuration, while preserving the battle-tested
-multi-group Raft core. The fork diverges from upstream in transport (QUIC-based, replacing the original
-TCP transport), snapshot management, and configuration surface. See
-[proposal 003](proposals/003-replace-raft-lib.md) for the motivation behind forking rather than keeping
+multi-group Raft core. 
+
+The fork significantly diverges from upstream in the following ways:
+* **Transport:** A unified QUIC-based transport replaces the original TCP transport, sharing a single UDP socket for both Raft communication and Gossip-based peer discovery.
+* **Peer Discovery:** It implements `raftio.INodeRegistry` on the cluster for dynamic gossip-based peer discovery removing the need for static member lists.
+* **Snapshots & Configuration:** Enhanced snapshot management and a custom configuration surface.
+
+See [proposal 003](proposals/003-replace-raft-lib.md) for the motivation behind forking rather than keeping
 upstream dragonboat as a dependency.
 
 ## Tables
@@ -98,7 +103,8 @@ There is no guarantee of data consistency within multiple tables.
 
 Each table's data is stored in a [Pebble](https://github.com/cockroachdb/pebble) key-value store — a
 high-performance LSM-tree-based engine descended from RocksDB. Pebble is used as the state machine
-backend for every Raft group.
+backend for every Raft group. The storage uses the [**V2 Key Schema**](v2_key_schema.md), which optimizes data locality, 
+range scan efficiency, and multi-version concurrency control.
 
 ### MVCC Versioning
 

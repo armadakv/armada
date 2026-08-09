@@ -81,7 +81,7 @@ carries the same revision on every cluster that has applied it.
 ### 🔒 Production-grade security
 
 TLS, mutual TLS (mTLS), per-API token authentication, and Unix socket transport are all
-supported out of the box. See [Security](operations_guide/security.md) for the full guide.
+supported out of the box. Additionally, Armada is distributed as a **distroless container image**, minimizing the attack surface and providing better security footprint. See [Security](operations_guide/security.md) for the full guide.
 
 ### ☸️ Kubernetes native
 
