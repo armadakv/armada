@@ -99,7 +99,7 @@ armada leader [flags]
       --shared-store.azure.account string                      Account name to use for the Azure shared-store backend.
       --shared-store.azure.container string                    Container name to use for the Azure shared-store backend.
       --shared-store.azure.key string                          Key to use for the Azure shared-store backend.
-      --shared-store.backend string                            Blob store backend. Supported values: none (disabled), filesystem, s3. (default "none")
+      --shared-store.backend string                            Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob. (default "none")
       --shared-store.filesystem.directory string               Directory path to use for the filesystem backend.
       --shared-store.gc-interval duration                      How often the GC worker runs to delete expired artefacts from the shared store. (default 1h0m0s)
       --shared-store.gcs.bucket string                         Bucket name to use for the GCS shared-store backend.

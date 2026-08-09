@@ -132,7 +132,7 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 	// Currently used for cross-cluster snapshot export but intentionally not
 	// namespaced under "replication" so other features can share it in future.
 	sharedStoreFlagSet.String("shared-store.backend", "none",
-		`Blob store backend. Supported values: none (disabled), filesystem, s3.`)
+		`Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob.`)
 	sharedStoreFlagSet.String("shared-store.filesystem.directory", "",
 		"Directory path to use for the filesystem backend.")
 	sharedStoreFlagSet.String("shared-store.s3.bucket", "",

@@ -233,7 +233,7 @@ func TestWorker_recover_negotiation(t *testing.T) {
 		require.ErrorContains(t, err, "no shared store")
 	})
 
-	t.Run("NONE response returns error without legacy fallback", func(t *testing.T) {
+	t.Run("NONE response returns error with fallback to full snapshot", func(t *testing.T) {
 		mock := &mockSnapshotQueryResolver{
 			queryResp: &armadapb.SnapshotQueryResponse{Type: armadapb.SnapshotQueryResponse_NONE},
 		}
