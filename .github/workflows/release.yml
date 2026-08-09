@@ -13,6 +13,9 @@ env:
 jobs:
   release-binary:
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
     strategy:
       matrix:
         goos: [linux, darwin]
