@@ -45,6 +45,14 @@ from Armada leader cluster running on `127.0.0.1:8445`.
 Armada Helm Chart also offers a [CronJob](https://github.com/armadakv/armada-helm/blob/master/charts/regatta/values.yaml#L322)
 to periodically create backup and push it to an S3 Bucket.
 
+### Shared-Store Snapshot Exporter
+
+Armada includes a shared-store snapshot exporter that can continuously or periodically push snapshots to an object store (e.g., S3). This capability, along with HTTP live fallback, provides a resilient and resumable path for snapshot queries and recovery without overloading the leader cluster's local disks or RPC network during large restores.
+
+### Incremental Snapshots
+
+In addition to full cluster backups, Armada supports **Incremental Snapshots**. This allows taking backups of only the differences (deltas) since the last full snapshot, significantly reducing backup sizes and the network footprint required to transfer them.
+
 ## Restore from backup
 
 > **Warning:**

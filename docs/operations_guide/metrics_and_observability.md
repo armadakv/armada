@@ -20,6 +20,8 @@ which is the underlying framework used for Raft clusters, are exposed. Some expo
 * `regatta_table_storage_cache_misses{clusterID="10001",table="armada-test",type="block"}` --
   Armada table storage block cache misses
 * `regatta_table_storage_read_amp{clusterID="10001",table="armada-test"}` -- Armada table storage read amplification
+* `regatta_table_storage_disk_usage_bytes{clusterID="10001",table="armada-test"}` -- Disk usage metrics added for the improved GC algorithm.
+* `regatta_table_storage_range_scan_bytes{clusterID="10001",table="armada-test"}` -- Incremental range-scan response size tracking.
 
 The gRPC service names and many metric prefixes still use the legacy `regatta` naming.
 
