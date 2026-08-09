@@ -3,49 +3,48 @@
 package cmd
 
 import (
+	"context"
 	"testing"
 	"time"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewSharedStoreBucket_None(t *testing.T) {
-	bkt, err := newSharedStoreBucket("none")
+func TestNewBucketFromConfig_None(t *testing.T) {
+	bkt, err := newBucketFromConfig(context.Background(), BucketConfig{Backend: "none"})
 	require.NoError(t, err)
 	assert.Nil(t, bkt, "none backend should return nil bucket")
 
-	bkt, err = newSharedStoreBucket("")
+	bkt, err = newBucketFromConfig(context.Background(), BucketConfig{Backend: ""})
 	require.NoError(t, err)
 	assert.Nil(t, bkt, "empty backend should return nil bucket")
 }
 
-func TestNewSharedStoreBucket_Unsupported(t *testing.T) {
-	_, err := newSharedStoreBucket("gcs")
+func TestNewBucketFromConfig_Unsupported(t *testing.T) {
+	_, err := newBucketFromConfig(context.Background(), BucketConfig{Backend: "invalid-backend"})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported backend")
 }
 
-func TestNewSharedStoreBucket_S3MissingBucket(t *testing.T) {
-	viper.Set("shared-store.s3.bucket", "")
-	_, err := newSharedStoreBucket("s3")
+func TestNewBucketFromConfig_S3MissingBucket(t *testing.T) {
+	_, err := newBucketFromConfig(context.Background(), BucketConfig{Backend: "s3"})
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "shared-store: s3 config missing 'bucket'")
+	assert.Contains(t, err.Error(), "s3 config missing 'bucket'")
 }
 
-func TestNewSharedStoreBucket_Filesystem(t *testing.T) {
+func TestNewBucketFromConfig_Filesystem(t *testing.T) {
 	dir := t.TempDir()
-	viper.Set("shared-store.filesystem.directory", dir)
-	defer viper.Set("shared-store.filesystem.directory", "")
-	bkt, err := newSharedStoreBucket("filesystem")
+	bkt, err := newBucketFromConfig(context.Background(), BucketConfig{
+		Backend:   "filesystem",
+		Directory: dir,
+	})
 	require.NoError(t, err)
 	require.NotNil(t, bkt)
 }
 
-func TestNewSharedStoreBucket_FilesystemMissingDirectory(t *testing.T) {
-	viper.Set("shared-store.filesystem.directory", "")
-	_, err := newSharedStoreBucket("filesystem")
+func TestNewBucketFromConfig_FilesystemMissingDirectory(t *testing.T) {
+	_, err := newBucketFromConfig(context.Background(), BucketConfig{Backend: "filesystem"})
 	require.Error(t, err)
 }
 

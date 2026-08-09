@@ -246,12 +246,12 @@ func TestWorker_recover_negotiation(t *testing.T) {
 				engine:          fe,
 				queue:           storage.NewNotificationQueue(),
 				snapshotQuery:   mock,
-				snapshotGetter:  mockSnapshotGetter{},
+				snapshotGetter:  mockSnapshotGetter{err: fmt.Errorf("no shared store")},
 			},
 			log: zaptest.NewLogger(t).Sugar(),
 		}
 		err := w.recover()
-		require.ErrorContains(t, err, "leader has no available snapshots")
+		require.ErrorContains(t, err, "no shared store")
 	})
 
 	t.Run("transient query error propagates without legacy fallback", func(t *testing.T) {
@@ -347,7 +347,6 @@ func TestWorker_recover(t *testing.T) {
 		snapshots[fmt.Sprintf("snapshots/%s/full/%d.snap", tableName, resp.Index)] = sf.Path()
 		snapshotTips[tableName] = resp.Index
 	}
-	getter := &snapshotFileGetter{byKey: snapshots}
 
 	t.Log("create worker")
 	mockQuery := &mockSnapshotQueryResolver{}
@@ -358,7 +357,7 @@ func TestWorker_recover(t *testing.T) {
 			engine:          followerEngine,
 			queue:           storage.NewNotificationQueue(),
 			snapshotQuery:   mockQuery,
-			snapshotGetter:  getter,
+			snapshotGetter:  &snapshotFileGetter{byKey: snapshots},
 		},
 		log: zaptest.NewLogger(t).Sugar(),
 	}
@@ -385,7 +384,7 @@ func TestWorker_recover(t *testing.T) {
 			engine:          followerEngine,
 			queue:           storage.NewNotificationQueue(),
 			snapshotQuery:   mockQuery,
-			snapshotGetter:  getter,
+			snapshotGetter:  &snapshotFileGetter{byKey: snapshots},
 		},
 		log: zaptest.NewLogger(t).Sugar(),
 	}

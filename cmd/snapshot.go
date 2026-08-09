@@ -9,45 +9,90 @@ import (
 
 	"github.com/armadakv/armada/replication/store"
 	"github.com/armadakv/objfs"
+	objfaszblob "github.com/armadakv/objfs/azblob"
+	objfgcs "github.com/armadakv/objfs/gcs"
 	objfss3 "github.com/armadakv/objfs/s3"
 	"github.com/spf13/viper"
 )
 
-// newSharedStoreBucket creates an objfs.Bucket from the shared-store configuration.
-// Returns (nil, nil) when backend is "none" (feature disabled).
-func newSharedStoreBucket(backend string) (objfs.Bucket, error) {
-	switch backend {
+type BucketConfig struct {
+	Backend string
+	// Filesystem backend
+	Directory string
+	// S3 backend
+	S3Bucket string
+	// GCS backend
+	GCSBucket string
+	// Azure Blob Storage backend
+	AzureContainer string
+	AzureAccount   string
+	AzureKey       string
+}
+
+func (cfg *BucketConfig) validate() error {
+	switch cfg.Backend {
+	case "", "none":
+		return nil
+	case "filesystem":
+		if cfg.Directory == "" {
+			return fmt.Errorf("filesystem config missing 'directory'")
+		}
+	case "s3":
+		if cfg.S3Bucket == "" {
+			return fmt.Errorf("s3 config missing 'bucket'")
+		}
+	case "gcs":
+		if cfg.GCSBucket == "" {
+			return fmt.Errorf("gcs config missing 'bucket'")
+		}
+	case "azblob":
+		if cfg.AzureContainer == "" || cfg.AzureAccount == "" || cfg.AzureKey == "" {
+			return fmt.Errorf("azure config missing 'container', 'account', or 'key'")
+		}
+	default:
+		return fmt.Errorf("unsupported backend %q (supported: none, filesystem, s3, gcs, azblob)", cfg.Backend)
+	}
+	return nil
+}
+
+// newBucketFromConfig creates an objfs.Bucket from the given BucketConfig.
+func newBucketFromConfig(ctx context.Context, cfg BucketConfig) (objfs.Bucket, error) {
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	switch cfg.Backend {
 	case "", "none":
 		return nil, nil
 	case "filesystem":
-		dir := viper.GetString("shared-store.filesystem.directory")
-		if dir == "" {
-			return nil, fmt.Errorf("shared-store: filesystem config missing 'directory' (set --shared-store.filesystem.directory)")
-		}
-
-		// Ensure absolute path, or relative to current working dir
-		absDir, err := filepath.Abs(dir)
+		absDir, err := filepath.Abs(cfg.Directory)
 		if err != nil {
-			return nil, fmt.Errorf("shared-store: invalid directory path: %w", err)
+			return nil, fmt.Errorf("invalid directory path: %w", err)
 		}
-
 		bkt, err := objfs.NewLocal(absDir)
 		if err != nil {
-			return nil, fmt.Errorf("shared-store: create filesystem bucket: %w", err)
+			return nil, fmt.Errorf("create filesystem bucket: %w", err)
 		}
 		return bkt, nil
 	case "s3":
-		bucket := viper.GetString("shared-store.s3.bucket")
-		if bucket == "" {
-			return nil, fmt.Errorf("shared-store: s3 config missing 'bucket' (set --shared-store.s3.bucket)")
-		}
-		bkt, err := objfss3.Open(context.Background(), bucket)
+		bkt, err := objfss3.Open(ctx, cfg.S3Bucket)
 		if err != nil {
-			return nil, fmt.Errorf("shared-store: create s3 bucket: %w", err)
+			return nil, fmt.Errorf("create s3 bucket: %w", err)
+		}
+		return bkt, nil
+	case "gcs":
+		bkt, err := objfgcs.Open(ctx, cfg.GCSBucket)
+		if err != nil {
+			return nil, fmt.Errorf("create gcs bucket: %w", err)
+		}
+		return bkt, nil
+	case "azblob":
+		bkt, err := objfaszblob.OpenWithSharedKey(cfg.AzureContainer, cfg.AzureAccount, cfg.AzureKey)
+		if err != nil {
+			return nil, fmt.Errorf("create azure blob bucket: %w", err)
 		}
 		return bkt, nil
 	default:
-		return nil, fmt.Errorf("shared-store: unsupported backend %q (supported: none, filesystem, s3)", backend)
+		return nil, fmt.Errorf("unsupported backend %q (supported: none, filesystem, s3, gcs, azblob)", cfg.Backend)
 	}
 }
 

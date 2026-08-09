@@ -30,10 +30,6 @@ func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal, 
 	engineLog := logger.Named("engine")
 	setupDragonboatLogger(engineLog)
 
-	if err := autoSetMaxprocs(log); err != nil {
-		return nil, nil, nil, err
-	}
-
 	// Check signals
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)

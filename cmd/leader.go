@@ -107,7 +107,15 @@ func leader(_ *cobra.Command, _ []string) error {
 	defer cancelSnapshot()
 	var sharedStoreBucket objfs.Bucket
 	if backend := viper.GetString("shared-store.backend"); backend != "" && backend != "none" {
-		bkt, err := newSharedStoreBucket(backend)
+		bkt, err := newBucketFromConfig(snapshotCtx, BucketConfig{
+			Backend:        backend,
+			Directory:      viper.GetString("shared-store.filesystem.directory"),
+			S3Bucket:       viper.GetString("shared-store.s3.bucket"),
+			GCSBucket:      viper.GetString("shared-store.gcs.bucket"),
+			AzureContainer: viper.GetString("shared-store.azure.container"),
+			AzureAccount:   viper.GetString("shared-store.azure.account"),
+			AzureKey:       viper.GetString("shared-store.azure.key"),
+		})
 		if err != nil {
 			return fmt.Errorf("snapshot-store: %w", err)
 		}

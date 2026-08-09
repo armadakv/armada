@@ -524,7 +524,11 @@ func (w *worker) recover() error {
 	}
 
 	if queryResp.Type == armadapb.SnapshotQueryResponse_NONE {
-		return fmt.Errorf("leader has no available snapshots for table %s", w.table)
+		queryResp = &armadapb.SnapshotQueryResponse{
+			Type:      armadapb.SnapshotQueryResponse_FULL,
+			BaseIndex: 0,
+			ObjectKey: LiveSnapshotObjectKey(w.table),
+		}
 	}
 
 	w.log.Infof("downloading %s snapshot object=%s (base=%d tip=%d)",
@@ -550,8 +554,14 @@ func (w *worker) recover() error {
 		return err
 	}
 	w.log.Info("snapshot downloaded, loading table")
-	if err = w.engine.Restore(w.table, sf); err != nil {
-		return err
+	if queryResp.Type == armadapb.SnapshotQueryResponse_INCREMENTAL {
+		if err = w.engine.ApplySnapshot(w.table, sf); err != nil {
+			return err
+		}
+	} else {
+		if err = w.engine.Restore(w.table, sf); err != nil {
+			return err
+		}
 	}
 	w.log.Info("table recovered")
 	return nil

@@ -23,7 +23,7 @@ type grpcSnapshotQueryResolver struct {
 	client armadapb.SnapshotClient
 }
 
-func liveSnapshotObjectKey(table string) string {
+func LiveSnapshotObjectKey(table string) string {
 	return fmt.Sprintf("snapshots-live/%s", table)
 }
 
@@ -41,7 +41,7 @@ func (r *grpcSnapshotQueryResolver) Query(ctx context.Context, table string, fol
 			return &armadapb.SnapshotQueryResponse{
 				Type:      armadapb.SnapshotQueryResponse_FULL,
 				BaseIndex: 0,
-				ObjectKey: liveSnapshotObjectKey(table),
+				ObjectKey: LiveSnapshotObjectKey(table),
 			}, nil
 		}
 		return nil, fmt.Errorf("snapshot query failed: %w", err)
