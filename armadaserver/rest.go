@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/VictoriaMetrics/metrics"
-	gometrics "github.com/armon/go-metrics"
-	goprometheus "github.com/armon/go-metrics/prometheus"
+	gometrics "github.com/hashicorp/go-metrics"
+	goprometheus "github.com/hashicorp/go-metrics/prometheus"
 	"github.com/klauspost/compress/gzhttp"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/expfmt"

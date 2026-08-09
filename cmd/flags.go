@@ -132,11 +132,19 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 	// Currently used for cross-cluster snapshot export but intentionally not
 	// namespaced under "replication" so other features can share it in future.
 	sharedStoreFlagSet.String("shared-store.backend", "none",
-		`Blob store backend. Supported values: none (disabled), filesystem, s3.`)
+		`Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob.`)
 	sharedStoreFlagSet.String("shared-store.filesystem.directory", "",
 		"Directory path to use for the filesystem backend.")
 	sharedStoreFlagSet.String("shared-store.s3.bucket", "",
 		"Bucket name to use for the S3 shared-store backend.")
+	sharedStoreFlagSet.String("shared-store.gcs.bucket", "",
+		"Bucket name to use for the GCS shared-store backend.")
+	sharedStoreFlagSet.String("shared-store.azure.container", "",
+		"Container name to use for the Azure shared-store backend.")
+	sharedStoreFlagSet.String("shared-store.azure.account", "",
+		"Account name to use for the Azure shared-store backend.")
+	sharedStoreFlagSet.String("shared-store.azure.key", "",
+		"Key to use for the Azure shared-store backend.")
 	sharedStoreFlagSet.Duration("shared-store.retention", 48*time.Hour,
 		"Maximum age of artefacts in the shared store. Older artefacts are eligible for GC.")
 	sharedStoreFlagSet.Duration("shared-store.gc-interval", time.Hour,

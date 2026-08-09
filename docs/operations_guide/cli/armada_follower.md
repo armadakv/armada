@@ -104,9 +104,13 @@ armada follower [flags]
       --replication.snapshot-timeout duration          Timeout for a single incremental snapshot export triggered by log compaction. (default 10m0s)
       --rest.address string                            REST API server address. (default "http://127.0.0.1:8079")
       --rest.read-timeout duration                     Maximum duration for reading the entire request. (default 5s)
-      --shared-store.backend string                    Blob store backend. Supported values: none (disabled), filesystem, s3. (default "none")
+      --shared-store.azure.account string              Account name to use for the Azure shared-store backend.
+      --shared-store.azure.container string            Container name to use for the Azure shared-store backend.
+      --shared-store.azure.key string                  Key to use for the Azure shared-store backend.
+      --shared-store.backend string                    Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob. (default "none")
       --shared-store.filesystem.directory string       Directory path to use for the filesystem backend.
       --shared-store.gc-interval duration              How often the GC worker runs to delete expired artefacts from the shared store. (default 1h0m0s)
+      --shared-store.gcs.bucket string                 Bucket name to use for the GCS shared-store backend.
       --shared-store.retention duration                Maximum age of artefacts in the shared store. Older artefacts are eligible for GC. (default 48h0m0s)
       --shared-store.s3.bucket string                  Bucket name to use for the S3 shared-store backend.
       --storage.block-cache-size int                   Shared block cache size in bytes, the cache is used to hold uncompressed blocks of data in memory. (default 16777216)

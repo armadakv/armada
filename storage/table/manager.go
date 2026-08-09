@@ -507,6 +507,14 @@ func (m *Manager) stopTable(clusterID uint64) error {
 	return nil
 }
 
+func (m *Manager) ApplySnapshot(name string, reader io.Reader) error {
+	tbl, _, err := m.getTableVersion(name)
+	if err != nil {
+		return err
+	}
+	return m.readIntoTable(tbl.ClusterID, reader)
+}
+
 func (m *Manager) Restore(name string, reader io.Reader) error {
 	tbl, version, err := m.getTableVersion(name)
 	if err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
@@ -713,6 +721,7 @@ func tableRaftConfig(nodeID, clusterID uint64, cfg TableConfig) config.Config {
 		ShardID:                 clusterID,
 		CheckQuorum:             true,
 		OrderedConfigChange:     true,
+		PreVote:                 true,
 		ElectionRTT:             cfg.ElectionRTT,
 		HeartbeatRTT:            cfg.HeartbeatRTT,
 		SnapshotEntries:         cfg.SnapshotEntries,

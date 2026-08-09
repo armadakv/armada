@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -76,10 +77,7 @@ func validateFollowerConfig() error {
 }
 
 func follower(_ *cobra.Command, _ []string) error {
-	logger, log, shutdown, err := setupCommonEnvironment()
-	if err != nil {
-		return err
-	}
+	logger, log, shutdown := setupCommonEnvironment()
 	defer func() {
 		_ = logger.Sync()
 	}()
@@ -226,7 +224,15 @@ func createSnapshotAccess(logger *zap.Logger) (replication.SnapshotObjectGetter,
 	source := viper.GetString("replication.snapshot-source")
 	backend := viper.GetString("shared-store.backend")
 	if source == "direct" || (source == "auto" && backend != "" && backend != "none") {
-		bkt, err := newSharedStoreBucket(backend)
+		bkt, err := newBucketFromConfig(context.Background(), BucketConfig{
+			Backend:        backend,
+			Directory:      viper.GetString("shared-store.filesystem.directory"),
+			S3Bucket:       viper.GetString("shared-store.s3.bucket"),
+			GCSBucket:      viper.GetString("shared-store.gcs.bucket"),
+			AzureContainer: viper.GetString("shared-store.azure.container"),
+			AzureAccount:   viper.GetString("shared-store.azure.account"),
+			AzureKey:       viper.GetString("shared-store.azure.key"),
+		})
 		if err != nil {
 			return nil, nil, fmt.Errorf("cannot create shared-store bucket for direct snapshot mode: %w", err)
 		}
