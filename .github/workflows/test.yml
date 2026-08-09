@@ -25,6 +25,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
+    permissions:
+      contents: read
+      actions: write
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
@@ -36,28 +39,78 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
       - name: Install go-ctrf-json-reporter
         shell: bash
-        run: go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@v0.1.0
+        run: go install github.com/ctrf-io/go-ctrf-json-reporter/cmd/go-ctrf-json-reporter@latest
       - name: Test
         shell: bash
         run: |
           mkdir -p ctrf
           set -o pipefail
-          go test -json -cover ./... -coverprofile coverage.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/... | go-ctrf-json-reporter -output ctrf/go-test-report.json
-      - name: Publish test report
-        uses: ctrf-io/github-test-reporter@e500b992f936420eb633c91644cf10d4d71df700 # v1.1.0
-        with:
-          report-path: ./ctrf/*.json
-          github-report: true
-          summary-report: true
-          failed-report: true
+          go test -json -cover ./... -coverprofile coverage-${{ matrix.os }}.out -coverpkg ./log/...,./pebble/...,./raft/...,./armadaserver/...,./replication/...,./storage/...,./security/...,./util/... | go-ctrf-json-reporter -output ctrf/go-test-report-${{ matrix.os }}.json
+      - name: Upload test report artifact
         if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctrf-${{ matrix.os }}
+          path: ctrf/go-test-report-${{ matrix.os }}.json
+          retention-days: 1
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-${{ matrix.os }}
+          path: coverage-${{ matrix.os }}.out
+          retention-days: 1
       - name: Coverage track
+        if: always()
         uses: coverallsapp/github-action@v2
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           format: golang
-          file: coverage.out
+          file: coverage-${{ matrix.os }}.out
+          parallel: true
+          flag-name: run-${{ join(matrix.*, '-') }}
+          fail-on-error: false
+  report:
+    needs: test
+    if: always()
+    permissions:
+      contents: read
+      actions: write
+      checks: write
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download test reports
+        uses: actions/download-artifact@v7
+        with:
+          pattern: ctrf-*
+          path: artifacts
+      - name: Publish test report
+        uses: ctrf-io/github-test-reporter@v1
+        with:
+          report-path: ./artifacts/**/*.json
+          github-report: true
+          failed-report: true
+          insights-report: true
+          flaky-rate-report: true
+          fail-rate-report: true
+          slowest-report: true
+          upload-artifact: true
+          collapse-large-reports: true
+          overwrite-comment: true
+          comment-tag: '${{ github.workflow }}-${{ github.job }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Finish Coveralls parallel build
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          parallel-finished: true
           fail-on-error: false
   build:
     runs-on: ubuntu-latest
