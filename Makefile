@@ -60,6 +60,15 @@ test:
 .PHONY: build
 build: proto proto-docs docs armada
 
+# Run golangci-lint on the code
+.PHONY: fmt
+fmt: proto
+	@echo "Running fmt"
+ifeq (, $(shell which golangci-lint))
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b ${GOPATH}/bin v1.57.2
+endif
+	golangci-lint fmt
+
 docs: armada
 	./armada docs --destination=docs/operations_guide/cli
 

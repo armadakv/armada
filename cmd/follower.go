@@ -77,10 +77,7 @@ func validateFollowerConfig() error {
 }
 
 func follower(_ *cobra.Command, _ []string) error {
-	logger, log, shutdown, err := setupCommonEnvironment()
-	if err != nil {
-		return err
-	}
+	logger, log, shutdown := setupCommonEnvironment()
 	defer func() {
 		_ = logger.Sync()
 	}()

@@ -23,7 +23,7 @@ import (
 
 // setupCommonEnvironment sets up the common environment for both leader and follower modes.
 // It initializes logging, sets up signal handling, and returns the logger and shutdown channel.
-func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal, error) {
+func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal) {
 	logger := rl.NewLogger(viper.GetBool("dev-mode"), viper.GetString("log-level"))
 	zap.ReplaceGlobals(logger)
 	log := logger.Sugar().Named("root")
@@ -34,7 +34,7 @@ func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal, 
 	shutdown := make(chan os.Signal, 1)
 	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
 
-	return logger, log, shutdown, nil
+	return logger, log, shutdown
 }
 
 // createEngineConfig creates a common storage engine configuration for both leader and follower modes.

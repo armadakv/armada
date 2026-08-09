@@ -538,6 +538,11 @@ func (m *Manager) Restore(name string, reader io.Reader) error {
 		return err
 	}
 
+	err = m.waitForLeader(tbl.RecoverID)
+	if err != nil {
+		return err
+	}
+
 	err = m.readIntoTable(tbl.RecoverID, reader)
 	if err != nil {
 		return err
