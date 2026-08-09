@@ -53,8 +53,7 @@ func TestNotificationQueueTimeout(t *testing.T) {
 	}, 5*time.Second, 100*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		h, _ := q.items.Load("foo")
-		return assert.Zero(t, h.Len())
+		return assert.Zero(t, q.Len("foo"))
 	}, 5*time.Second, 100*time.Millisecond)
 }
 
