@@ -21,6 +21,5 @@ updates:
       - "*"
   ignore:
   - dependency-name: "github.com/cockroachdb/pebble"
-  - dependency-name: "github.com/armon/go-metrics"
   - dependency-name: "github.com/imdario/mergo"
 
