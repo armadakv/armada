@@ -105,9 +105,7 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 			}
 			// Track response size incrementally to avoid calling SizeVT() on every
 			// iteration, which re-walks all accumulated KV pairs and makes large
-			// range scans O(n²). sf() returns only the entry payload size, so we
-			// accept a small underestimate of proto framing bytes — negligible vs
-			// the 4 MiB limit.
+			// range scans O(n²).
 			entrySize := sf(k.Key, piter.ValueAndErr)
 			if responseSize+entrySize >= maxRangeSize {
 				response.More = true
@@ -195,10 +193,11 @@ func addKVPair(key []byte, value lazyValueOrErr, response *armadapb.ResponseOp_R
 	response.Count = int64(len(response.Kvs))
 }
 
-// sizeKVPair takes the full pair size into consideration.
+// sizeKVPair returns the encoded protobuf size contribution for one KV pair
+// in ResponseOp_Range, including both KeyValue and repeated-field framing.
 func sizeKVPair(key []byte, value lazyValueOrErr) uint64 {
 	val, _ := value()
-	return uint64(len(key) + len(val))
+	return sizeRangeResponseKVEntry(len(key), len(val))
 }
 
 // addKeyOnly adds a key from the provided iterator to the proto.RangeResponse.
@@ -209,9 +208,10 @@ func addKeyOnly(key []byte, _ lazyValueOrErr, response *armadapb.ResponseOp_Rang
 	response.Count++
 }
 
-// sizeKeyOnly takes only the key into consideration.
+// sizeKeyOnly returns the encoded protobuf size contribution for one key-only
+// KeyValue in ResponseOp_Range, including repeated-field framing.
 func sizeKeyOnly(key []byte, _ lazyValueOrErr) uint64 {
-	return uint64(len(key))
+	return sizeRangeResponseKVEntry(len(key), 0)
 }
 
 // addCountOnly increments number of keys from the provided iterator to the proto.RangeResponse.
@@ -222,4 +222,24 @@ func addCountOnly(_ []byte, _ lazyValueOrErr, response *armadapb.ResponseOp_Rang
 // sizeCountOnly for count the size remains constant.
 func sizeCountOnly(_ []byte, _ lazyValueOrErr) uint64 {
 	return uint64(0)
+}
+
+func sizeRangeResponseKVEntry(keyLen, valueLen int) uint64 {
+	kvSize := uint64(0)
+	if keyLen > 0 {
+		kvSize += 1 + uint64(keyLen) + sizeOfVarint(uint64(keyLen))
+	}
+	if valueLen > 0 {
+		kvSize += 1 + uint64(valueLen) + sizeOfVarint(uint64(valueLen))
+	}
+	return 1 + kvSize + sizeOfVarint(kvSize)
+}
+
+func sizeOfVarint(x uint64) uint64 {
+	n := uint64(1)
+	for x >= 0x80 {
+		x >>= 7
+		n++
+	}
+	return n
 }
