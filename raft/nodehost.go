@@ -243,7 +243,7 @@ type NodeHost struct {
 	nhConfig     config.NodeHostConfig
 	requestPools []*sync.Pool
 	partitioned  int32
-	closed       int32
+	closed       atomic.Int32
 }
 
 var _ nodeLoader = (*NodeHost)(nil)
@@ -370,10 +370,10 @@ func (nh *NodeHost) Close() {
 		Type: server.NodeHostShuttingDown,
 	})
 	nh.mu.Lock()
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		panic("NodeHost.Stop called twice")
 	}
-	atomic.StoreInt32(&nh.closed, 1)
+	nh.closed.Store(1)
 	nh.mu.Unlock()
 	nodes := make([]raftio.NodeInfo, 0)
 	nh.forEachShard(func(cid uint64, node *node) bool {
@@ -522,7 +522,7 @@ func (nh *NodeHost) StartOnDiskReplica(initialMembers map[uint64]Target,
 // Note that this is not the membership change operation required to remove the
 // node from the Raft shard.
 func (nh *NodeHost) StopShard(shardID uint64) error {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return ErrClosed
 	}
 	return nh.stopNode(shardID, 0, false)
@@ -533,7 +533,7 @@ func (nh *NodeHost) StopShard(shardID uint64) error {
 // Note that this is not the membership change operation required to remove the
 // node from the Raft shard.
 func (nh *NodeHost) StopReplica(shardID uint64, replicaID uint64) error {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return ErrClosed
 	}
 	return nh.stopNode(shardID, replicaID, true)
@@ -583,10 +583,10 @@ func (nh *NodeHost) SyncPropose(ctx context.Context,
 // determines that it is safe to perform the local read. It returns the query
 // result from the Lookup method or the error encountered.
 func (nh *NodeHost) SyncRead(ctx context.Context, shardID uint64,
-	query interface{},
-) (interface{}, error) {
+	query any,
+) (any, error) {
 	v, err := nh.linearizableRead(ctx, shardID,
-		func(node *node) (interface{}, error) {
+		func(node *node) (any, error) {
 			data, err := node.sm.Lookup(query)
 			if errors.Is(err, rsm.ErrShardClosed) {
 				return nil, ErrShardClosed
@@ -639,7 +639,7 @@ func (nh *NodeHost) SyncGetShardMembership(ctx context.Context,
 	shardID uint64,
 ) (*Membership, error) {
 	v, err := nh.linearizableRead(ctx, shardID,
-		func(node *node) (interface{}, error) {
+		func(node *node) (any, error) {
 			m := node.sm.GetMembership()
 			cm := func(input map[uint64]bool) map[uint64]struct{} {
 				result := make(map[uint64]struct{})
@@ -666,7 +666,7 @@ func (nh *NodeHost) SyncGetShardMembership(ctx context.Context,
 // on local node's knowledge. The returned boolean value indicates whether the
 // leader information is available.
 func (nh *NodeHost) GetLeaderID(shardID uint64) (uint64, uint64, bool, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return 0, 0, false, ErrClosed
 	}
 	v, ok := nh.getShard(shardID)
@@ -840,9 +840,9 @@ func (nh *NodeHost) ReadIndex(shardID uint64,
 // instance. ReadLocalNode is only allowed to be called after receiving a
 // RequestCompleted notification from the ReadIndex method.
 func (nh *NodeHost) ReadLocalNode(rs *RequestState,
-	query interface{},
-) (interface{}, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	query any,
+) (any, error) {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	rs.mustBeReadyForLocalRead()
@@ -860,9 +860,9 @@ func (nh *NodeHost) ReadLocalNode(rs *RequestState,
 // StaleRead queries the specified Raft node directly without any
 // linearizability guarantee.
 func (nh *NodeHost) StaleRead(shardID uint64,
-	query interface{},
-) (interface{}, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	query any,
+) (any, error) {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -930,7 +930,7 @@ func (nh *NodeHost) SyncRequestSnapshot(ctx context.Context,
 func (nh *NodeHost) RequestSnapshot(shardID uint64,
 	opt SnapshotOption, timeout time.Duration,
 ) (*RequestState, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -963,7 +963,7 @@ func (nh *NodeHost) RequestCompaction(shardID uint64,
 ) (*SysOpState, error) {
 	nh.mu.Lock()
 	defer nh.mu.Unlock()
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1088,7 +1088,7 @@ func (nh *NodeHost) RequestDeleteReplica(shardID uint64,
 	replicaID uint64,
 	configChangeIndex uint64, timeout time.Duration,
 ) (*RequestState, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1132,7 +1132,7 @@ func (nh *NodeHost) RequestAddReplica(shardID uint64,
 	replicaID uint64, target Target, configChangeIndex uint64,
 	timeout time.Duration,
 ) (*RequestState, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1165,7 +1165,7 @@ func (nh *NodeHost) RequestAddNonVoting(shardID uint64,
 	replicaID uint64, target Target, configChangeIndex uint64,
 	timeout time.Duration,
 ) (*RequestState, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1196,7 +1196,7 @@ func (nh *NodeHost) RequestAddWitness(shardID uint64,
 	replicaID uint64, target Target, configChangeIndex uint64,
 	timeout time.Duration,
 ) (*RequestState, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1215,7 +1215,7 @@ func (nh *NodeHost) RequestAddWitness(shardID uint64,
 func (nh *NodeHost) RequestLeaderTransfer(shardID uint64,
 	targetReplicaID uint64,
 ) error {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1237,7 +1237,7 @@ func (nh *NodeHost) RequestLeaderTransfer(shardID uint64,
 func (nh *NodeHost) SyncRemoveData(ctx context.Context,
 	shardID uint64, replicaID uint64,
 ) error {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return ErrClosed
 	}
 	if _, ok := ctx.Deadline(); !ok {
@@ -1278,7 +1278,7 @@ func (nh *NodeHost) RemoveData(shardID uint64, replicaID uint64) error {
 	}
 	nh.mu.Lock()
 	defer nh.mu.Unlock()
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return ErrClosed
 	}
 	if nh.engine.nodeLoaded(shardID, replicaID) {
@@ -1301,7 +1301,7 @@ func (nh *NodeHost) RemoveData(shardID uint64, replicaID uint64) error {
 // the NodeHost. A possible use case is when loading a large data set say with
 // billions of proposals into the dragonboat based system.
 func (nh *NodeHost) GetNodeUser(shardID uint64) (INodeUser, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1320,7 +1320,7 @@ func (nh *NodeHost) GetNodeUser(shardID uint64) (INodeUser, error) {
 func (nh *NodeHost) HasNodeInfo(shardID uint64, replicaID uint64) bool {
 	nh.mu.Lock()
 	defer nh.mu.Unlock()
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return false
 	}
 	if _, err := nh.mu.logdb.GetBootstrapInfo(shardID, replicaID); err != nil {
@@ -1343,7 +1343,7 @@ func (nh *NodeHost) GetNodeHostInfo(opt NodeHostInfoOption) *NodeHostInfo {
 	}
 	nh.mu.Lock()
 	defer nh.mu.Unlock()
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil
 	}
 	if !opt.SkipLogInfo {
@@ -1359,7 +1359,7 @@ func (nh *NodeHost) GetNodeHostInfo(opt NodeHostInfoOption) *NodeHostInfo {
 func (nh *NodeHost) propose(s *client.Session,
 	cmd []byte, timeout time.Duration,
 ) (*RequestState, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	v, ok := nh.getShard(s.ShardID)
@@ -1377,7 +1377,7 @@ func (nh *NodeHost) propose(s *client.Session,
 func (nh *NodeHost) readIndex(shardID uint64,
 	timeout time.Duration,
 ) (*RequestState, *node, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, nil, ErrClosed
 	}
 	n, ok := nh.getShard(shardID)
@@ -1395,7 +1395,7 @@ func (nh *NodeHost) readIndex(shardID uint64,
 func (nh *NodeHost) queryRaftLog(shardID uint64,
 	firstIndex uint64, lastIndex uint64, maxSize uint64,
 ) (*RequestState, error) {
-	if atomic.LoadInt32(&nh.closed) != 0 {
+	if nh.closed.Load() != 0 {
 		return nil, ErrClosed
 	}
 	v, ok := nh.getShard(shardID)
@@ -1411,8 +1411,8 @@ func (nh *NodeHost) queryRaftLog(shardID uint64,
 }
 
 func (nh *NodeHost) linearizableRead(ctx context.Context,
-	shardID uint64, f func(n *node) (interface{}, error),
-) (interface{}, error) {
+	shardID uint64, f func(n *node) (any, error),
+) (any, error) {
 	timeout, err := getTimeoutFromContext(ctx)
 	if err != nil {
 		return nil, err
@@ -1439,7 +1439,7 @@ func (nh *NodeHost) getShard(shardID uint64) (*node, bool) {
 func (nh *NodeHost) forEachShard(f func(uint64, *node) bool) uint64 {
 	nh.mu.RLock()
 	defer nh.mu.RUnlock()
-	nh.mu.shards.Range(func(k, v interface{}) bool {
+	nh.mu.shards.Range(func(k, v any) bool {
 		return f(k.(uint64), v.(*node))
 	})
 	return nh.mu.cci
@@ -1512,7 +1512,7 @@ func (nh *NodeHost) startShard(initialMembers map[uint64]Target,
 		nh.mu.Lock()
 		defer nh.mu.Unlock()
 
-		if atomic.LoadInt32(&nh.closed) != 0 {
+		if nh.closed.Load() != 0 {
 			return nil, ErrClosed
 		}
 		if _, ok := nh.mu.shards.Load(shardID); ok {
@@ -1620,9 +1620,9 @@ func (nh *NodeHost) loadNodeHostID() error {
 
 func (nh *NodeHost) createPools() {
 	nh.requestPools = make([]*sync.Pool, requestPoolShards)
-	for i := uint64(0); i < requestPoolShards; i++ {
+	for i := range requestPoolShards {
 		p := &sync.Pool{}
-		p.New = func() interface{} {
+		p.New = func() any {
 			obj := &RequestState{}
 			obj.CompletedC = make(chan RequestResult, 1)
 			obj.pool = p

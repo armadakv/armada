@@ -47,11 +47,11 @@ type Factory func(pkgName string) ILogger
 // wrapper struct on top of your favourite logging library.
 type ILogger interface {
 	SetLevel(LogLevel)
-	Debugf(format string, args ...interface{})
-	Infof(format string, args ...interface{})
-	Warningf(format string, args ...interface{})
-	Errorf(format string, args ...interface{})
-	Panicf(format string, args ...interface{})
+	Debugf(format string, args ...any)
+	Infof(format string, args ...any)
+	Warningf(format string, args ...any)
+	Errorf(format string, args ...any)
+	Panicf(format string, args ...any)
 }
 
 // SetLoggerFactory sets the factory function used to create ILogger instances.
@@ -105,23 +105,23 @@ func (d *dragonboatLogger) SetLevel(l LogLevel) {
 	d.get().SetLevel(l)
 }
 
-func (d *dragonboatLogger) Debugf(format string, args ...interface{}) {
+func (d *dragonboatLogger) Debugf(format string, args ...any) {
 	d.get().Debugf(format, args...)
 }
 
-func (d *dragonboatLogger) Infof(format string, args ...interface{}) {
+func (d *dragonboatLogger) Infof(format string, args ...any) {
 	d.get().Infof(format, args...)
 }
 
-func (d *dragonboatLogger) Warningf(format string, args ...interface{}) {
+func (d *dragonboatLogger) Warningf(format string, args ...any) {
 	d.get().Warningf(format, args...)
 }
 
-func (d *dragonboatLogger) Errorf(format string, args ...interface{}) {
+func (d *dragonboatLogger) Errorf(format string, args ...any) {
 	d.get().Errorf(format, args...)
 }
 
-func (d *dragonboatLogger) Panicf(format string, args ...interface{}) {
+func (d *dragonboatLogger) Panicf(format string, args ...any) {
 	d.get().Panicf(format, args...)
 }
 
@@ -157,11 +157,11 @@ type nullLogger struct{}
 
 var _ ILogger = (*nullLogger)(nil)
 
-func (nullLogger) SetLevel(LogLevel)                           {}
-func (nullLogger) Debugf(format string, args ...interface{})   {}
-func (nullLogger) Infof(format string, args ...interface{})    {}
-func (nullLogger) Warningf(format string, args ...interface{}) {}
-func (nullLogger) Errorf(format string, args ...interface{})   {}
-func (nullLogger) Panicf(format string, args ...interface{}) {
+func (nullLogger) SetLevel(LogLevel)                   {}
+func (nullLogger) Debugf(format string, args ...any)   {}
+func (nullLogger) Infof(format string, args ...any)    {}
+func (nullLogger) Warningf(format string, args ...any) {}
+func (nullLogger) Errorf(format string, args ...any)   {}
+func (nullLogger) Panicf(format string, args ...any) {
 	panic(fmt.Sprintf(format, args...))
 }

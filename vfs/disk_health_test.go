@@ -608,17 +608,14 @@ func TestDiskHealthChecking_Filesystem_Close(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for _, filename := range files {
-		filename := filename
 		// Create will stall, and the detector should write to the stalled channel
 		// with the filename.
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			f, _ := fs.Create(filename, WriteCategoryUnspecified)
 			if f != nil {
 				f.Close()
 			}
-		}()
+		})
 
 		select {
 		case stalledPath := <-stalled:

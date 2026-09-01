@@ -17,6 +17,7 @@ package transport
 import (
 	"fmt"
 	"io"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -80,7 +81,7 @@ type Chunk struct {
 	onReceive func(pb.MessageBatch)
 	timeout   uint64
 	did       uint64
-	tick      uint64
+	tick      atomic.Uint64
 	gcTick    uint64
 	mu        sync.Mutex
 	stopCh    chan struct{}
@@ -103,9 +104,7 @@ func NewChunk(onReceive func(pb.MessageBatch), confirm func(uint64, uint64, uint
 		fs:        fs,
 		stopCh:    make(chan struct{}),
 	}
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
+	c.wg.Go(func() {
 		ticker := time.NewTicker(time.Second)
 		defer ticker.Stop()
 		for {
@@ -116,7 +115,7 @@ func NewChunk(onReceive func(pb.MessageBatch), confirm func(uint64, uint64, uint
 				return
 			}
 		}
-	}()
+	})
 	return c
 }
 
@@ -137,7 +136,7 @@ func (c *Chunk) Add(chunk pb.Chunk) bool {
 
 // Tick moves the internal logical clock forward.
 func (c *Chunk) Tick() {
-	ct := atomic.AddUint64(&c.tick, 1)
+	ct := c.tick.Add(1)
 	if ct%c.gcTick == 0 {
 		c.gc()
 	}
@@ -176,7 +175,7 @@ func (c *Chunk) gc() {
 }
 
 func (c *Chunk) getTick() uint64 {
-	return atomic.LoadUint64(&c.tick)
+	return c.tick.Load()
 }
 
 func (c *Chunk) reset(key string) {
@@ -189,9 +188,7 @@ func (c *Chunk) getTracked() map[string]*tracked {
 	m := make(map[string]*tracked)
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	for k, v := range c.tracked {
-		m[k] = v
-	}
+	maps.Copy(m, c.tracked)
 	return m
 }
 
@@ -401,16 +398,16 @@ func (c *Chunk) toMessage(chunk pb.Chunk,
 	}
 	env := c.getEnv(chunk)
 	snapDir := env.GetFinalDir()
-	m := pb.Message{}
-	m.Type = pb.InstallSnapshot
-	m.From = chunk.From
-	m.To = chunk.ReplicaID
-	m.ShardID = chunk.ShardID
-	s := pb.Snapshot{}
-	s.Index = chunk.Index
-	s.Term = chunk.Term
-	s.OnDiskIndex = chunk.OnDiskIndex
-	s.Membership = chunk.Membership
+	m := pb.Message{
+		Type:    pb.InstallSnapshot,
+		From:    chunk.From,
+		To:      chunk.ReplicaID,
+		ShardID: chunk.ShardID}
+	s := pb.Snapshot{
+		Index:       chunk.Index,
+		Term:        chunk.Term,
+		OnDiskIndex: chunk.OnDiskIndex,
+		Membership:  chunk.Membership}
 	fn := c.fs.PathBase(chunk.Filepath)
 	s.Filepath = c.fs.PathJoin(snapDir, fn)
 	s.FileSize = chunk.FileSize

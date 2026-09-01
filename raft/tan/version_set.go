@@ -21,6 +21,7 @@ package tan
 import (
 	"bytes"
 	"io"
+	"maps"
 	"sync"
 
 	"github.com/armadakv/armada/vfs"
@@ -318,9 +319,7 @@ func (vs *versionSet) logAndApply(
 	// Update the zombie tables set first, as installation of the new version
 	// will unref the previous version which could result in addObsoleteLocked
 	// being called.
-	for fileNum, size := range zombies {
-		vs.zombieTables[fileNum] = size
-	}
+	maps.Copy(vs.zombieTables, zombies)
 	// Install the new version.
 	vs.append(newVersion)
 	if newManifestFileNum != 0 {

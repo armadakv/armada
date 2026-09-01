@@ -21,7 +21,7 @@ import (
 
 func TestSnapshotAckTick(t *testing.T) {
 	a := snapshotAck{ctick: 10}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		r := a.tick()
 		if (i == 9) != r {
 			t.Errorf("unexpected tick result, i %d, tick %d, r %t", i, a.ctick, r)

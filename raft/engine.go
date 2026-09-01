@@ -141,7 +141,7 @@ func newWorkReady(count uint64) *workReady {
 		maps:        make([]*readyShard, count),
 		channels:    make([]chan struct{}, count),
 	}
-	for i := uint64(0); i < count; i++ {
+	for i := range count {
 		wr.channels[i] = make(chan struct{}, 1)
 		wr.maps[i] = newReadyShard()
 	}
@@ -352,7 +352,7 @@ func newWorkerPool(nh nodeLoader,
 		workerStopper: syncutil.NewStopper(),
 		poolStopper:   syncutil.NewStopper(),
 	}
-	for workerID := uint64(0); workerID < snapshotWorkerCount; workerID++ {
+	for workerID := range snapshotWorkerCount {
 		w.workers[workerID] = newSSWorker(workerID, w.workerStopper)
 	}
 	w.poolStopper.RunWorker(func() {
@@ -810,7 +810,7 @@ func newCloseWorkerPool(closeWorkerCount uint64) *closeWorkerPool {
 		poolStopper:   syncutil.NewStopper(),
 	}
 
-	for workerID := uint64(0); workerID < closeWorkerCount; workerID++ {
+	for workerID := range closeWorkerCount {
 		w.workers[workerID] = newCloseWorker(workerID, w.workerStopper)
 	}
 	w.poolStopper.RunWorker(func() {

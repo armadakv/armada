@@ -154,7 +154,7 @@ func TestSaveRaftState(t *testing.T) {
 			ShardID:   1,
 			ReplicaID: 1,
 			Snapshot:  pb.Snapshot{Index: 100, Term: 10},
-			State:     pb.State{Commit: 100, Term: 10},
+			Commit:    100, Term: 10,
 			EntriesToSave: []pb.Entry{
 				{Index: 99, Term: 10},
 				{Index: 100, Term: 10},
@@ -164,7 +164,7 @@ func TestSaveRaftState(t *testing.T) {
 			ShardID:   17,
 			ReplicaID: 1,
 			Snapshot:  pb.Snapshot{Index: 200, Term: 10},
-			State:     pb.State{Commit: 200, Term: 10},
+			Commit:    200, Term: 10,
 			EntriesToSave: []pb.Entry{
 				{Index: 198, Term: 10},
 				{Index: 199, Term: 10},

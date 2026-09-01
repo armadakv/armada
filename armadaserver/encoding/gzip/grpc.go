@@ -14,7 +14,7 @@ const Name = "gzip"
 
 func init() {
 	c := &compressor{}
-	c.poolCompressor.New = func() interface{} {
+	c.poolCompressor.New = func() any {
 		w, err := gz.NewWriterLevel(io.Discard, gz.BestSpeed)
 		if err != nil {
 			panic(err)

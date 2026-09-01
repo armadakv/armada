@@ -279,7 +279,7 @@ func TestWorker_recover_negotiation(t *testing.T) {
 func fillData(keyCount int, at table.ActiveTable) error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	for i := 0; i < keyCount; i++ {
+	for i := range keyCount {
 		if _, err := at.Put(ctx, &armadapb.PutRequest{
 			Key:   []byte(fmt.Sprintf("foo-%d", i)),
 			Value: []byte("bar"),

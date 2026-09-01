@@ -14,7 +14,7 @@ const Name = "snappy"
 
 func init() {
 	c := &compressor{}
-	c.poolCompressor.New = func() interface{} {
+	c.poolCompressor.New = func() any {
 		w := gs.NewBufferedWriter(io.Discard)
 		return &writer{Writer: w, pool: &c.poolCompressor}
 	}

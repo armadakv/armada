@@ -209,7 +209,7 @@ func TestWaitForShutdown(t *testing.T) {
 
 func TestCreateEngineConfig(t *testing.T) {
 	// Save the original values of the config
-	originalValues := map[string]interface{}{
+	originalValues := map[string]any{
 		"api.advertise-address":        viper.Get("api.advertise-address"),
 		"raft.initial-members":         viper.Get("raft.initial-members"),
 		"raft.wal-dir":                 viper.Get("raft.wal-dir"),

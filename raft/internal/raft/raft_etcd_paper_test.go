@@ -121,11 +121,11 @@ func TestLeaderBcastBeat(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2, 3}, 10, hi, NewTestLogDB())
 	r.becomeCandidate()
 	ne(r.becomeLeader(), t)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ne(r.appendEntries([]pb.Entry{{Index: uint64(i) + 1}}), t)
 	}
 
-	for i := 0; i < hi; i++ {
+	for range hi {
 		ne(r.tick(), t)
 	}
 
@@ -376,7 +376,7 @@ func testNonleadersElectionTimeoutNonconflict(t *testing.T, state State) {
 		rs[k] = newTestRaft(ids[k], ids, et, 1, NewTestLogDB())
 	}
 	conflicts := 0
-	for round := 0; round < 1000; round++ {
+	for range 1000 {
 		for _, r := range rs {
 			switch state {
 			case follower:

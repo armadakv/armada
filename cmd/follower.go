@@ -146,7 +146,7 @@ func follower(_ *cobra.Command, _ []string) error {
 					armadapb.RegisterMaintenanceServer(r, &armadaserver.ResetServer{Tables: engine, AuthFunc: authFunc(viper.GetString("maintenance.token"))})
 				}
 				if viper.GetBool("tables.enabled") {
-					armadapb.RegisterTablesServer(r, &armadaserver.ReadonlyTablesServer{TablesServer: armadaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))}})
+					armadapb.RegisterTablesServer(r, &armadaserver.ReadonlyTablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))})
 				}
 
 				// Register metrics server for Prometheus metrics via gRPC

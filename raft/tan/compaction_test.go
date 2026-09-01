@@ -43,7 +43,7 @@ func TestRemoveEntries(t *testing.T) {
 			u := pb.Update{
 				ShardID:       2,
 				ReplicaID:     3,
-				State:         pb.State{Commit: i},
+				Commit:        i,
 				EntriesToSave: []pb.Entry{{Index: i, Term: 1}},
 			}
 			_, err := db.write(u, buf)
@@ -68,7 +68,7 @@ func TestRemoveEntries(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 0, len(entries1))
 
-		for j := 0; j < 3000; j++ {
+		for range 3000 {
 			ls, err := db.opts.FS.List(db.dirname)
 			require.NoError(t, err)
 			noObsolete := true
@@ -105,11 +105,9 @@ func TestRemoveAll(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 100,
 				Term:  5,
@@ -125,7 +123,7 @@ func TestRemoveAll(t *testing.T) {
 			require.NoError(t, err)
 		}
 		require.NoError(t, db.removeAll(2, 3))
-		for i := 0; i < 3000; i++ {
+		for range 3000 {
 			ls, err := db.opts.FS.List(db.dirname)
 			require.NoError(t, err)
 			unexpectedFile := false
@@ -164,11 +162,9 @@ func TestInstallSnapshot(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 101,
 				Term:  5,

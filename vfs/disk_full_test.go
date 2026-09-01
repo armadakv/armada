@@ -120,7 +120,7 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 	})
 
 	var wg errgroup.Group
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		wg.Go(func() error {
 			_, err := fs.Create("foo", WriteCategoryUnspecified)
 			return err
@@ -222,10 +222,7 @@ type enospcMockFile struct {
 
 func (f *enospcMockFile) Write(b []byte) (int, error) {
 	if err := f.fs.maybeENOSPC(); err != nil {
-		n := len(b)
-		if f.fs.bytesWritten < n {
-			n = f.fs.bytesWritten
-		}
+		n := min(f.fs.bytesWritten, len(b))
 		return n, err
 	}
 	return len(b), nil

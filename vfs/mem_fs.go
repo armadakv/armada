@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand/v2"
 	"os"
 	"path"
@@ -656,9 +657,7 @@ func newRootMemNode() *memNode {
 
 func cloneChildren(f map[string]*memNode) map[string]*memNode {
 	m := make(map[string]*memNode)
-	for k, v := range f {
-		m[k] = v
-	}
+	maps.Copy(m, f)
 	return m
 }
 
@@ -670,7 +669,7 @@ func (f *memNode) dump(w *bytes.Buffer, level int, name string) {
 		fmt.Fprintf(w, "%8d  ", len(f.mu.data))
 		f.mu.Unlock()
 	}
-	for i := 0; i < level; i++ {
+	for range level {
 		w.WriteString("  ")
 	}
 	w.WriteString(name)
@@ -959,7 +958,7 @@ func (f *memFileInfo) IsDir() bool {
 	return f.isDir
 }
 
-func (f *memFileInfo) Sys() interface{} {
+func (f *memFileInfo) Sys() any {
 	return nil
 }
 

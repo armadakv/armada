@@ -18,8 +18,8 @@ import (
 )
 
 type raftHandler interface {
-	SyncRead(ctx context.Context, id uint64, req interface{}) (interface{}, error)
-	StaleRead(id uint64, req interface{}) (interface{}, error)
+	SyncRead(ctx context.Context, id uint64, req any) (any, error)
+	StaleRead(id uint64, req any) (any, error)
 	SyncPropose(ctx context.Context, session *client.Session, bytes []byte) (sm.Result, error)
 	GetNoOPSession(id uint64) *client.Session
 }
@@ -49,7 +49,7 @@ type ActiveTable struct {
 func readTable[S any](t *ActiveTable, ctx context.Context, linearizable bool, req any) (S, error) {
 	var (
 		err error
-		val interface{}
+		val any
 	)
 	if linearizable {
 		val, err = t.nh.SyncRead(ctx, t.ClusterID, req)

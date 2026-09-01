@@ -89,7 +89,7 @@ func (n *Registry) Remove(shardID uint64, replicaID uint64) {
 // RemoveShard removes info associated with the specified shard.
 func (n *Registry) RemoveShard(shardID uint64) {
 	var toRemove []raftio.NodeInfo
-	n.addr.Range(func(k, v interface{}) bool {
+	n.addr.Range(func(k, v any) bool {
 		ni := k.(raftio.NodeInfo)
 		if ni.ShardID == shardID {
 			toRemove = append(toRemove, ni)

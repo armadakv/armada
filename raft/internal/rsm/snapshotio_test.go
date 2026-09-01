@@ -387,7 +387,7 @@ func TestShrinkSnapshot(t *testing.T) {
 	if _, err := writer.Write(sz); err != nil {
 		t.Fatalf("failed to write session size %v", err)
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		data := make([]byte, 1024*1024+i*256)
 		rand.Read(data)
 		if _, err := writer.Write(data); err != nil {

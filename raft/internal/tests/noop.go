@@ -35,7 +35,7 @@ func (n *NoOP) SetSleepTime(v uint64) {
 }
 
 // Lookup locally looks up the data.
-func (n *NoOP) Lookup(key interface{}) (interface{}, error) {
+func (n *NoOP) Lookup(key any) (any, error) {
 	return make([]byte, 1), nil
 }
 

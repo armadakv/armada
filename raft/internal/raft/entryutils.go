@@ -62,20 +62,6 @@ func limitSize(ents []pb.Entry, limit uint64) []pb.Entry {
 	return ents[:inc]
 }
 
-func min(x uint64, y uint64) uint64 {
-	if x > y {
-		return y
-	}
-	return x
-}
-
-func max(x uint64, y uint64) uint64 {
-	if x > y {
-		return x
-	}
-	return y
-}
-
 func getEntrySliceInMemSize(ents []pb.Entry) uint64 {
 	return pb.GetEntrySliceInMemSize(ents)
 }

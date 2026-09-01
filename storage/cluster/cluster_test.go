@@ -27,7 +27,7 @@ func TestSingleNodeCluster(t *testing.T) {
 func TestMultiNodeCluster(t *testing.T) {
 	clusters := make(map[string]*Cluster)
 	t.Log("start 3 node cluster")
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		address := getTestBindAddress()
 		nodeHostID := util.RandString(64)
 		nodeID := uint64(i)

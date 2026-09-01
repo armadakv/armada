@@ -1,6 +1,6 @@
 module github.com/armadakv/armada
 
-go 1.26.4
+go 1.27
 
 require (
 	github.com/VictoriaMetrics/metrics v1.44.0

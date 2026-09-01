@@ -80,7 +80,7 @@ func (fsm *LFSM) Update(entries []dbsm.Entry) ([]dbsm.Entry, error) {
 	return entries, nil
 }
 
-func (fsm *LFSM) Lookup(e interface{}) (interface{}, error) {
+func (fsm *LFSM) Lookup(e any) (any, error) {
 	switch q := e.(type) {
 	case QueryExist:
 		return fsm.store.Exists(q.Key)
@@ -98,11 +98,11 @@ func (fsm *LFSM) Lookup(e interface{}) (interface{}, error) {
 	return nil, fmt.Errorf("invalid query %#v", e)
 }
 
-func (fsm *LFSM) PrepareSnapshot() (interface{}, error) {
+func (fsm *LFSM) PrepareSnapshot() (any, error) {
 	return json.Marshal(fsm.store)
 }
 
-func (fsm *LFSM) SaveSnapshot(ctx interface{}, w io.Writer, _ dbsm.ISnapshotFileCollection, _ <-chan struct{}) error {
+func (fsm *LFSM) SaveSnapshot(ctx any, w io.Writer, _ dbsm.ISnapshotFileCollection, _ <-chan struct{}) error {
 	_, err := io.Copy(w, bytes.NewReader(ctx.([]byte)))
 	return err
 }

@@ -131,7 +131,7 @@ type IOnDiskStateMachine interface {
 	//
 	// The Lookup method is a read only method, it should never change the state
 	// of IOnDiskStateMachine.
-	Lookup(interface{}) (interface{}, error)
+	Lookup(any) (any, error)
 	// Sync synchronizes all in-core state of the state machine to persisted
 	// storage so the state machine can continue from its latest state after
 	// reboot.
@@ -155,7 +155,7 @@ type IOnDiskStateMachine interface {
 	//
 	// PrepareSnapshot returns an error when there is unrecoverable error for
 	// preparing the snapshot.
-	PrepareSnapshot() (interface{}, error)
+	PrepareSnapshot() (any, error)
 	// SaveSnapshot saves the point in time state of the IOnDiskStateMachine
 	// instance identified by the input state identifier, which is usually not
 	// the latest state of the IOnDiskStateMachine instance, to the provided
@@ -192,7 +192,7 @@ type IOnDiskStateMachine interface {
 	// errors, the IOnDiskStateMachine implementation should only return a non-nil
 	// error when the system need to be immediately halted for critical errors,
 	// e.g. disk error preventing you from saving the snapshot.
-	SaveSnapshot(interface{}, io.Writer, <-chan struct{}) error
+	SaveSnapshot(any, io.Writer, <-chan struct{}) error
 	// RecoverFromSnapshot recovers the state of the IOnDiskStateMachine instance
 	// from a snapshot captured by the SaveSnapshot() method on a remote node. The
 	// saved snapshot is provided as an io.Reader backed by a file stored on disk.

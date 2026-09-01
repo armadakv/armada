@@ -93,7 +93,7 @@ func (r *SSRequest) Streaming() bool {
 // SSMeta is the metadata of a snapshot.
 type SSMeta struct {
 	Membership      pb.Membership
-	Ctx             interface{}
+	Ctx             any
 	Session         *bytes.Buffer
 	Request         SSRequest
 	From            uint64
@@ -182,7 +182,7 @@ type StateMachine struct {
 	snapshotIndex   uint64
 	onDiskInitIndex uint64
 	onDiskIndex     uint64
-	syncedIndex     uint64
+	syncedIndex     atomic.Uint64
 	mu              sync.RWMutex
 	sct             config.CompressionType
 	onDiskSM        bool
@@ -475,14 +475,14 @@ func (s *StateMachine) Loaded() {
 }
 
 // Lookup queries the local state machine.
-func (s *StateMachine) Lookup(query interface{}) (interface{}, error) {
+func (s *StateMachine) Lookup(query any) (any, error) {
 	if s.Concurrent() {
 		return s.concurrentLookup(query)
 	}
 	return s.lookup(query)
 }
 
-func (s *StateMachine) lookup(query interface{}) (interface{}, error) {
+func (s *StateMachine) lookup(query any) (any, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	if s.aborted {
@@ -491,7 +491,7 @@ func (s *StateMachine) lookup(query interface{}) (interface{}, error) {
 	return s.sm.Lookup(query)
 }
 
-func (s *StateMachine) concurrentLookup(query interface{}) (interface{}, error) {
+func (s *StateMachine) concurrentLookup(query any) (any, error) {
 	return s.sm.ConcurrentLookup(query)
 }
 
@@ -615,7 +615,7 @@ func (s *StateMachine) logMembership(name string,
 	}
 }
 
-func (s *StateMachine) getSSMeta(c interface{}, r SSRequest) (SSMeta, error) {
+func (s *StateMachine) getSSMeta(c any, r SSRequest) (SSMeta, error) {
 	if s.members.isEmpty() {
 		plog.Panicf("%s, empty membership", s.id())
 	}
@@ -662,14 +662,14 @@ func (s *StateMachine) SetLastApplied(index uint64) {
 // GetSyncedIndex returns the index value that is known to have been
 // synchronized.
 func (s *StateMachine) GetSyncedIndex() uint64 {
-	return atomic.LoadUint64(&s.syncedIndex)
+	return s.syncedIndex.Load()
 }
 
 func (s *StateMachine) setSyncedIndex(index uint64) {
 	if s.GetSyncedIndex() > index {
 		panic("synced index moving backward")
 	}
-	atomic.StoreUint64(&s.syncedIndex, index)
+	s.syncedIndex.Store(index)
 }
 
 func (s *StateMachine) setApplied(index uint64, term uint64) {
@@ -785,7 +785,7 @@ func (s *StateMachine) prepare(r SSRequest) (SSMeta, error) {
 		return SSMeta{}, err
 	}
 	var err error
-	var ctx interface{}
+	var ctx any
 	if s.Concurrent() && !s.savingDummySnapshot(r) {
 		ctx, err = s.sm.Prepare()
 		if err != nil {

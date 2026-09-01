@@ -52,7 +52,7 @@ type pipeline interface {
 }
 
 type logDBMetrics struct {
-	busy int32
+	busy atomic.Int32
 }
 
 func (l *logDBMetrics) update(busy bool) {
@@ -60,11 +60,11 @@ func (l *logDBMetrics) update(busy bool) {
 	if busy {
 		v = int32(1)
 	}
-	atomic.StoreInt32(&l.busy, v)
+	l.busy.Store(v)
 }
 
 func (l *logDBMetrics) isBusy() bool {
-	return atomic.LoadInt32(&l.busy) != 0
+	return l.busy.Load() != 0
 }
 
 type leaderInfo struct {
@@ -118,7 +118,7 @@ type node struct {
 	shardID               uint64
 	replicaID             uint64
 	instanceID            uint64
-	initializedFlag       uint64
+	initializedFlag       atomic.Uint64
 	closeOnce             sync.Once
 	raftMu                sync.Mutex
 	new                   bool
@@ -129,7 +129,7 @@ type node struct {
 
 var _ rsm.INode = (*node)(nil)
 
-var instanceID uint64
+var instanceID atomic.Uint64
 
 func newNode(peers map[uint64]string,
 	initialMember bool,
@@ -161,7 +161,7 @@ func newNode(peers map[uint64]string,
 		shardID:               config.ShardID,
 		replicaID:             config.ReplicaID,
 		raftAddress:           nhConfig.RaftAddress,
-		instanceID:            atomic.AddUint64(&instanceID, 1),
+		instanceID:            instanceID.Add(1),
 		tickMillisecond:       nhConfig.RTTMillisecond,
 		config:                config,
 		incomingProposals:     proposals,
@@ -1652,12 +1652,12 @@ func (n *node) isFollower() bool {
 }
 
 func (n *node) initialized() bool {
-	if atomic.LoadUint64(&n.initializedFlag) != 0 {
+	if n.initializedFlag.Load() != 0 {
 		return true
 	}
 	select {
 	case <-n.initializedC:
-		atomic.StoreUint64(&n.initializedFlag, 1)
+		n.initializedFlag.Store(1)
 		return true
 	default:
 	}

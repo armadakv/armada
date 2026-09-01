@@ -64,12 +64,12 @@ func (sr *snapshotTask) getTask() (rsm.Task, bool) {
 
 type snapshotState struct {
 	snapshotIndex    uint64
-	reqSnapshotIndex uint64
-	compactLogTo     uint64
-	compactedTo      uint64
-	savingFlag       uint32
-	recoveringFlag   uint32
-	streamingFlag    uint32
+	reqSnapshotIndex atomic.Uint64
+	compactLogTo     atomic.Uint64
+	compactedTo      atomic.Uint64
+	savingFlag       atomic.Uint32
+	recoveringFlag   atomic.Uint32
+	streamingFlag    atomic.Uint32
 	recoverReady     snapshotTask
 	saveReady        snapshotTask
 	streamReady      snapshotTask
@@ -79,39 +79,39 @@ type snapshotState struct {
 }
 
 func (rs *snapshotState) recovering() bool {
-	return atomic.LoadUint32(&rs.recoveringFlag) == 1
+	return rs.recoveringFlag.Load() == 1
 }
 
 func (rs *snapshotState) setRecovering() {
-	atomic.StoreUint32(&rs.recoveringFlag, 1)
+	rs.recoveringFlag.Store(1)
 }
 
 func (rs *snapshotState) clearRecovering() {
-	atomic.StoreUint32(&rs.recoveringFlag, 0)
+	rs.recoveringFlag.Store(0)
 }
 
 func (rs *snapshotState) streaming() bool {
-	return atomic.LoadUint32(&rs.streamingFlag) == 1
+	return rs.streamingFlag.Load() == 1
 }
 
 func (rs *snapshotState) setStreaming() {
-	atomic.StoreUint32(&rs.streamingFlag, 1)
+	rs.streamingFlag.Store(1)
 }
 
 func (rs *snapshotState) clearStreaming() {
-	atomic.StoreUint32(&rs.streamingFlag, 0)
+	rs.streamingFlag.Store(0)
 }
 
 func (rs *snapshotState) saving() bool {
-	return atomic.LoadUint32(&rs.savingFlag) == 1
+	return rs.savingFlag.Load() == 1
 }
 
 func (rs *snapshotState) setSaving() {
-	atomic.StoreUint32(&rs.savingFlag, 1)
+	rs.savingFlag.Store(1)
 }
 
 func (rs *snapshotState) clearSaving() {
-	atomic.StoreUint32(&rs.savingFlag, 0)
+	rs.savingFlag.Store(0)
 }
 
 func (rs *snapshotState) setIndex(index uint64) {
@@ -123,35 +123,35 @@ func (rs *snapshotState) getIndex() uint64 {
 }
 
 func (rs *snapshotState) getReqIndex() uint64 {
-	return atomic.LoadUint64(&rs.reqSnapshotIndex)
+	return rs.reqSnapshotIndex.Load()
 }
 
 func (rs *snapshotState) setReqIndex(idx uint64) {
-	atomic.StoreUint64(&rs.reqSnapshotIndex, idx)
+	rs.reqSnapshotIndex.Store(idx)
 }
 
 func (rs *snapshotState) hasCompactLogTo() bool {
-	return atomic.LoadUint64(&rs.compactLogTo) > 0
+	return rs.compactLogTo.Load() > 0
 }
 
 func (rs *snapshotState) getCompactLogTo() uint64 {
-	return atomic.SwapUint64(&rs.compactLogTo, 0)
+	return rs.compactLogTo.Swap(0)
 }
 
 func (rs *snapshotState) setCompactLogTo(v uint64) {
-	atomic.StoreUint64(&rs.compactLogTo, v)
+	rs.compactLogTo.Store(v)
 }
 
 func (rs *snapshotState) setCompactedTo(v uint64) {
-	atomic.StoreUint64(&rs.compactedTo, v)
+	rs.compactedTo.Store(v)
 }
 
 func (rs *snapshotState) getCompactedTo() uint64 {
-	return atomic.SwapUint64(&rs.compactedTo, 0)
+	return rs.compactedTo.Swap(0)
 }
 
 func (rs *snapshotState) hasCompactedTo() bool {
-	return atomic.LoadUint64(&rs.compactedTo) > 0
+	return rs.compactedTo.Load() > 0
 }
 
 func (rs *snapshotState) setStreamReq(t rsm.Task, fn getSink) {

@@ -81,7 +81,7 @@ type IConcurrentStateMachine interface {
 	//
 	// The Lookup() method is a read only method, it should never change the state
 	// of the IConcurrentStateMachine instance.
-	Lookup(interface{}) (interface{}, error)
+	Lookup(any) (any, error)
 	// PrepareSnapshot prepares the snapshot to be concurrently captured and saved.
 	// PrepareSnapshot is invoked before SaveSnapshot is called and it is invoked
 	// with mutual exclusion protection from the Update method.
@@ -96,7 +96,7 @@ type IConcurrentStateMachine interface {
 	//
 	// PrepareSnapshot returns an error when there is unrecoverable error for
 	// preparing the snapshot.
-	PrepareSnapshot() (interface{}, error)
+	PrepareSnapshot() (any, error)
 	// SaveSnapshot saves the point in time state of the IConcurrentStateMachine
 	// identified by the input state identifier to the provided io.Writer backed
 	// by a file on disk and the provided ISnapshotFileCollection instance. This
@@ -133,7 +133,7 @@ type IConcurrentStateMachine interface {
 	// errors, the IConcurrentStateMachine implementation should only return a
 	// non-nil error when the system need to be immediately halted for critical
 	// errors, e.g. disk error preventing you from saving the snapshot.
-	SaveSnapshot(interface{},
+	SaveSnapshot(any,
 		io.Writer, ISnapshotFileCollection, <-chan struct{}) error
 	// RecoverFromSnapshot recovers the state of the IConcurrentStateMachine
 	// instance from a previously saved snapshot captured by the SaveSnapshot()

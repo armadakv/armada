@@ -30,7 +30,7 @@ var ErrShardClosed = errors.New("raft shard already closed")
 
 // IStreamable is the interface for types that can be snapshot streamed.
 type IStreamable interface {
-	Stream(interface{}, io.Writer) error
+	Stream(any, io.Writer) error
 }
 
 // ISavable is the interface for types that can its content saved as snapshots.
@@ -56,13 +56,13 @@ type IManagedStateMachine interface {
 	Open() (uint64, error)
 	Update(sm.Entry) (sm.Result, error)
 	BatchedUpdate([]sm.Entry) ([]sm.Entry, error)
-	Lookup(interface{}) (interface{}, error)
-	ConcurrentLookup(interface{}) (interface{}, error)
+	Lookup(any) (any, error)
+	ConcurrentLookup(any) (any, error)
 	Sync() error
-	Prepare() (interface{}, error)
+	Prepare() (any, error)
 	Save(SSMeta, io.Writer, []byte, sm.ISnapshotFileCollection) (bool, error)
 	Recover(io.Reader, []sm.SnapshotFile) error
-	Stream(interface{}, io.Writer) error
+	Stream(any, io.Writer) error
 	Offloaded() bool
 	Loaded()
 	Close() error
@@ -204,7 +204,7 @@ func (ds *NativeSM) BatchedUpdate(ents []sm.Entry) ([]sm.Entry, error) {
 }
 
 // Lookup queries the data store.
-func (ds *NativeSM) Lookup(query interface{}) (interface{}, error) {
+func (ds *NativeSM) Lookup(query any) (any, error) {
 	ds.mu.RLock()
 	defer ds.mu.RUnlock()
 	if ds.destroyed {
@@ -214,7 +214,7 @@ func (ds *NativeSM) Lookup(query interface{}) (interface{}, error) {
 }
 
 // ConcurrentLookup queries the data store without obtaining the NativeSM.mu.
-func (ds *NativeSM) ConcurrentLookup(query interface{}) (interface{}, error) {
+func (ds *NativeSM) ConcurrentLookup(query any) (any, error) {
 	return ds.sm.Lookup(query)
 }
 
@@ -224,7 +224,7 @@ func (ds *NativeSM) Sync() error {
 }
 
 // Prepare makes preparation for concurrently taking snapshot.
-func (ds *NativeSM) Prepare() (interface{}, error) {
+func (ds *NativeSM) Prepare() (any, error) {
 	return ds.sm.Prepare()
 }
 
@@ -248,7 +248,7 @@ func (ds *NativeSM) saveDummy(w io.Writer, session []byte) error {
 	return nil
 }
 
-func (ds *NativeSM) save(ctx interface{},
+func (ds *NativeSM) save(ctx any,
 	w io.Writer, session []byte, c sm.ISnapshotFileCollection,
 ) error {
 	if _, err := w.Write(session); err != nil {
@@ -261,7 +261,7 @@ func (ds *NativeSM) save(ctx interface{},
 }
 
 // Stream creates and streams snapshot to a remote node.
-func (ds *NativeSM) Stream(ctx interface{}, w io.Writer) error {
+func (ds *NativeSM) Stream(ctx any, w io.Writer) error {
 	return ds.save(ctx, w, GetEmptyLRUSession(), nil)
 }
 

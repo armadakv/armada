@@ -109,7 +109,7 @@ func NewKVTest(shardID uint64, replicaID uint64) sm.IStateMachine {
 		s.Junk[i] = 2
 	}
 	s.pbkvPool = &sync.Pool{
-		New: func() interface{} {
+		New: func() any {
 			return &kvpb.PBKV{}
 		},
 	}
@@ -123,7 +123,7 @@ func (s *KVTest) DisableLargeDelay() {
 }
 
 // Lookup performances local looks up for the sepcified data.
-func (s *KVTest) Lookup(key interface{}) (interface{}, error) {
+func (s *KVTest) Lookup(key any) (any, error) {
 	if s.closed {
 		panic("lookup called after Close()")
 	}
@@ -324,7 +324,7 @@ func (v *VerboseSnapshotSM) Update(e sm.Entry) (sm.Result, error) {
 }
 
 // Lookup ...
-func (v *VerboseSnapshotSM) Lookup(q interface{}) (interface{}, error) {
+func (v *VerboseSnapshotSM) Lookup(q any) (any, error) {
 	return v.sz, nil
 }
 
@@ -333,7 +333,7 @@ func (v *VerboseSnapshotSM) SaveSnapshot(w io.Writer,
 	collection sm.ISnapshotFileCollection, stopc <-chan struct{},
 ) error {
 	empty := make([]byte, 1024)
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		if _, err := w.Write(empty); err != nil {
 			return err
 		}

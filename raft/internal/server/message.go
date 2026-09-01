@@ -34,7 +34,7 @@ type MessageQueue struct {
 	right         []pb.Message
 	nodrop        []pb.Message
 	delayed       []delayed
-	tick          uint64
+	tick          atomic.Uint64
 	cycle         uint64
 	size          uint64
 	lazyFreeCycle uint64
@@ -66,7 +66,7 @@ func NewMessageQueue(size uint64,
 
 // Tick increases the internal tick value.
 func (q *MessageQueue) Tick() {
-	atomic.AddUint64(&q.tick, 1)
+	q.tick.Add(1)
 }
 
 // Close closes the queue so no further messages can be added.
@@ -127,7 +127,7 @@ func (q *MessageQueue) AddDelayed(msg pb.Message, delay uint64) bool {
 	if msg.Type != pb.SnapshotStatus {
 		panic("not a snapshot status message")
 	}
-	tick := atomic.LoadUint64(&q.tick)
+	tick := q.tick.Load()
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	if q.stopped {
@@ -184,7 +184,7 @@ func (q *MessageQueue) getDelayed() []pb.Message {
 	}
 	sz := len(q.delayed)
 	var result []pb.Message
-	tick := atomic.LoadUint64(&q.tick)
+	tick := q.tick.Load()
 	for idx, rec := range q.delayed {
 		if rec.tick < tick {
 			result = append(result, rec.m)

@@ -28,12 +28,12 @@ type mockRaftHandler struct {
 	mock.Mock
 }
 
-func (m *mockRaftHandler) SyncRead(ctx context.Context, id uint64, req interface{}) (interface{}, error) {
+func (m *mockRaftHandler) SyncRead(ctx context.Context, id uint64, req any) (any, error) {
 	args := m.Called(ctx, id, req)
 	return args.Get(0), args.Error(1)
 }
 
-func (m *mockRaftHandler) StaleRead(id uint64, req interface{}) (interface{}, error) {
+func (m *mockRaftHandler) StaleRead(id uint64, req any) (any, error) {
 	args := m.Called(id, req)
 	return args.Get(0), args.Error(1)
 }

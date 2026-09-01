@@ -18,7 +18,7 @@ func TestErrorFS(t *testing.T) {
 		sb.Reset()
 		switch td.Cmd {
 		case "parse-dsl":
-			for _, l := range strings.Split(strings.TrimSpace(td.Input), "\n") {
+			for l := range strings.SplitSeq(strings.TrimSpace(td.Input), "\n") {
 				inj, err := ParseDSL(l)
 				if err != nil {
 					fmt.Fprintf(&sb, "parsing err: %s\n", err)

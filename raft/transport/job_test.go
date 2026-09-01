@@ -101,7 +101,7 @@ func TestKeepSendingChunksUsingFailedJobWillNotBlock(t *testing.T) {
 	if perr == nil {
 		t.Fatalf("error didn't return from process()")
 	}
-	for i := 0; i < streamingChanLength*10; i++ {
+	for range streamingChanLength * 10 {
 		c.AddChunk(pb.Chunk{})
 	}
 	select {

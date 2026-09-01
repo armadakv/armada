@@ -135,7 +135,7 @@ func (v *version) unrefFiles() []*fileMetadata {
 // checkConsistency checks that all of the files listed in the version exist
 func (v *version) checkConsistency(dirname string, fs vfs.FS) error {
 	var buf bytes.Buffer
-	var args []interface{}
+	var args []any
 	for fileNum := range v.files {
 		path := makeFilename(fs, dirname, fileTypeLog, fileNum)
 		if _, err := fs.Stat(path); err != nil {

@@ -171,7 +171,7 @@ type IStateMachine interface {
 	//
 	// When an error is returned by the Lookup method, it will be passed to the
 	// user client.
-	Lookup(interface{}) (interface{}, error)
+	Lookup(any) (any, error)
 	// SaveSnapshot saves the current state of the IStateMachine instance to the
 	// provided io.Writer backed by an on disk file. SaveSnapshot is a read only
 	// operation.

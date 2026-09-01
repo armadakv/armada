@@ -14,7 +14,7 @@ const Name = "zstd"
 
 func init() {
 	c := &compressor{}
-	c.poolCompressor.New = func() interface{} {
+	c.poolCompressor.New = func() any {
 		w, _ := zstd.NewWriter(io.Discard)
 		return &writer{Encoder: w, pool: &c.poolCompressor}
 	}

@@ -451,15 +451,13 @@ func (t *QUICTransport) pooledDial(addr string) (*quic.Conn, error) {
 	t.connMu.Unlock()
 
 	// Evict the entry when the connection is closed by either side.
-	t.wg.Add(1)
-	go func() {
-		defer t.wg.Done()
+	t.wg.Go(func() {
 		select {
 		case <-conn.Context().Done():
 			t.evictConn(addr)
 		case <-t.ctx.Done():
 		}
-	}()
+	})
 
 	return conn, nil
 }

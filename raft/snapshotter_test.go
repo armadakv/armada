@@ -546,7 +546,7 @@ func TestShrinkSnapshots(t *testing.T) {
 			if _, err := writer.Write(sz); err != nil {
 				t.Fatalf("failed to write %v", err)
 			}
-			for j := 0; j < 10; j++ {
+			for range 10 {
 				data := make([]byte, 1024*1024)
 				if _, err := writer.Write(data); err != nil {
 					t.Fatalf("failed to write %v", err)

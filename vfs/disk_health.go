@@ -399,10 +399,7 @@ func pack(delta time.Duration, writeSizeInBytes int64, opType OpType) uint64 {
 	// We have no guarantee of clock monotonicity. If we have a small regression
 	// in the clock, we set deltaMillis to zero, so we can still catch the operation
 	// if happens to be slow.
-	deltaMillis := delta.Milliseconds()
-	if deltaMillis < 0 {
-		deltaMillis = 0
-	}
+	deltaMillis := max(delta.Milliseconds(), 0)
 	// As of 3/7/2023, the use of 40 bits for an delta provides ~34 years
 	// of effective monitoring time before the uint wraps around, at millisecond
 	// precision.

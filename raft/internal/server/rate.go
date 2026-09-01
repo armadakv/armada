@@ -33,7 +33,7 @@ type followerState struct {
 
 // RateLimiter is the struct used to keep tracking consumed memory size.
 type RateLimiter struct {
-	size    uint64
+	size    atomic.Uint64
 	maxSize uint64
 }
 
@@ -52,22 +52,22 @@ func (r *RateLimiter) Enabled() bool {
 
 // Increase increases the recorded in memory log size by sz bytes.
 func (r *RateLimiter) Increase(sz uint64) {
-	atomic.AddUint64(&r.size, sz)
+	r.size.Add(sz)
 }
 
 // Decrease decreases the recorded in memory log size by sz bytes.
 func (r *RateLimiter) Decrease(sz uint64) {
-	atomic.AddUint64(&r.size, ^(sz - 1))
+	r.size.Add(^(sz - 1))
 }
 
 // Set sets the recorded in memory log size to sz bytes.
 func (r *RateLimiter) Set(sz uint64) {
-	atomic.StoreUint64(&r.size, sz)
+	r.size.Store(sz)
 }
 
 // Get returns the recorded in memory log size.
 func (r *RateLimiter) Get() uint64 {
-	return atomic.LoadUint64(&r.size)
+	return r.size.Load()
 }
 
 // RateLimited returns a boolean flag indicating whether the node is rate

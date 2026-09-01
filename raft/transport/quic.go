@@ -329,9 +329,7 @@ func (t *QUIC) Start() error {
 	t.cancelCtx = cancel
 
 	// Accept loop.
-	t.wg.Add(1)
-	go func() {
-		defer t.wg.Done()
+	t.wg.Go(func() {
 		for {
 			conn, err := t.listener.Accept(ctx)
 			if err != nil {
@@ -343,7 +341,7 @@ func (t *QUIC) Start() error {
 				t.serveConn(c, ctx)
 			}(conn)
 		}
-	}()
+	})
 
 	return nil
 }

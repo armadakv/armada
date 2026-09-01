@@ -269,7 +269,7 @@ func TestRemoveSavedSnapshots(t *testing.T) {
 			t.Fatalf("%v", err)
 		}
 	}()
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		ssdir := fs.PathJoin(singleNodeHostTestDir, fmt.Sprintf("snapshot-%X", i))
 		if err := fs.MkdirAll(ssdir, 0o755); err != nil {
 			t.Fatalf("failed to mkdir %v", err)

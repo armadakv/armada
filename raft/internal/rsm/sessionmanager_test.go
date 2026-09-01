@@ -92,7 +92,7 @@ func TestSessionSaveOrderWithEviction(t *testing.T) {
 	}
 	check := func(c *cache.OrderedCache) {
 		keys := make(map[uint64]struct{})
-		c.OrderedDo(func(k, v interface{}) {
+		c.OrderedDo(func(k, v any) {
 			clientID := k.(*RaftClientID)
 			keys[uint64(*clientID)] = struct{}{}
 		})

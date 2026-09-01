@@ -39,7 +39,7 @@ func TestLazyFreeCanBeDisabled(t *testing.T) {
 	q.get(false)
 	q.get(false)
 	tq := q.targetQueue()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if tq[i].Cmd == nil {
 			t.Errorf("data unexpectedly freed")
 		}
@@ -54,7 +54,7 @@ func TestLazyFreeCanBeUsed(t *testing.T) {
 	q.get(false)
 	q.get(false)
 	tq := q.targetQueue()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if tq[i].Cmd != nil {
 			t.Errorf("data unexpectedly not freed")
 		}
@@ -69,7 +69,7 @@ func TestLazyFreeCycleCanBeSet(t *testing.T) {
 	q.get(false)
 	q.get(false)
 	tq := q.targetQueue()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if tq[i].Cmd == nil {
 			t.Errorf("data unexpectedly freed")
 		}
@@ -77,7 +77,7 @@ func TestLazyFreeCycleCanBeSet(t *testing.T) {
 	q.get(false)
 	q.get(false)
 	tq = q.targetQueue()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if tq[i].Cmd == nil {
 			t.Errorf("data unexpectedly freed")
 		}
@@ -85,7 +85,7 @@ func TestLazyFreeCycleCanBeSet(t *testing.T) {
 	q.get(false)
 	q.get(false)
 	tq = q.targetQueue()
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if tq[i].Cmd != nil {
 			t.Errorf("data not freed at the expected cycle")
 		}
@@ -97,7 +97,7 @@ func TestEntryQueueCanBePaused(t *testing.T) {
 	if q.paused {
 		t.Errorf("entry queue is paused by default")
 	}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		ok, stopped := q.add(raftpb.Entry{})
 		if !ok || stopped {
 			t.Errorf("failed to add new entry")
@@ -127,7 +127,7 @@ func TestEntryQueueCanBeClosed(t *testing.T) {
 	if q.stopped {
 		t.Errorf("entry queue is stopped by default")
 	}
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		ok, stopped := q.add(raftpb.Entry{})
 		if !ok || stopped {
 			t.Errorf("failed to add new entry")
@@ -159,7 +159,7 @@ func TestEntryQueueCanBeClosed(t *testing.T) {
 
 func TestEntryQueueAllowEntriesToBeAdded(t *testing.T) {
 	q := newEntryQueue(5, 0)
-	for i := uint64(0); i < 5; i++ {
+	for i := range uint64(5) {
 		ok, stopped := q.add(raftpb.Entry{Index: i + 1})
 		if !ok || stopped {
 			t.Errorf("failed to add new entry")
@@ -181,7 +181,7 @@ func TestEntryQueueAllowEntriesToBeAdded(t *testing.T) {
 
 func TestEntryQueueAllowAddedEntriesToBeReturned(t *testing.T) {
 	q := newEntryQueue(5, 0)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		ok, stopped := q.add(raftpb.Entry{Index: uint64(i + 1)})
 		if !ok || stopped {
 			t.Errorf("failed to add new entry")
@@ -198,7 +198,7 @@ func TestEntryQueueAllowAddedEntriesToBeReturned(t *testing.T) {
 	// previously written entries.
 	expectedIndex := uint64(1)
 	q = newEntryQueue(5, 0)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		ok, stopped := q.add(raftpb.Entry{Index: uint64(i + 1)})
 		if !ok || stopped {
 			t.Errorf("failed to add new entry")

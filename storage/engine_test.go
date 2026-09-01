@@ -213,7 +213,6 @@ func TestEngine_Range(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := cancellableTestContext(t)
@@ -374,7 +373,6 @@ func TestEngine_IterateRange(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := cancellableTestContext(t)
@@ -490,7 +488,6 @@ func TestEngine_Put(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := cancellableTestContext(t)
@@ -608,7 +605,6 @@ func TestEngine_Delete(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := cancellableTestContext(t)
@@ -765,7 +761,6 @@ func TestEngine_Txn(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := cancellableTestContext(t)
@@ -837,7 +832,6 @@ func TestEngine_Status(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := cancellableTestContext(t)
@@ -870,7 +864,6 @@ func TestEngine_MemberList(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := cancellableTestContext(t)

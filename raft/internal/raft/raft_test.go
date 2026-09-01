@@ -164,7 +164,7 @@ func TestOneNodeWithHigherTermAndOneNodeWithMostRecentLogCanCompleteElection(t *
 	nt.cut(1, 3)
 	nt.cut(2, 3)
 	// start a few elections to bump the term value
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		nt.send(pb.Message{From: 3, To: 3, Type: pb.Election})
 	}
 	nt.send(pb.Message{From: 1, To: 1, Type: pb.Election})
@@ -560,7 +560,7 @@ func TestNonVotingCanPropose(t *testing.T) {
 		t.Errorf("not nonvoting")
 	}
 	committed := p1.log.committed
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		nt.send(pb.Message{From: 2, To: 2, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("test-data")}}})
 	}
 	if committed+10 != p1.log.committed {
@@ -602,7 +602,7 @@ func TestNonVotingCanReadIndexQuorum1(t *testing.T) {
 		t.Errorf("not nonvoting")
 	}
 	committed := p1.log.committed
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		nt.send(pb.Message{From: 2, To: 2, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("test-data")}}})
 	}
 	if committed+10 != p1.log.committed {
@@ -639,7 +639,7 @@ func TestNonVotingCanReadIndexQuorum2(t *testing.T) {
 		nt.send(pb.Message{From: 1, To: 1, Type: pb.NoOP})
 	}
 	committed := p1.log.committed
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		nt.send(pb.Message{From: 2, To: 2, Type: pb.Propose, Entries: []pb.Entry{{Cmd: []byte("test-data")}}})
 	}
 	if committed+10 != p1.log.committed {
@@ -1240,7 +1240,7 @@ func TestWitnessCanBeRemoved(t *testing.T) {
 func TestFollowerTick(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2}, 5, 1, NewTestLogDB())
 	r.becomeFollower(10, 2)
-	for i := 0; i < 9; i++ {
+	for range 9 {
 		if r.timeForElection() {
 			t.Errorf("time for election unexpected became true")
 		}
@@ -1258,7 +1258,7 @@ func TestLeaderTick(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2}, 5, 1, NewTestLogDB())
 	r.becomeCandidate()
 	ne(r.becomeLeader(), t)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ne(r.tick(), t)
 	}
 	if len(r.msgs) != 10 {
@@ -1292,7 +1292,7 @@ func TestLeaderChecksQuorumEveryElectionTick(t *testing.T) {
 	r.becomeCandidate()
 	ne(r.becomeLeader(), t)
 	r.checkQuorum = true
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		ne(r.tick(), t)
 	}
 	if r.state == leader {
@@ -1304,7 +1304,7 @@ func TestQuiescedTick(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2}, 5, 1, NewTestLogDB())
 	r.becomeCandidate()
 	ne(r.becomeLeader(), t)
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		r.quiescedTick()
 	}
 	if len(r.msgs) != 0 {
@@ -1312,7 +1312,7 @@ func TestQuiescedTick(t *testing.T) {
 	}
 	r = newTestRaft(1, []uint64{1, 2}, 5, 1, NewTestLogDB())
 	r.becomeFollower(10, 2)
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		r.quiescedTick()
 	}
 	if len(r.msgs) != 0 {
@@ -1323,7 +1323,7 @@ func TestQuiescedTick(t *testing.T) {
 func TestSetRandomizedElectionTimeout(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2}, 5, 1, NewTestLogDB())
 	r.becomeFollower(10, 2)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		r.setRandomizedElectionTimeout()
 		if r.randomizedElectionTimeout < 5 && r.randomizedElectionTimeout > 10 {
 			t.Errorf("unexpected randomizedElectionTimeout value, %d", r.randomizedElectionTimeout)
@@ -1977,7 +1977,7 @@ func TestGetPendingConfigChangeCount(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2, 3}, 5, 1, NewTestLogDB())
 	r.becomeCandidate()
 	ne(r.becomeLeader(), t)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		ents := []pb.Entry{
 			{Type: pb.ApplicationEntry, Cmd: make([]byte, maxEntriesToApplySize)},
 			{Type: pb.ConfigChangeEntry},
@@ -2358,7 +2358,7 @@ func TestHandleCandidateHeartbeat(t *testing.T) {
 		Commit: 3,
 	}
 	ents := make([]pb.Entry, 0)
-	for i := uint64(0); i < uint64(10); i++ {
+	for i := range uint64(10) {
 		ents = append(ents, pb.Entry{Index: i, Term: 1})
 	}
 	// yes, this is a bit hacky
@@ -2373,7 +2373,7 @@ func TestHandleCandidateInstallSnapshot(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2}, 5, 1, NewTestLogDB())
 	r.becomeCandidate()
 	ents := make([]pb.Entry, 0)
-	for i := uint64(0); i < uint64(10); i++ {
+	for i := range uint64(10) {
 		ents = append(ents, pb.Entry{Index: i, Term: 1})
 	}
 	r.log.inmem.merge(ents)
@@ -2565,7 +2565,7 @@ func TestHandleFollowerHeartbeat(t *testing.T) {
 		Commit: 3,
 	}
 	ents := make([]pb.Entry, 0)
-	for i := uint64(0); i < uint64(10); i++ {
+	for i := range uint64(10) {
 		ents = append(ents, pb.Entry{Index: i, Term: 1})
 	}
 	r.log.inmem.merge(ents)
@@ -2579,7 +2579,7 @@ func TestHandleFollowerInstallSnapshot(t *testing.T) {
 	r := newTestRaft(1, []uint64{1, 2}, 5, 1, NewTestLogDB())
 	r.becomeFollower(0, 2)
 	ents := make([]pb.Entry, 0)
-	for i := uint64(0); i < uint64(10); i++ {
+	for i := range uint64(10) {
 		ents = append(ents, pb.Entry{Index: i, Term: 1})
 	}
 	r.log.inmem.merge(ents)
@@ -3208,7 +3208,7 @@ func TestInMemoryEntriesSliceCanBeResized(t *testing.T) {
 		t.Errorf("unexpected cap val: %d", oldcap)
 	}
 	r.log.inmem.shrunk = true
-	for i := uint64(0); i < inMemGcTimeout; i++ {
+	for range inMemGcTimeout {
 		ne(r.tick(), t)
 	}
 	if uint64(cap(r.log.inmem.entries)) != entrySliceSize {
@@ -3267,7 +3267,7 @@ func TestCheckDelayedSnapshotAck(t *testing.T) {
 	if !p.snapshotting {
 		t.Errorf("snapshotting flag not set")
 	}
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ne(p.tick(), t)
 		if i != 9 {
 			if !p.snapshotting {
@@ -3359,7 +3359,7 @@ func TestHandleLogQuery(t *testing.T) {
 	assert.NoError(t, p.Handle(pb.Message{From: 1, To: 1, Type: pb.Election}))
 	assert.Equal(t, leader, p.state)
 	committed := p.log.committed
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		assert.NoError(t, p.Handle(pb.Message{
 			From:    1,
 			To:      1,
@@ -3390,7 +3390,7 @@ func TestHandleLogQueryWillPanicWhenRepeatedlyCalled(t *testing.T) {
 	assert.NoError(t, p.Handle(pb.Message{From: 1, To: 1, Type: pb.Election}))
 	assert.Equal(t, leader, p.state)
 	committed := p.log.committed
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		assert.NoError(t, p.Handle(pb.Message{
 			From:    1,
 			To:      1,
@@ -3425,7 +3425,7 @@ func TestHandleLogQueryCanHandleRangeError(t *testing.T) {
 	assert.NoError(t, p.Handle(pb.Message{From: 1, To: 1, Type: pb.Election}))
 	assert.Equal(t, leader, p.state)
 	committed := p.log.committed
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		assert.NoError(t, p.Handle(pb.Message{
 			From:    1,
 			To:      1,
