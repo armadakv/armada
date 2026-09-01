@@ -29,7 +29,7 @@ import (
 	"os"
 	"os/exec"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
@@ -603,7 +603,7 @@ func TestVoteFromAnyState(t *testing.T) {
 }
 
 func testVoteFromAnyState(t *testing.T, vt pb.MessageType) {
-	for st := State(0); st < numStates; st++ {
+	for st := range numStates {
 		r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
 		r.term = 1
 
@@ -1217,7 +1217,7 @@ func TestPastElectionTimeout(t *testing.T) {
 		sm := newTestRaft(1, []uint64{1}, 10, 1, NewTestLogDB())
 		sm.electionTick = uint64(tt.elapse)
 		c := 0
-		for j := 0; j < 10000; j++ {
+		for range 10000 {
 			sm.setRandomizedElectionTimeout()
 			if sm.timeForElection() {
 				c++
@@ -2013,7 +2013,7 @@ func TestBcastBeat(t *testing.T) {
 
 	sm.becomeCandidate()
 	ne(sm.becomeLeader(), t)
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		ne(sm.appendEntries([]pb.Entry{{Index: uint64(i) + 1}}), t)
 	}
 	// slow follower
@@ -2126,7 +2126,7 @@ func TestSendAppendForRemoteRetry(t *testing.T) {
 	r.remotes[2].becomeRetry()
 
 	// each round is a heartbeat
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		if i == 0 {
 			// we expect that raft will only send out one msgAPP on the first
 			// loop. After that, the follower is paused until a heartbeat response is
@@ -2145,7 +2145,7 @@ func TestSendAppendForRemoteRetry(t *testing.T) {
 		if r.remotes[2].state != remoteWait {
 			t.Errorf("paused = %s, want remoteWait", r.remotes[2].state)
 		}
-		for j := 0; j < 10; j++ {
+		for range 10 {
 			ne(r.appendEntries([]pb.Entry{{Cmd: []byte("somedata")}}), t)
 			r.sendReplicateMessage(2)
 			if l := len(r.readMessages()); l != 0 {
@@ -2193,7 +2193,7 @@ func TestSendAppendForRemoteReplicate(t *testing.T) {
 	r.readMessages()
 	r.remotes[2].becomeReplicate()
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ne(r.appendEntries([]pb.Entry{{Cmd: []byte("somedata")}}), t)
 		r.sendReplicateMessage(2)
 		msgs := r.readMessages()
@@ -2211,7 +2211,7 @@ func TestSendAppendForRemoteSnapshot(t *testing.T) {
 	r.readMessages()
 	r.remotes[2].becomeSnapshot(10)
 
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		ne(r.appendEntries([]pb.Entry{{Cmd: []byte("somedata")}}), t)
 		r.sendReplicateMessage(2)
 		msgs := r.readMessages()
@@ -2259,8 +2259,8 @@ func sliceEqual(s1 []uint64, s2 []uint64) bool {
 	if len(s1) != len(s2) {
 		return false
 	}
-	sort.Slice(s1, func(i, j int) bool { return s1[i] < s1[j] })
-	sort.Slice(s2, func(i, j int) bool { return s2[i] < s2[j] })
+	slices.Sort(s1)
+	slices.Sort(s2)
 	for idx, v := range s1 {
 		if v != s2[idx] {
 			return false
@@ -2936,7 +2936,7 @@ func newNetworkWithConfig(configFunc func(config.Config), peers ...stateMachine)
 			v.remotes = make(map[uint64]*remote)
 			v.nonVotings = make(map[uint64]*remote)
 			v.witnesses = make(map[uint64]*remote)
-			for i := 0; i < size; i++ {
+			for i := range size {
 				if _, ok := nonVotings[peerAddrs[i]]; ok {
 					v.nonVotings[peerAddrs[i]] = &remote{}
 				} else if _, ok := witnesses[peerAddrs[i]]; ok {
@@ -3034,7 +3034,7 @@ var nopStepper = &blackHole{}
 
 func idsBySize(size int) []uint64 {
 	ids := make([]uint64, size)
-	for i := 0; i < size; i++ {
+	for i := range size {
 		ids[i] = 1 + uint64(i)
 	}
 	return ids

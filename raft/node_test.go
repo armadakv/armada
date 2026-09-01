@@ -18,7 +18,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -188,7 +188,7 @@ func doGetTestRaftNodes(startID uint64, count int, ordered bool,
 	}
 	// pools
 	requestStatePool := &sync.Pool{}
-	requestStatePool.New = func() interface{} {
+	requestStatePool.New = func() any {
 		obj := &RequestState{}
 		obj.CompletedC = make(chan RequestResult, 1)
 		obj.pool = requestStatePool
@@ -360,8 +360,8 @@ func singleStepNodes(nodes []*node, smList []*rsm.StateMachine,
 ) {
 	for _, node := range nodes {
 		tick := node.pendingReadIndexes.getTick() + 1
-		tickMsg := pb.Message{Type: pb.LocalTick, To: node.replicaID, Hint: tick}
-		tickMsg.ShardID = testShardID
+		tickMsg := pb.Message{Type: pb.LocalTick, To: node.replicaID, Hint: tick,
+			ShardID: testShardID}
 		r.send(tickMsg)
 	}
 	step(nodes)
@@ -371,7 +371,7 @@ func stepNodes(nodes []*node, smList []*rsm.StateMachine,
 	r *testRouter, ticks uint64,
 ) {
 	s := ticks + 10
-	for i := uint64(0); i < s; i++ {
+	for range s {
 		for _, node := range nodes {
 			tick := node.pendingReadIndexes.getTick() + 1
 			tickMsg := pb.Message{
@@ -620,7 +620,7 @@ func TestProposalCanBeMadeWithMessageDrops(t *testing.T) {
 		n := mustHasLeaderNode(nodes, t)
 		var ok bool
 		var session *client.Session
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			session, ok = getProposalTestClient(n, nodes, smList, router)
 			if ok {
 				break
@@ -630,7 +630,7 @@ func TestProposalCanBeMadeWithMessageDrops(t *testing.T) {
 			t.Errorf("failed to get session")
 			return
 		}
-		for i := 0; i < 20; i++ {
+		for range 20 {
 			maxLastApplied := getMaxLastApplied(smList)
 			makeCheckedTestProposal(t, session, []byte("test-data"), 4000,
 				nodes, smList, router, requestCompleted, false, 0)
@@ -864,7 +864,7 @@ func TestReproposeRespondedDataWillTimeout(t *testing.T) {
 		}
 		respondedSeriesID := session.SeriesID
 		session.ProposalCompleted()
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			makeCheckedTestProposal(t, session, data, 2000,
 				nodes, smList, router, requestCompleted, true, uint64(len(data)))
 			session.ProposalCompleted()
@@ -1002,7 +1002,7 @@ func testNodeCanBeAdded(t *testing.T, fs vfs.FS) {
 func TestNodeCanBeAddedWithMessageDrops(t *testing.T) {
 	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		testNodeCanBeAdded(t, fs)
 	}
 }
@@ -1036,8 +1036,8 @@ func sliceEqual(s1 []uint64, s2 []uint64) bool {
 	if len(s1) != len(s2) {
 		return false
 	}
-	sort.Slice(s1, func(i, j int) bool { return s1[i] < s1[j] })
-	sort.Slice(s2, func(i, j int) bool { return s2[i] < s2[j] })
+	slices.Sort(s1)
+	slices.Sort(s2)
 	for idx, v := range s1 {
 		if v != s2[idx] {
 			return false
@@ -1057,7 +1057,7 @@ func TestNodeCanBeAdded2(t *testing.T) {
 			t.Errorf("failed to get session")
 			return
 		}
-		for i := 0; i < 5; i++ {
+		for range 5 {
 			rs, err := n.propose(session, []byte("test-data"), 10)
 			if err != nil {
 				t.Fatalf("")
@@ -1214,7 +1214,7 @@ func TestSnapshotCanBeMade(t *testing.T) {
 		}
 		maxLastApplied := getMaxLastApplied(smList)
 		proposalCount := 50
-		for i := 0; i < proposalCount; i++ {
+		for i := range proposalCount {
 			data := fmt.Sprintf("test-data-%d", i)
 			rs, err := n.propose(session, []byte(data), 10)
 			if err != nil {
@@ -1256,7 +1256,7 @@ func TestSnapshotCanBeMadeTwice(t *testing.T) {
 		}
 		maxLastApplied := getMaxLastApplied(smList)
 		proposalCount := 50
-		for i := 0; i < proposalCount; i++ {
+		for i := range proposalCount {
 			data := fmt.Sprintf("test-data-%d", i)
 			rs, err := n.propose(session, []byte(data), 10)
 			if err != nil {
@@ -1300,7 +1300,7 @@ func TestNodesCanBeRestarted(t *testing.T) {
 		return
 	}
 	maxLastApplied := getMaxLastApplied(smList)
-	for i := 0; i < 25; i++ {
+	for range 25 {
 		rs, err := n.propose(session, []byte("test-data"), 10)
 		if err != nil {
 			t.Fatalf("")

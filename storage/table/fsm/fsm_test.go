@@ -754,7 +754,7 @@ func emptySM() *FSM {
 
 func filledSM() *FSM {
 	entries := make([]sm.Entry, 0, smallEntries+largeEntries)
-	for i := 0; i < smallEntries; i++ {
+	for i := range smallEntries {
 		entries = append(entries, sm.Entry{
 			Index: uint64(i),
 			Cmd: mustMarshallProto(&armadapb.Command{
@@ -767,7 +767,7 @@ func filledSM() *FSM {
 			}),
 		})
 	}
-	for i := 0; i < largeEntries; i++ {
+	for i := range largeEntries {
 		entries = append(entries, sm.Entry{
 			Index: uint64(i),
 			Cmd: mustMarshallProto(&armadapb.Command{
@@ -802,7 +802,7 @@ func filledSM() *FSM {
 
 func filledLargeValuesSM() *FSM {
 	entries := make([]sm.Entry, len(largeValues))
-	for i := 0; i < len(entries); i++ {
+	for i := range entries {
 		entries[i] = sm.Entry{
 			Index: uint64(i),
 			Cmd: mustMarshallProto(&armadapb.Command{
@@ -867,7 +867,7 @@ func filledIndexOnlySM() *FSM {
 var largeValues []string
 
 func init() {
-	for i := 0; i < 10_000; i++ {
+	for range 10_000 {
 		largeValues = append(largeValues, util.RandString(10*1048))
 	}
 }

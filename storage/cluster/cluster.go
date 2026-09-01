@@ -527,19 +527,17 @@ func (c *delegate) MergeRemoteState(buf []byte, join bool) {
 
 func toNode(node *memberlist.Node) Node {
 	n := Node{
-		Node: memberlist.Node{
-			Name:  node.Name,
-			Addr:  node.Addr,
-			Port:  node.Port,
-			Meta:  node.Meta,
-			State: node.State,
-			PMin:  node.PMin,
-			PMax:  node.PMax,
-			PCur:  node.PCur,
-			DMin:  node.DMin,
-			DMax:  node.DMax,
-			DCur:  node.DCur,
-		},
+		Name:     node.Name,
+		Addr:     node.Addr,
+		Port:     node.Port,
+		Meta:     node.Meta,
+		State:    node.State,
+		PMin:     node.PMin,
+		PMax:     node.PMax,
+		PCur:     node.PCur,
+		DMin:     node.DMin,
+		DMax:     node.DMax,
+		DCur:     node.DCur,
 		NodeMeta: NodeMeta{},
 	}
 	_ = json.Unmarshal(node.Meta, &n.NodeMeta)

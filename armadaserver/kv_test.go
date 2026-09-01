@@ -194,7 +194,7 @@ func TestKVServer_IterateRangeError(t *testing.T) {
 
 	t.Log("Get kv from non-existing table")
 	storage = &mockKVService{}
-	storage.On("IterateRange", mock.Anything, mock.Anything).Return((iter.Seq[*armadapb.RangeResponse])(nil), errors.ErrTableNotFound)
+	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iter.Seq[*armadapb.RangeResponse](nil), errors.ErrTableNotFound)
 	kv.Storage = storage
 	srv := &mockIterateRangeServer{}
 	srv.On("Context").Return(context.Background())
@@ -206,7 +206,7 @@ func TestKVServer_IterateRangeError(t *testing.T) {
 
 	t.Log("Get unknown error")
 	storage = &mockKVService{}
-	storage.On("IterateRange", mock.Anything, mock.Anything).Return((iter.Seq[*armadapb.RangeResponse])(nil), fmt.Errorf("unknown"))
+	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iter.Seq[*armadapb.RangeResponse](nil), fmt.Errorf("unknown"))
 	kv.Storage = storage
 	err = kv.IterateRange(&armadapb.RangeRequest{
 		Table: table1Name,
@@ -228,7 +228,7 @@ func TestKVServer_IterateRangeError(t *testing.T) {
 
 	t.Log("Get retry-safe error")
 	storage = &mockKVService{}
-	storage.On("IterateRange", mock.Anything, mock.Anything).Return((iter.Seq[*armadapb.RangeResponse])(nil), raft.ErrSystemBusy)
+	storage.On("IterateRange", mock.Anything, mock.Anything).Return(iter.Seq[*armadapb.RangeResponse](nil), raft.ErrSystemBusy)
 	kv.Storage = storage
 	err = kv.IterateRange(&armadapb.RangeRequest{
 		Table: table1Name,
@@ -631,11 +631,9 @@ func TestForwardingKVServer_Put(t *testing.T) {
 	r := require.New(t)
 	client := &mockClient{}
 	kv := ForwardingKVServer{
-		KVServer: KVServer{
-			Storage: &mockKVService{},
-		},
-		client: client,
-		q:      fakeQueue{},
+		Storage: &mockKVService{},
+		client:  client,
+		q:       fakeQueue{},
 	}
 	ctx := context.Background()
 	req := &armadapb.PutRequest{
@@ -653,11 +651,9 @@ func TestForwardingKVServer_DeleteRange(t *testing.T) {
 	r := require.New(t)
 	client := &mockClient{}
 	kv := ForwardingKVServer{
-		KVServer: KVServer{
-			Storage: &mockKVService{},
-		},
-		client: client,
-		q:      fakeQueue{},
+		Storage: &mockKVService{},
+		client:  client,
+		q:       fakeQueue{},
 	}
 	ctx := context.Background()
 	req := &armadapb.DeleteRangeRequest{
@@ -676,11 +672,9 @@ func TestForwardingKVServer_Txn(t *testing.T) {
 	storage := &mockKVService{}
 	client := &mockClient{}
 	kv := ForwardingKVServer{
-		KVServer: KVServer{
-			Storage: storage,
-		},
-		client: client,
-		q:      fakeQueue{},
+		Storage: storage,
+		client:  client,
+		q:       fakeQueue{},
 	}
 
 	ctx := context.Background()

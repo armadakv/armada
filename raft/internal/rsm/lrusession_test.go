@@ -26,7 +26,7 @@ import (
 
 func TestRecCanBeEvicted(t *testing.T) {
 	m := newLRUSession(3)
-	for i := RaftClientID(0); i < 3; i++ {
+	for i := range RaftClientID(3) {
 		s := &Session{ClientID: i}
 		m.addSession(i, *s)
 	}
@@ -63,7 +63,7 @@ func TestRecCanBeEvicted(t *testing.T) {
 
 func TestSessionIsMutable(t *testing.T) {
 	m := newLRUSession(1)
-	for i := RaftClientID(0); i < 1; i++ {
+	for i := range RaftClientID(1) {
 		s := &Session{ClientID: i, History: make(map[RaftSeriesID]sm.Result)}
 		m.addSession(i, *s)
 	}
@@ -94,16 +94,16 @@ func TestSessionIsMutable(t *testing.T) {
 
 func TestOrderedDoIsLRUOrdered(t *testing.T) {
 	m := newLRUSession(100)
-	for i := RaftClientID(0); i < 100; i++ {
+	for i := range RaftClientID(100) {
 		s := newSession(i)
 		m.addSession(i, *s)
 	}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		idx := rand.Int() % 100
 		m.getSession(RaftClientID(idx))
 
 		idList := make([]RaftClientID, 0)
-		m.sessions.OrderedDo(func(k, v interface{}) {
+		m.sessions.OrderedDo(func(k, v any) {
 			key := k.(*RaftClientID)
 			idList = append(idList, *key)
 		})
@@ -120,20 +120,20 @@ func TestOrderedDoIsLRUOrdered(t *testing.T) {
 
 func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 	m := newLRUSession(100)
-	for i := RaftClientID(0); i < 100; i++ {
+	for i := range RaftClientID(100) {
 		count := rand.Int() % 100
 		s := newSession(i)
-		for j := 0; j < count; j++ {
+		for j := range count {
 			s.addResponse(RaftSeriesID(j), sm.Result{Value: uint64(j)})
 		}
 		m.addSession(i, *s)
 	}
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		idx := rand.Int() % 100
 		m.getSession(RaftClientID(idx))
 	}
 	oldList := make([]RaftClientID, 0)
-	m.sessions.OrderedDo(func(k, v interface{}) {
+	m.sessions.OrderedDo(func(k, v any) {
 		key := k.(*RaftClientID)
 		oldList = append(oldList, *key)
 	})
@@ -148,7 +148,7 @@ func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 		t.Fatalf("load failed %v", err)
 	}
 	newList := make([]RaftClientID, 0)
-	newLRUSession.sessions.OrderedDo(func(k, v interface{}) {
+	newLRUSession.sessions.OrderedDo(func(k, v any) {
 		key := k.(*RaftClientID)
 		newList = append(newList, *key)
 	})
@@ -160,7 +160,7 @@ func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 			t.Errorf("order is different")
 		}
 	}
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		if i%2 == 0 {
 			idx := rand.Int() % 100
 			m.getSession(RaftClientID(idx))
@@ -174,12 +174,12 @@ func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 		}
 	}
 	oldList = make([]RaftClientID, 0)
-	m.sessions.OrderedDo(func(k, v interface{}) {
+	m.sessions.OrderedDo(func(k, v any) {
 		key := k.(*RaftClientID)
 		oldList = append(oldList, *key)
 	})
 	newList = make([]RaftClientID, 0)
-	newLRUSession.sessions.OrderedDo(func(k, v interface{}) {
+	newLRUSession.sessions.OrderedDo(func(k, v any) {
 		key := k.(*RaftClientID)
 		newList = append(newList, *key)
 	})
@@ -195,7 +195,7 @@ func TestLRUSessionCanBeSavedAndRestoredWithLRUOrderPreserved(t *testing.T) {
 
 func TestLRUSessionCanBeSavedAndRestored(t *testing.T) {
 	m := newLRUSession(3)
-	for i := RaftClientID(0); i < 3; i++ {
+	for i := range RaftClientID(3) {
 		s := newSession(i)
 		if i == RaftClientID(1) {
 			s.addResponse(100, sm.Result{Value: 200})
@@ -238,7 +238,7 @@ func TestLRUSessionCanBeSavedAndRestored(t *testing.T) {
 	if newLRUSession.sessions.ShouldEvict(3, &testKey, testSession) {
 		t.Errorf("should evict function not adjusted")
 	}
-	for i := RaftClientID(0); i < 3; i++ {
+	for i := range RaftClientID(3) {
 		s1, ok1 := m.getSession(i)
 		s2, ok2 := newLRUSession.getSession(i)
 		if ok1 != ok2 {

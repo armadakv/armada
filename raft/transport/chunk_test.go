@@ -32,7 +32,7 @@ import (
 
 func getTestChunk() []pb.Chunk {
 	result := make([]pb.Chunk, 0)
-	for chunkID := uint64(0); chunkID < 10; chunkID++ {
+	for chunkID := range uint64(10) {
 		c := pb.Chunk{
 			DeploymentId:   settings.UnmanagedDeploymentID,
 			BinVer:         raftio.TransportBinVersion,
@@ -123,7 +123,7 @@ func TestMaxSlotIsEnforced(t *testing.T) {
 		chunks.validate = false
 		v := uint64(1)
 		c := inputs[0]
-		for i := uint64(0); i < maxConcurrentSlot; i++ {
+		for range maxConcurrentSlot {
 			v++
 			c.ShardID = v
 			snapDir := chunks.dir(v, c.ReplicaID)
@@ -135,7 +135,7 @@ func TestMaxSlotIsEnforced(t *testing.T) {
 			}
 		}
 		count := len(chunks.tracked)
-		for i := uint64(0); i < maxConcurrentSlot; i++ {
+		for range maxConcurrentSlot {
 			v++
 			c.ShardID = v
 			if chunks.addLocked(c) {
@@ -290,7 +290,7 @@ func TestGcRemovesRecordAndTempFile(t *testing.T) {
 			t.Fatalf("failed to add chunk")
 		}
 		count := chunks.timeout + chunks.gcTick
-		for i := uint64(0); i < count; i++ {
+		for range count {
 			chunks.Tick()
 		}
 		_, ok := chunks.tracked[chunkKey(inputs[0])]
@@ -398,7 +398,7 @@ func TestSignificantlyDelayedNonFirstChunkAreIgnored(t *testing.T) {
 		chunks.validate = false
 		chunks.addLocked(inputs[0])
 		count := chunks.timeout + chunks.gcTick
-		for i := uint64(0); i < count; i++ {
+		for range count {
 			chunks.Tick()
 		}
 		_, ok := chunks.tracked[chunkKey(inputs[0])]

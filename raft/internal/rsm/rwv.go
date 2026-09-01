@@ -131,10 +131,7 @@ func (bw *BlockWriter) Write(bs []byte) (int, error) {
 	}
 	var totalN uint64
 	for len(bs) > 0 {
-		l := bw.nextStop - bw.written
-		if l > uint64(len(bs)) {
-			l = uint64(len(bs))
-		}
+		l := min(bw.nextStop-bw.written, uint64(len(bs)))
 		bw.block = append(bw.block, bs[:l]...)
 		fileutil.MustWrite(bw.h, bs[:l])
 		bw.written += l
@@ -227,10 +224,7 @@ func (br *blockReader) Read(data []byte) (int, error) {
 		if _, err := br.readBlock(); err != nil {
 			return read, err
 		}
-		toRead := want - read
-		if toRead > len(br.block) {
-			toRead = len(br.block)
-		}
+		toRead := min(want-read, len(br.block))
 		copy(data[read:], br.block[:toRead])
 		br.block = br.block[toRead:]
 		read += toRead

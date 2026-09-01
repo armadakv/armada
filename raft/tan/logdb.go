@@ -232,13 +232,11 @@ func (l *LogDB) sequentialSaveState(updates []pb.Update, shardID uint64) error {
 			return err
 		}
 		if sync {
-			wg.Add(1)
-			go func() {
+			wg.Go(func() {
 				if err := db.sync(); err != nil {
 					panicNow(err)
 				}
-				wg.Done()
-			}()
+			})
 		}
 	}
 	wg.Wait()

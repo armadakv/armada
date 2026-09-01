@@ -36,17 +36,17 @@ func (monotonic) Now() time.Time {
 }
 
 type Logger interface {
-	Info(args ...interface{})
-	Infof(msg string, args ...interface{})
+	Info(args ...any)
+	Infof(msg string, args ...any)
 }
 
 type nilLogger struct{}
 
-func (nilLogger) Info(args ...interface{}) {
+func (nilLogger) Info(args ...any) {
 	fmt.Println(args...)
 }
 
-func (nilLogger) Infof(msg string, args ...interface{}) {
+func (nilLogger) Infof(msg string, args ...any) {
 	fmt.Printf(msg+"\n", args...)
 }
 

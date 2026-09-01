@@ -50,7 +50,7 @@ func TestNoOPSessionNotAllowedForSessionOps(t *testing.T) {
 func TestProposalCompleted(t *testing.T) {
 	cs := NewSession(120, random.LockGuardedRand)
 	cs.PrepareForPropose()
-	for i := 0; i < 128; i++ {
+	for range 128 {
 		cs.ProposalCompleted()
 	}
 	if cs.SeriesID != SeriesIDFirstProposal+128 {

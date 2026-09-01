@@ -63,7 +63,7 @@ type and[E any] []Predicate[E]
 func (p and[E]) String() string {
 	var sb strings.Builder
 	sb.WriteString("(And")
-	for i := 0; i < len(p); i++ {
+	for i := range p {
 		sb.WriteRune(' ')
 		sb.WriteString(p[i].String())
 	}
@@ -84,7 +84,7 @@ type or[E any] []Predicate[E]
 func (p or[E]) String() string {
 	var sb strings.Builder
 	sb.WriteString("(Or")
-	for i := 0; i < len(p); i++ {
+	for i := range p {
 		sb.WriteRune(' ')
 		sb.WriteString(p[i].String())
 	}

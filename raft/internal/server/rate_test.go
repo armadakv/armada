@@ -58,7 +58,7 @@ func TestInMemLogSizeIsAccessible(t *testing.T) {
 
 func TestRateLimiterTick(t *testing.T) {
 	r := NewInMemRateLimiter(100)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		r.Tick()
 		if r.tick != uint64(i+2) {
 			t.Errorf("tick %d, want %d", r.tick, i+2)
@@ -110,7 +110,7 @@ func TestGCRemoveOutOfDateFollowerState(t *testing.T) {
 	if len(r.followerSizes) != 3 {
 		t.Errorf("count %d, want 3", len(r.followerSizes))
 	}
-	for i := uint64(0); i < gcTick; i++ {
+	for range gcTick {
 		r.Tick()
 	}
 	r.gc()
@@ -175,7 +175,7 @@ func TestRateNotLimitedWhenOutOfDateFollowerStateIsLimited(t *testing.T) {
 
 func TestNotEnabledRateLimitNeverLimitRates(t *testing.T) {
 	r := NewInMemRateLimiter(0)
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		r.Increase(math.MaxUint64 / 2)
 		if r.RateLimited() {
 			t.Errorf("unexpectedly rate limited")

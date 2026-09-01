@@ -22,7 +22,7 @@ func V1Len(userkeyLen int) int {
 
 var V1MinKey = func() []byte {
 	var minKey []byte
-	for i := 0; i < keyV1BodyLen-1; i++ {
+	for range keyV1BodyLen - 1 {
 		minKey = append(minKey, 0)
 	}
 	return minKey
@@ -30,7 +30,7 @@ var V1MinKey = func() []byte {
 
 var V1MaxKey = func() []byte {
 	var maxKey []byte
-	for i := 0; i < keyV1BodyLen-1; i++ {
+	for range keyV1BodyLen - 1 {
 		maxKey = append(maxKey, 255)
 	}
 	return maxKey

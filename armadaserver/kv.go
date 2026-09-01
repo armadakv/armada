@@ -293,9 +293,9 @@ func (s *KVServer) Txn(ctx context.Context, req *armadapb.TxnRequest) (*armadapb
 
 func NewForwardingKVServer(storage KVService, client armadapb.KVClient, q *storage.IndexNotificationQueue) *ForwardingKVServer {
 	return &ForwardingKVServer{
-		KVServer: KVServer{Storage: storage},
-		client:   client,
-		q:        q,
+		Storage: storage,
+		client:  client,
+		q:       q,
 	}
 }
 

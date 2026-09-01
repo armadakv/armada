@@ -193,7 +193,7 @@ type Transport struct {
 	cancel       context.CancelFunc
 	sourceID     string
 	nhConfig     config.NodeHostConfig
-	jobs         uint64
+	jobs         atomic.Uint64
 }
 
 var _ ITransport = (*Transport)(nil)
@@ -243,7 +243,7 @@ func NewTransport(nhConfig config.NodeHostConfig,
 		return float64(len(t.mu.queues))
 	}
 	ssCount := func() float64 {
-		return float64(atomic.LoadUint64(&t.jobs))
+		return float64(t.jobs.Load())
 	}
 	t.metrics = newTransportMetrics(true, msgConn, ssCount)
 
@@ -388,15 +388,13 @@ func (t *Transport) send(req pb.Message) (bool, failedSend) {
 			delete(t.mu.queues, key)
 			t.mu.Unlock()
 		}
-		t.wg.Add(1)
-		go func() {
-			defer t.wg.Done()
+		t.wg.Go(func() {
 			affected := make(nodeMap)
 			if !t.connectAndProcess(addr, sq, from, affected) {
 				t.notifyUnreachable(addr, affected)
 			}
 			shutdownQueue()
-		}()
+		})
 	}
 	if sq.rateLimited() {
 		return false, rateLimited
@@ -519,7 +517,7 @@ func lazyFree(reqs []pb.Message,
 	mb pb.MessageBatch,
 ) ([]pb.Message, pb.MessageBatch) {
 	if lazyFreeCycle > 0 {
-		for i := 0; i < len(reqs); i++ {
+		for i := range reqs {
 			reqs[i].Entries = nil
 		}
 		mb.Requests = []pb.Message{}

@@ -225,7 +225,7 @@ func (p *FSM) openDB(dbdir string) (*pebble.DB, error) {
 }
 
 // Lookup locally looks up the data.
-func (p *FSM) Lookup(l interface{}) (interface{}, error) {
+func (p *FSM) Lookup(l any) (any, error) {
 	switch req := l.(type) {
 	case *armadapb.TxnRequest:
 		snapshot := p.pebble.Load().NewSnapshot()
@@ -318,7 +318,7 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 
 	var idx uint64
 	var gcHorizonApplied uint64
-	for i := 0; i < len(updates); i++ {
+	for i := range updates {
 		cmd, err := parseCommand(ctx, updates[i])
 		if err != nil {
 			return nil, err
@@ -435,12 +435,12 @@ func (p *FSM) GetHash() (uint64, error) {
 
 // PrepareSnapshot prepares the snapshot to be concurrently captured and
 // streamed.
-func (p *FSM) PrepareSnapshot() (interface{}, error) {
+func (p *FSM) PrepareSnapshot() (any, error) {
 	return p.getRecoverer(p.recoveryType).prepare()
 }
 
 // SaveSnapshot saves the state of the object to the provided io.Writer object.
-func (p *FSM) SaveSnapshot(ctx interface{}, w io.Writer, stopc <-chan struct{}) error {
+func (p *FSM) SaveSnapshot(ctx any, w io.Writer, stopc <-chan struct{}) error {
 	r := p.getRecoverer(p.recoveryType)
 	if err := binary.Write(w, binary.LittleEndian, r.getHeader()); err != nil {
 		return err

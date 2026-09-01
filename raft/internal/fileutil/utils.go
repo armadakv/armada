@@ -320,7 +320,7 @@ func TempFile(dir,
 		prefix = pattern
 	}
 	nconflict := 0
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		name = fs.PathJoin(dir, prefix+nextRandom()+suffix)
 		f, err = fs.Create(name, "")
 		if vfs.IsExist(err) {

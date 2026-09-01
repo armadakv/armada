@@ -381,8 +381,8 @@ func TestInMemEntriesToSaveReturnNotSavedEntries(t *testing.T) {
 			{Index: 6, Term: 6},
 			{Index: 7, Term: 7},
 		},
-	}
-	im.savedTo = 4
+
+		savedTo: 4}
 	ents := im.entriesToSave()
 	if len(ents) != 3 {
 		t.Errorf("didn't return all entries")

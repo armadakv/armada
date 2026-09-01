@@ -20,7 +20,7 @@ import (
 
 func TestBitmapAdd(t *testing.T) {
 	var b bitmap
-	for i := uint64(0); i < 64; i++ {
+	for i := range uint64(64) {
 		if b.contains(i) {
 			t.Errorf("unexpectedly contains value %d", i)
 		}
@@ -60,7 +60,7 @@ func TestPartitionerWorksAsExpected(t *testing.T) {
 	wr := newWorkReady(4)
 	p := wr.getPartitioner()
 	vals := make(map[uint64]struct{})
-	for i := uint64(0); i < uint64(128); i++ {
+	for i := range uint64(128) {
 		idx := p.GetPartitionID(i)
 		vals[idx] = struct{}{}
 	}
@@ -72,11 +72,11 @@ func TestPartitionerWorksAsExpected(t *testing.T) {
 func TestAllShardsReady(t *testing.T) {
 	wr := newWorkReady(4)
 	nodes := make([]*node, 0)
-	for i := uint64(0); i < uint64(4); i++ {
+	for i := range uint64(4) {
 		nodes = append(nodes, &node{shardID: i})
 	}
 	wr.allShardsReady(nodes)
-	for i := uint64(0); i < uint64(4); i++ {
+	for i := range uint64(4) {
 		ch := wr.channels[i]
 		select {
 		case <-ch:

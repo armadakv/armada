@@ -2130,12 +2130,12 @@ func (t *testManagedStateMachine) Open() (uint64, error) { return 10, nil }
 func (t *testManagedStateMachine) Update(sm.Entry) (sm.Result, error) {
 	return sm.Result{}, nil
 }
-func (t *testManagedStateMachine) Lookup(interface{}) (interface{}, error) { return nil, nil }
+func (t *testManagedStateMachine) Lookup(any) (any, error) { return nil, nil }
 func (t *testManagedStateMachine) NALookup(input []byte) ([]byte, error) {
 	t.nalookup = true
 	return input, nil
 }
-func (t *testManagedStateMachine) ConcurrentLookup(interface{}) (interface{}, error) { return nil, nil }
+func (t *testManagedStateMachine) ConcurrentLookup(any) (any, error) { return nil, nil }
 func (t *testManagedStateMachine) NAConcurrentLookup(input []byte) ([]byte, error) {
 	t.nalookup = true
 	return input, nil
@@ -2146,7 +2146,7 @@ func (t *testManagedStateMachine) Sync() error {
 	return nil
 }
 func (t *testManagedStateMachine) GetHash() (uint64, error) { return 0, nil }
-func (t *testManagedStateMachine) Prepare() (interface{}, error) {
+func (t *testManagedStateMachine) Prepare() (any, error) {
 	t.prepareInvoked = true
 	return nil, nil
 }
@@ -2160,14 +2160,14 @@ func (t *testManagedStateMachine) Save(SSMeta,
 func (t *testManagedStateMachine) Recover(io.Reader, []sm.SnapshotFile) error {
 	return nil
 }
-func (t *testManagedStateMachine) Stream(interface{}, io.Writer) error { return nil }
-func (t *testManagedStateMachine) Offloaded() bool                     { return false }
-func (t *testManagedStateMachine) Loaded()                             {}
-func (t *testManagedStateMachine) Close() error                        { return nil }
-func (t *testManagedStateMachine) DestroyedC() <-chan struct{}         { return nil }
-func (t *testManagedStateMachine) Concurrent() bool                    { return t.concurrent }
-func (t *testManagedStateMachine) OnDisk() bool                        { return t.onDisk }
-func (t *testManagedStateMachine) Type() pb.StateMachineType           { return t.smType }
+func (t *testManagedStateMachine) Stream(any, io.Writer) error { return nil }
+func (t *testManagedStateMachine) Offloaded() bool             { return false }
+func (t *testManagedStateMachine) Loaded()                     {}
+func (t *testManagedStateMachine) Close() error                { return nil }
+func (t *testManagedStateMachine) DestroyedC() <-chan struct{} { return nil }
+func (t *testManagedStateMachine) Concurrent() bool            { return t.concurrent }
+func (t *testManagedStateMachine) OnDisk() bool                { return t.onDisk }
+func (t *testManagedStateMachine) Type() pb.StateMachineType   { return t.smType }
 func (t *testManagedStateMachine) BatchedUpdate(ents []sm.Entry) ([]sm.Entry, error) {
 	if !t.corruptIndex {
 		t.first = ents[0].Index
@@ -2585,7 +2585,7 @@ type errorUpdateSM struct{}
 func (e *errorUpdateSM) Update(i sm.Entry) (sm.Result, error) {
 	return sm.Result{}, errReturnedError
 }
-func (e *errorUpdateSM) Lookup(q interface{}) (interface{}, error) { return nil, nil }
+func (e *errorUpdateSM) Lookup(q any) (any, error) { return nil, nil }
 func (e *errorUpdateSM) SaveSnapshot(io.Writer,
 	sm.ISnapshotFileCollection, <-chan struct{},
 ) error {

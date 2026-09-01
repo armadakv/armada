@@ -227,7 +227,7 @@ func (i *index) decode(d *indexDecoder) error {
 	if err != nil {
 		return err
 	}
-	for idx := uint64(0); idx < sz; idx++ {
+	for range sz {
 		start, err := d.readUvarint()
 		if err != nil {
 			return err
@@ -393,11 +393,7 @@ func (n *nodeIndex) compaction() []fileNum {
 	sfn := n.snapshotCompaction()
 	stateFn := n.stateCompaction()
 	maxObsoleteFileNum := fileNum(0)
-	if efn < sfn {
-		maxObsoleteFileNum = efn
-	} else {
-		maxObsoleteFileNum = sfn
-	}
+	maxObsoleteFileNum = min(efn, sfn)
 	if stateFn < maxObsoleteFileNum {
 		maxObsoleteFileNum = stateFn
 	}

@@ -70,7 +70,7 @@ func Test_snapshotFile_ReadWrite(t *testing.T) {
 	defer func() {
 		_ = sf.Close()
 	}()
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		bts, _ := pb.Marshal(&armadapb.Command{Type: armadapb.Command_PUT, Kv: &armadapb.KeyValue{
 			Key:   []byte("foo" + strconv.Itoa(i)),
 			Value: []byte(testString),

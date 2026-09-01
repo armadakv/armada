@@ -17,7 +17,7 @@ const (
 
 func RandStrings(length, count int) []string {
 	res := make([]string, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		res[i] = RandString(length)
 	}
 	return res

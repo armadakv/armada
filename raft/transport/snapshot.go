@@ -34,8 +34,6 @@
 package transport
 
 import (
-	"sync/atomic"
-
 	"github.com/armadakv/armada/vfs"
 
 	"github.com/cockroachdb/errors"
@@ -83,14 +81,12 @@ func (t *Transport) getStreamSink(shardID uint64, replicaID uint64) *Sink {
 	key := raftio.GetNodeInfo(shardID, replicaID)
 	if job := t.createJob(key, addr, true, 0); job != nil {
 		shutdown := func() {
-			atomic.AddUint64(&t.jobs, ^uint64(0))
+			t.jobs.Add(^uint64(0))
 		}
-		t.wg.Add(1)
-		go func() {
-			defer t.wg.Done()
+		t.wg.Go(func() {
 			t.processSnapshot(job, addr)
 			shutdown()
-		}()
+		})
 		return &Sink{j: job}
 	}
 	return nil
@@ -131,17 +127,15 @@ func (t *Transport) doSendSnapshot(m pb.Message) bool {
 		return false
 	}
 	shutdown := func() {
-		atomic.AddUint64(&t.jobs, ^uint64(0))
+		t.jobs.Add(^uint64(0))
 		if err := m.Snapshot.Unref(); err != nil {
 			panic(err)
 		}
 	}
-	t.wg.Add(1)
-	go func() {
-		defer t.wg.Done()
+	t.wg.Go(func() {
 		t.processSnapshot(job, addr)
 		shutdown()
-	}()
+	})
 	job.addSnapshot(chunks)
 	return true
 }
@@ -149,8 +143,8 @@ func (t *Transport) doSendSnapshot(m pb.Message) bool {
 func (t *Transport) createJob(key raftio.NodeInfo,
 	addr string, streaming bool, sz int,
 ) *job {
-	if v := atomic.AddUint64(&t.jobs, 1); v > maxConnectionCount {
-		r := atomic.AddUint64(&t.jobs, ^uint64(0))
+	if v := t.jobs.Add(1); v > maxConnectionCount {
+		r := t.jobs.Add(^uint64(0))
 		plog.Warningf("job count is rate limited %d", r)
 		return nil
 	}
@@ -217,7 +211,7 @@ func splitBySnapshotFile(msg pb.Message,
 	}
 	results := make([]pb.Chunk, 0)
 	chunkCount := (filesize-1)/snapshotChunkSize + 1
-	for i := uint64(0); i < chunkCount; i++ {
+	for i := range chunkCount {
 		var csz uint64
 		if i == chunkCount-1 {
 			csz = filesize - (chunkCount-1)*snapshotChunkSize

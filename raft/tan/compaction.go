@@ -19,6 +19,7 @@
 package tan
 
 import (
+	"slices"
 	"sort"
 
 	pb "github.com/armadakv/armada/raft/raftpb"
@@ -73,9 +74,7 @@ func merge(a, b []fileNum) []fileNum {
 	}
 
 	a = append(a, b...)
-	sort.Slice(a, func(i, j int) bool {
-		return a[i] < a[j]
-	})
+	slices.Sort(a)
 
 	n := 0
 	for i := 0; i < len(a); i++ {
@@ -213,11 +212,9 @@ func (d *db) installSnapshot(shardID uint64,
 	update := pb.Update{
 		ShardID:   shardID,
 		ReplicaID: replicaID,
-		State: pb.State{
-			Commit: ss.Index,
-			Term:   ss.Term,
-		},
-		Snapshot: ss,
+		Commit:    ss.Index,
+		Term:      ss.Term,
+		Snapshot:  ss,
 	}
 	buf := make([]byte, update.SizeUpperLimit())
 	data := pb.MustMarshalTo(&update, buf)
@@ -265,6 +262,6 @@ func getCompactionUpdate(shardID uint64, replicaID uint64, index uint64) pb.Upda
 	return pb.Update{
 		ShardID:   shardID,
 		ReplicaID: replicaID,
-		State:     pb.State{Commit: index, Term: compactionFlag},
+		Commit:    index, Term: compactionFlag,
 	}
 }

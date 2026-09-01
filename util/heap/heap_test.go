@@ -96,7 +96,7 @@ func Test(t *testing.T) {
 
 func TestRemove0(t *testing.T) {
 	h := newHeap()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		h.Push(i)
 	}
 	verify(t, h, 0)
@@ -113,7 +113,7 @@ func TestRemove0(t *testing.T) {
 
 func TestRemove1(t *testing.T) {
 	h := newHeap()
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		h.Push(i)
 	}
 	verify(t, h, 0)
@@ -131,7 +131,7 @@ func TestRemove2(t *testing.T) {
 	N := 10
 
 	h := newHeap()
-	for i := 0; i < N; i++ {
+	for i := range N {
 		h.Push(i)
 	}
 	verify(t, h, 0)
@@ -157,7 +157,7 @@ func BenchmarkDup(b *testing.B) {
 	h := newHeap()
 	h.Slice = make([]int, 0, n)
 	for i := 0; i < b.N; i++ {
-		for j := 0; j < n; j++ {
+		for range n {
 			h.Push(0) // all elements are the same
 		}
 		for h.Len() > 0 {

@@ -30,10 +30,10 @@ import (
 type IStateMachine interface {
 	Open(<-chan struct{}) (uint64, error)
 	Update(entries []sm.Entry) ([]sm.Entry, error)
-	Lookup(query interface{}) (interface{}, error)
+	Lookup(query any) (any, error)
 	Sync() error
-	Prepare() (interface{}, error)
-	Save(interface{},
+	Prepare() (any, error)
+	Save(any,
 		io.Writer, sm.ISnapshotFileCollection, <-chan struct{}) error
 	Recover(io.Reader, []sm.SnapshotFile, <-chan struct{}) error
 	Close() error
@@ -72,7 +72,7 @@ func (i *InMemStateMachine) Update(entries []sm.Entry) ([]sm.Entry, error) {
 }
 
 // Lookup queries the state machine.
-func (i *InMemStateMachine) Lookup(query interface{}) (interface{}, error) {
+func (i *InMemStateMachine) Lookup(query any) (any, error) {
 	return i.sm.Lookup(query)
 }
 
@@ -82,12 +82,12 @@ func (i *InMemStateMachine) Sync() error {
 }
 
 // Prepare makes preparations for taking concurrent snapshot.
-func (i *InMemStateMachine) Prepare() (interface{}, error) {
+func (i *InMemStateMachine) Prepare() (any, error) {
 	panic("Prepare not implemented in InMemStateMachine")
 }
 
 // Save saves the snapshot.
-func (i *InMemStateMachine) Save(ctx interface{},
+func (i *InMemStateMachine) Save(ctx any,
 	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{},
 ) error {
 	if ctx != nil {
@@ -149,7 +149,7 @@ func (s *ConcurrentStateMachine) Update(entries []sm.Entry) ([]sm.Entry, error) 
 }
 
 // Lookup queries the state machine.
-func (s *ConcurrentStateMachine) Lookup(query interface{}) (interface{}, error) {
+func (s *ConcurrentStateMachine) Lookup(query any) (any, error) {
 	return s.sm.Lookup(query)
 }
 
@@ -159,13 +159,13 @@ func (s *ConcurrentStateMachine) Sync() error {
 }
 
 // Prepare makes preparations for taking concurrent snapshot.
-func (s *ConcurrentStateMachine) Prepare() (interface{}, error) {
+func (s *ConcurrentStateMachine) Prepare() (any, error) {
 	results, err := s.sm.PrepareSnapshot()
 	return results, errors.WithStack(err)
 }
 
 // Save saves the snapshot.
-func (s *ConcurrentStateMachine) Save(ctx interface{},
+func (s *ConcurrentStateMachine) Save(ctx any,
 	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{},
 ) error {
 	return errors.WithStack(s.sm.SaveSnapshot(ctx, w, fc, stopc))
@@ -243,7 +243,7 @@ func (s *OnDiskStateMachine) Update(entries []sm.Entry) ([]sm.Entry, error) {
 }
 
 // Lookup queries the state machine.
-func (s *OnDiskStateMachine) Lookup(query interface{}) (interface{}, error) {
+func (s *OnDiskStateMachine) Lookup(query any) (any, error) {
 	s.ensureOpened()
 	return s.sm.Lookup(query)
 }
@@ -255,14 +255,14 @@ func (s *OnDiskStateMachine) Sync() error {
 }
 
 // Prepare makes preparations for taking concurrent snapshot.
-func (s *OnDiskStateMachine) Prepare() (interface{}, error) {
+func (s *OnDiskStateMachine) Prepare() (any, error) {
 	s.ensureOpened()
 	results, err := s.sm.PrepareSnapshot()
 	return results, errors.WithStack(err)
 }
 
 // Save saves the snapshot.
-func (s *OnDiskStateMachine) Save(ctx interface{},
+func (s *OnDiskStateMachine) Save(ctx any,
 	w io.Writer, fc sm.ISnapshotFileCollection, stopc <-chan struct{},
 ) error {
 	s.ensureOpened()

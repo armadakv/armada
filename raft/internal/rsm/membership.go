@@ -17,7 +17,8 @@ package rsm
 import (
 	"crypto/md5"
 	"encoding/binary"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/lni/goutils/logutil"
@@ -39,18 +40,12 @@ func deepCopyMembership(m pb.Membership) pb.Membership {
 		NonVotings:     make(map[uint64]string),
 		Witnesses:      make(map[uint64]string),
 	}
-	for nid, addr := range m.Addresses {
-		c.Addresses[nid] = addr
-	}
+	maps.Copy(c.Addresses, m.Addresses)
 	for nid := range m.Removed {
 		c.Removed[nid] = true
 	}
-	for nid, addr := range m.NonVotings {
-		c.NonVotings[nid] = addr
-	}
-	for nid, addr := range m.Witnesses {
-		c.Witnesses[nid] = addr
-	}
+	maps.Copy(c.NonVotings, m.NonVotings)
+	maps.Copy(c.Witnesses, m.Witnesses)
 	return c
 }
 
@@ -92,7 +87,7 @@ func (m *membership) getHash() uint64 {
 	for v := range m.members.Addresses {
 		vals = append(vals, v)
 	}
-	sort.Slice(vals, func(i, j int) bool { return vals[i] < vals[j] })
+	slices.Sort(vals)
 	vals = append(vals, m.members.ConfigChangeId)
 	data := make([]byte, 8)
 	hash := md5.New()

@@ -65,7 +65,7 @@ func TestLogWithInMemSnapshotOnly(t *testing.T) {
 	if el.lastIndex() != 100 {
 		t.Errorf("unexpected last index %d, want 100", el.lastIndex())
 	}
-	for i := uint64(0); i < 110; i++ {
+	for i := range uint64(110) {
 		ents, err := el.getEntries(i, i+1, math.MaxUint64)
 		if err != ErrCompacted {
 			t.Errorf("unexpected err %v", err)

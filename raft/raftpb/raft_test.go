@@ -298,7 +298,7 @@ func TestEntryBatchSizeUpperLimit(t *testing.T) {
 	if eb.Size() > eb.SizeUpperLimit() {
 		t.Errorf("size > size upper limit")
 	}
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		eb.Entries = append(eb.Entries, e1)
 	}
 	if eb.Size() > eb.SizeUpperLimit() {
@@ -306,7 +306,7 @@ func TestEntryBatchSizeUpperLimit(t *testing.T) {
 	}
 	e1.Cmd = nil
 	eb.Entries = make([]Entry, 0)
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		eb.Entries = append(eb.Entries, e1)
 	}
 	if eb.Size() > eb.SizeUpperLimit() {
@@ -314,7 +314,7 @@ func TestEntryBatchSizeUpperLimit(t *testing.T) {
 	}
 	e2 := Entry{}
 	eb.Entries = make([]Entry, 0)
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		eb.Entries = append(eb.Entries, e2)
 	}
 	if eb.Size() > eb.SizeUpperLimit() {
@@ -347,7 +347,7 @@ func getMaxSizedMsg() Message {
 		RespondedTo: max64,
 		Cmd:         make([]byte, 1024),
 	}
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		msg.Entries = append(msg.Entries, e1)
 	}
 	msg.Snapshot.Filepath = "longfilepathisherexxxxxxxxxxxxxxxxx"
@@ -377,7 +377,7 @@ func TestMessageBatchSizeUpperLimit(t *testing.T) {
 		BinVer:        max32,
 		SourceAddress: "longaddressisherexxxxxxxxxxxxxxxxxxxxxxxxx",
 	}
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		mb.Requests = append(mb.Requests, msg)
 	}
 	if mb.Size() > mb.SizeUpperLimit() {

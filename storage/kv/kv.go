@@ -39,7 +39,7 @@ func samePrefixTerms(prefix, test []string) bool {
 	if len(test) < len(prefix) {
 		return false
 	}
-	for i := 0; i < len(prefix); i++ {
+	for i := range prefix {
 		if prefix[i] != test[i] {
 			return false
 		}

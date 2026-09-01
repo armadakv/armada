@@ -137,9 +137,10 @@ func (e Encoder) Encode(key *Key) (int, error) {
 	}
 
 	if key.version == V1 {
-		k := keyV1{}
-		k.keyType = key.KeyType
-		k.key = key.Key
+		k := keyV1{
+			keyType: key.KeyType,
+			key:     key.Key,
+		}
 		n, err := k.Encode(e.w)
 		if err != nil {
 			return keyHeaderLen, err
@@ -147,10 +148,11 @@ func (e Encoder) Encode(key *Key) (int, error) {
 		return keyHeaderLen + n, nil
 	}
 	if key.version == V2 {
-		k := keyV2{}
-		k.keyType = key.KeyType
-		k.key = key.Key
-		k.seqno = key.Seqno
+		k := keyV2{
+			keyType: key.KeyType,
+			key:     key.Key,
+			seqno:   key.Seqno,
+		}
 		n, err := k.Encode(e.w)
 		if err != nil {
 			return keyHeaderLen, err

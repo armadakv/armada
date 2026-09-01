@@ -513,7 +513,7 @@ func TestRaftAPILaunch(t *testing.T) {
 	wants := []pb.Update{
 		{
 			ReplicaID: 1,
-			State:     pb.State{Term: 1, Commit: 1, Vote: 0},
+			Term:      1, Commit: 1, Vote: 0,
 			EntriesToSave: []pb.Entry{
 				{Type: pb.ConfigChangeEntry, Term: 1, Index: 1, Cmd: ccdata},
 			},
@@ -524,8 +524,8 @@ func TestRaftAPILaunch(t *testing.T) {
 			LeaderUpdate: pb.LeaderUpdate{LeaderID: 0, Term: 1},
 		},
 		{
-			ReplicaID:        1,
-			State:            pb.State{Term: 2, Commit: 3, Vote: 1},
+			ReplicaID: 1,
+			Term:      2, Commit: 3, Vote: 1,
 			EntriesToSave:    []pb.Entry{{Term: 2, Index: 3, Cmd: []byte("foo")}},
 			CommittedEntries: []pb.Entry{{Term: 2, Index: 3, Cmd: []byte("foo")}},
 			UpdateCommit:     pb.UpdateCommit{Processed: 3, StableLogTo: 3, StableLogTerm: 2},
@@ -750,8 +750,8 @@ func TestValidateUpdate(t *testing.T) {
 	}
 	for idx, tt := range tests {
 		tidx := idx
-		ud := pb.Update{}
-		ud.Commit = tt.commit
+		ud := pb.Update{
+			Commit: tt.commit}
 		if tt.committedLength > 0 {
 			lastIndex := tt.firstCommittedIndex + tt.committedLength - 1
 			for i := tt.firstCommittedIndex; i <= lastIndex; i++ {

@@ -23,8 +23,9 @@ package raft
 
 import (
 	"fmt"
+	"maps"
 	"math"
-	"sort"
+	"slices"
 
 	"github.com/cockroachdb/errors"
 	"github.com/lni/goutils/logutil"
@@ -420,18 +421,14 @@ func (r *raft) nodes() []uint64 {
 
 func (r *raft) nodesSorted() []uint64 {
 	nodes := r.nodes()
-	sort.Slice(nodes, func(i, j int) bool { return nodes[i] < nodes[j] })
+	slices.Sort(nodes)
 	return nodes
 }
 
 func (r *raft) votingMembers() map[uint64]*remote {
 	nodes := make(map[uint64]*remote, r.numVotingMembers())
-	for id, rm := range r.remotes {
-		nodes[id] = rm
-	}
-	for id, wt := range r.witnesses {
-		nodes[id] = wt
-	}
+	maps.Copy(nodes, r.remotes)
+	maps.Copy(nodes, r.witnesses)
 	return nodes
 }
 
@@ -904,9 +901,7 @@ func (r *raft) sortMatchValues() {
 	} else if len(r.matched) == 1 {
 		return
 	} else {
-		sort.Slice(r.matched, func(i, j int) bool {
-			return r.matched[i] < r.matched[j]
-		})
+		slices.Sort(r.matched)
 	}
 }
 

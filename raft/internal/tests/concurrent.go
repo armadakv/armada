@@ -26,23 +26,23 @@ import (
 
 // TestUpdate is a IStateMachine used for testing purposes.
 type TestUpdate struct {
-	val uint32
+	val atomic.Uint32
 }
 
 // Update updates the state machine.
 func (c *TestUpdate) Update(e sm.Entry) (sm.Result, error) {
-	atomic.StoreUint32(&c.val, 1)
-	for i := 0; i < 5; i++ {
+	c.val.Store(1)
+	for range 5 {
 		time.Sleep(1 * time.Millisecond)
 	}
-	atomic.StoreUint32(&c.val, 0)
+	c.val.Store(0)
 	return sm.Result{Value: 100}, nil
 }
 
 // Lookup queries the state machine.
-func (c *TestUpdate) Lookup(query interface{}) (interface{}, error) {
+func (c *TestUpdate) Lookup(query any) (any, error) {
 	result := make([]byte, 4)
-	v := atomic.LoadUint32(&c.val)
+	v := c.val.Load()
 	binary.LittleEndian.PutUint32(result, v)
 	return result, nil
 }
@@ -75,7 +75,7 @@ func (c *TestUpdate) GetHash() (uint64, error) {
 // ConcurrentUpdate is a IConcurrentStateMachine used for testing purposes.
 type ConcurrentUpdate struct {
 	UpdateCount int
-	val         uint32
+	val         atomic.Uint32
 }
 
 // Update updates the state machine.
@@ -83,8 +83,8 @@ func (c *ConcurrentUpdate) Update(entries []sm.Entry) ([]sm.Entry, error) {
 	if c.UpdateCount == 0 {
 		c.UpdateCount = len(entries)
 	}
-	for i := 0; i < 40; i++ {
-		atomic.AddUint32(&c.val, 1)
+	for range 40 {
+		c.val.Add(1)
 		time.Sleep(1 * time.Millisecond)
 	}
 	entries[0].Result = sm.Result{Value: 100}
@@ -92,22 +92,22 @@ func (c *ConcurrentUpdate) Update(entries []sm.Entry) ([]sm.Entry, error) {
 }
 
 // Lookup queries the state machine.
-func (c *ConcurrentUpdate) Lookup(query interface{}) (interface{}, error) {
+func (c *ConcurrentUpdate) Lookup(query any) (any, error) {
 	st := time.Duration(rand.Uint64()%10) * time.Millisecond
 	time.Sleep(st)
 	result := make([]byte, 4)
-	v := atomic.LoadUint32(&c.val)
+	v := c.val.Load()
 	binary.LittleEndian.PutUint32(result, v)
 	return result, nil
 }
 
 // PrepareSnapshot makes preparations for taking concurrent snapshot.
-func (c *ConcurrentUpdate) PrepareSnapshot() (interface{}, error) {
+func (c *ConcurrentUpdate) PrepareSnapshot() (any, error) {
 	panic("not implemented")
 }
 
 // SaveSnapshot saves the snapshot.
-func (c *ConcurrentUpdate) SaveSnapshot(ctx interface{},
+func (c *ConcurrentUpdate) SaveSnapshot(ctx any,
 	w io.Writer,
 	fc sm.ISnapshotFileCollection, stopc <-chan struct{},
 ) error {
@@ -134,16 +134,16 @@ func (c *ConcurrentUpdate) GetHash() (uint64, error) {
 
 // TestSnapshot is a IConcurrentStateMachine used for testing purposes.
 type TestSnapshot struct {
-	val uint32
+	val atomic.Uint32
 }
 
 // Update updates the state machine.
 func (c *TestSnapshot) Update(e sm.Entry) (sm.Result, error) {
-	return sm.Result{Value: uint64(atomic.LoadUint32(&c.val))}, nil
+	return sm.Result{Value: uint64(c.val.Load())}, nil
 }
 
 // Lookup queries the state machine.
-func (c *TestSnapshot) Lookup(query interface{}) (interface{}, error) {
+func (c *TestSnapshot) Lookup(query any) (any, error) {
 	return nil, nil
 }
 
@@ -151,12 +151,12 @@ func (c *TestSnapshot) Lookup(query interface{}) (interface{}, error) {
 func (c *TestSnapshot) SaveSnapshot(w io.Writer,
 	fc sm.ISnapshotFileCollection, stopc <-chan struct{},
 ) error {
-	atomic.StoreUint32(&c.val, 0)
-	for i := 0; i < 100; i++ {
-		atomic.StoreUint32(&c.val, 1)
+	c.val.Store(0)
+	for range 100 {
+		c.val.Store(1)
 		time.Sleep(time.Millisecond)
 	}
-	atomic.StoreUint32(&c.val, 0)
+	c.val.Store(0)
 	data := make([]byte, 4)
 	_, err := w.Write(data)
 	if err != nil {
@@ -185,36 +185,36 @@ func (c *TestSnapshot) GetHash() (uint64, error) {
 
 // ConcurrentSnapshot is a IConcurrentStateMachine used for testing purposes.
 type ConcurrentSnapshot struct {
-	val uint32
+	val atomic.Uint32
 }
 
 // Update updates the state machine.
 func (c *ConcurrentSnapshot) Update(entries []sm.Entry) ([]sm.Entry, error) {
-	entries[0].Result = sm.Result{Value: uint64(atomic.LoadUint32(&c.val))}
+	entries[0].Result = sm.Result{Value: uint64(c.val.Load())}
 	return entries, nil
 }
 
 // Lookup queries the state machine.
-func (c *ConcurrentSnapshot) Lookup(query interface{}) (interface{}, error) {
+func (c *ConcurrentSnapshot) Lookup(query any) (any, error) {
 	return nil, sm.ErrSnapshotStopped
 }
 
 // PrepareSnapshot makes preparations for taking concurrent snapshot.
-func (c *ConcurrentSnapshot) PrepareSnapshot() (interface{}, error) {
+func (c *ConcurrentSnapshot) PrepareSnapshot() (any, error) {
 	return nil, nil
 }
 
 // SaveSnapshot saves the snapshot.
-func (c *ConcurrentSnapshot) SaveSnapshot(ctx interface{},
+func (c *ConcurrentSnapshot) SaveSnapshot(ctx any,
 	w io.Writer,
 	fc sm.ISnapshotFileCollection, stopc <-chan struct{},
 ) error {
-	atomic.StoreUint32(&c.val, 0)
-	for i := 0; i < 100; i++ {
-		atomic.StoreUint32(&c.val, 1)
+	c.val.Store(0)
+	for range 100 {
+		c.val.Store(1)
 		time.Sleep(time.Millisecond)
 	}
-	atomic.StoreUint32(&c.val, 0)
+	c.val.Store(0)
 	data := make([]byte, 4)
 	_, err := w.Write(data)
 	if err != nil {

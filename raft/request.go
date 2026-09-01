@@ -232,7 +232,7 @@ func (c RequestResultCode) String() string {
 }
 
 type logicalClock struct {
-	ltick      uint64
+	ltick      atomic.Uint64
 	lastGcTime uint64
 	gcTick     uint64
 }
@@ -245,27 +245,27 @@ func newLogicalClock() logicalClock {
 }
 
 func (p *logicalClock) tick(tick uint64) {
-	atomic.StoreUint64(&p.ltick, tick)
+	p.ltick.Store(tick)
 }
 
 func (p *logicalClock) getTick() uint64 {
-	return atomic.LoadUint64(&p.ltick)
+	return p.ltick.Load()
 }
 
 type ready struct {
-	val uint32
+	val atomic.Uint32
 }
 
 func (r *ready) ready() bool {
-	return atomic.LoadUint32(&r.val) == 1
+	return r.val.Load() == 1
 }
 
 func (r *ready) clear() {
-	atomic.StoreUint32(&r.val, 0)
+	r.val.Store(0)
 }
 
 func (r *ready) set() {
-	atomic.StoreUint32(&r.val, 1)
+	r.val.Store(1)
 }
 
 // SysOpState is the object used to provide system maintenance operation result
@@ -1009,7 +1009,7 @@ func newPendingProposal(cfg config.Config,
 		keyg:   make([]*keyGenerator, ps),
 		ps:     ps,
 	}
-	for i := uint64(0); i < ps; i++ {
+	for i := range ps {
 		p.shards[i] = newPendingProposalShard(cfg, notifyCommit, pool, proposals)
 		p.keyg[i] = getRng(cfg.ShardID, cfg.ReplicaID, i)
 	}

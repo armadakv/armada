@@ -105,11 +105,9 @@ func TestBasicDBReadWrite(t *testing.T) {
 			u1 := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,
-				State: pb.State{
-					Commit: 100,
-					Term:   5,
-					Vote:   3,
-				},
+				Commit:    100,
+				Term:      5,
+				Vote:      3,
 				Snapshot: pb.Snapshot{
 					Index: 100,
 					Term:  5,
@@ -123,11 +121,9 @@ func TestBasicDBReadWrite(t *testing.T) {
 			u2 := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,
-				State: pb.State{
-					Commit: 200,
-					Term:   10,
-					Vote:   6,
-				},
+				Commit:    200,
+				Term:      10,
+				Vote:      6,
 				Snapshot: pb.Snapshot{
 					Index: 200,
 					Term:  10,
@@ -271,10 +267,8 @@ func TestEmptyEntryUpdate(t *testing.T) {
 		u3 := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 1,
-				Term:   5,
-			},
+			Commit:    1,
+			Term:      5,
 		}
 		u4 := pb.Update{
 			ShardID:   2,
@@ -356,11 +350,9 @@ func TestLogRotation(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 100,
 				Term:  5,
@@ -407,11 +399,9 @@ func TestDBRestart(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			EntriesToSave: []pb.Entry{
 				{Index: 0, Term: 5},
 			},
@@ -433,11 +423,9 @@ func TestDBRestart(t *testing.T) {
 		u := pb.Update{
 			ShardID:   2,
 			ReplicaID: 3,
-			State: pb.State{
-				Commit: 100,
-				Term:   5,
-				Vote:   3,
-			},
+			Commit:    100,
+			Term:      5,
+			Vote:      3,
 			Snapshot: pb.Snapshot{
 				Index: 100,
 				Term:  5,
@@ -485,18 +473,14 @@ func TestDBConcurrentAccess(t *testing.T) {
 	require.NoError(t, err)
 	defer db.close()
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		buf := make([]byte, 1024)
 		for i := uint64(1); i <= uint64(1000); i++ {
 			u := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,
-				State: pb.State{
-					Commit: i,
-					Term:   6,
-				},
+				Commit:    i,
+				Term:      6,
 				Snapshot: pb.Snapshot{
 					Index: i,
 					Term:  6,
@@ -508,10 +492,8 @@ func TestDBConcurrentAccess(t *testing.T) {
 			_, err := db.write(u, buf)
 			require.NoError(t, err)
 		}
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	})
+	wg.Go(func() {
 		buf := make([]byte, 1024)
 		for i := uint64(1); i <= uint64(1000); i++ {
 			if i%uint64(10) == 0 {
@@ -526,10 +508,8 @@ func TestDBConcurrentAccess(t *testing.T) {
 				u := pb.Update{
 					ShardID:   2,
 					ReplicaID: 3,
-					State: pb.State{
-						Commit: i,
-						Term:   5,
-					},
+					Commit:    i,
+					Term:      5,
 					Snapshot: pb.Snapshot{
 						Index: i,
 						Term:  5,
@@ -542,11 +522,9 @@ func TestDBConcurrentAccess(t *testing.T) {
 				require.NoError(t, err)
 			}
 		}
-	}()
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 1000; i++ {
+	})
+	wg.Go(func() {
+		for range 1000 {
 			var result []pb.Entry
 			_, _, err := db.getEntries(2, 3, result, 0, 1, 100, math.MaxUint64)
 			require.NoError(t, err)
@@ -555,7 +533,7 @@ func TestDBConcurrentAccess(t *testing.T) {
 			_, err = db.getRaftState(2, 3, 1)
 			require.True(t, err == nil || errors.Is(err, raftio.ErrNoSavedLog))
 		}
-	}()
+	})
 	wg.Wait()
 }
 
@@ -692,7 +670,7 @@ func TestGetEntriesWithMaxSize(t *testing.T) {
 	tf := func(t *testing.T, db *db) {
 		cmd := make([]byte, 128)
 		buf := make([]byte, 1024)
-		for i := 0; i < 128; i++ {
+		for i := range 128 {
 			u := pb.Update{
 				ShardID:   2,
 				ReplicaID: 3,

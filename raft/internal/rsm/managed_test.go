@@ -34,7 +34,7 @@ func TestCountedWriteCanReportTotalWritten(t *testing.T) {
 		w: io.Discard,
 	}
 	total := uint64(0)
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		sz := rand.Uint64() % 1024
 		v := make([]byte, sz)
 		total += sz
@@ -52,11 +52,11 @@ type dummySM struct{}
 
 func (d *dummySM) Open(<-chan struct{}) (uint64, error)          { return 0, nil }
 func (d *dummySM) Update(entries []sm.Entry) ([]sm.Entry, error) { return nil, nil }
-func (d *dummySM) Lookup(query interface{}) (interface{}, error) { return nil, nil }
+func (d *dummySM) Lookup(query any) (any, error)                 { return nil, nil }
 func (d *dummySM) NALookup(query []byte) ([]byte, error)         { return nil, nil }
 func (d *dummySM) Sync() error                                   { return nil }
-func (d *dummySM) Prepare() (interface{}, error)                 { return nil, nil }
-func (d *dummySM) Save(interface{},
+func (d *dummySM) Prepare() (any, error)                         { return nil, nil }
+func (d *dummySM) Save(any,
 	io.Writer, sm.ISnapshotFileCollection, <-chan struct{},
 ) error {
 	return nil

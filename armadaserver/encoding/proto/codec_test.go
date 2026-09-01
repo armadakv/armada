@@ -15,7 +15,7 @@ import (
 
 func TestCodec_Marshal(t *testing.T) {
 	type args struct {
-		v interface{}
+		v any
 	}
 	tests := []struct {
 		name    string
@@ -59,7 +59,7 @@ func TestCodec_Marshal(t *testing.T) {
 
 func TestCodec_Unmarshal(t *testing.T) {
 	type args struct {
-		v    interface{}
+		v    any
 		data []byte
 	}
 	tests := []struct {

@@ -31,7 +31,7 @@ func TestMessageQueueCanBeCreated(t *testing.T) {
 
 func TestMessageCanBeAddedAndGet(t *testing.T) {
 	q := NewMessageQueue(8, false, 0, 0)
-	for i := 0; i < 8; i++ {
+	for range 8 {
 		added, stopped := q.Add(pb.Message{})
 		if !added || stopped {
 			t.Errorf("failed to add")
@@ -79,7 +79,7 @@ func TestNonSnapshotMsgByCallingMustAddWillPanic(t *testing.T) {
 
 func TestSnapshotCanAlwaysBeAdded(t *testing.T) {
 	q := NewMessageQueue(8, false, 0, 0)
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		n := len(q.nodrop)
 		if !q.MustAdd(pb.Message{Type: pb.InstallSnapshot}) {
 			t.Errorf("failed to add snapshot")
@@ -92,7 +92,7 @@ func TestSnapshotCanAlwaysBeAdded(t *testing.T) {
 
 func TestUnreachableMsgCanAlwaysBeAdded(t *testing.T) {
 	q := NewMessageQueue(8, false, 0, 0)
-	for i := 0; i < 1024; i++ {
+	for range 1024 {
 		n := len(q.nodrop)
 		if !q.MustAdd(pb.Message{Type: pb.Unreachable}) {
 			t.Errorf("failed to add snapshot")
@@ -108,7 +108,7 @@ func TestAddedSnapshotWillBeReturned(t *testing.T) {
 	if !q.MustAdd(pb.Message{Type: pb.InstallSnapshot}) {
 		t.Errorf("failed to add snapshot")
 	}
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		added, stopped := q.Add(pb.Message{})
 		if !added || stopped {
 			t.Errorf("failed to add")
@@ -117,7 +117,7 @@ func TestAddedSnapshotWillBeReturned(t *testing.T) {
 	if !q.MustAdd(pb.Message{Type: pb.InstallSnapshot}) {
 		t.Errorf("failed to add snapshot")
 	}
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		added, stopped := q.Add(pb.Message{})
 		if !added || stopped {
 			t.Errorf("failed to add")
@@ -147,7 +147,7 @@ func TestAddedSnapshotWillBeReturned(t *testing.T) {
 func TestMessageQueueCanBeStopped(t *testing.T) {
 	q := NewMessageQueue(8, false, 0, 0)
 	q.Close()
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		added, stopped := q.Add(pb.Message{})
 		if added || !stopped {
 			t.Errorf("unexpectedly added msg")
@@ -190,7 +190,7 @@ func TestSingleMessageCanAlwaysBeAdded(t *testing.T) {
 
 func TestAddMessageIsRateLimited(t *testing.T) {
 	q := NewMessageQueue(10000, false, 0, 1024)
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		e := pb.Entry{Index: uint64(i + 1)}
 		m := pb.Message{
 			Type:    pb.Replicate,
@@ -219,7 +219,7 @@ func TestAddMessageIsRateLimited(t *testing.T) {
 
 func TestGetWillResetTheRateLimiterSize(t *testing.T) {
 	q := NewMessageQueue(10000, false, 0, 1024)
-	for i := 0; i < 8; i++ {
+	for i := range 8 {
 		e := pb.Entry{Index: uint64(i + 1)}
 		m := pb.Message{
 			Type:    pb.Replicate,

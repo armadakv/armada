@@ -171,7 +171,7 @@ func runTestVFS(t *testing.T, baseFS FS, dir string) {
 				}
 			}
 
-			for _, line := range strings.Split(td.Input, "\n") {
+			for line := range strings.SplitSeq(td.Input, "\n") {
 				parts := strings.Fields(line)
 				if len(parts) == 0 {
 					return "<op> [<args>]"
@@ -355,7 +355,7 @@ func TestVFSRootDirName(t *testing.T) {
 // TestOpType is intended to catch operations that have been added without an
 // associated string, which could result in a runtime panic.
 func TestOpType(t *testing.T) {
-	for i := 0; i < int(opTypeMax); i++ {
+	for i := range int(opTypeMax) {
 		require.NotPanics(t, func() {
 			_ = OpType(i).String()
 		})

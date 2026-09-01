@@ -49,30 +49,30 @@ func (l *zapLogger) SetLevel(lvl logger.LogLevel) {
 	l.lvl = lvl
 }
 
-func (l *zapLogger) Debugf(format string, args ...interface{}) {
+func (l *zapLogger) Debugf(format string, args ...any) {
 	if l.lvl >= logger.DEBUG {
 		l.z.Debugf(strings.TrimRight(format, "\n"), args...)
 	}
 }
 
-func (l *zapLogger) Infof(format string, args ...interface{}) {
+func (l *zapLogger) Infof(format string, args ...any) {
 	if l.lvl >= logger.INFO {
 		l.z.Infof(strings.TrimRight(format, "\n"), args...)
 	}
 }
 
-func (l *zapLogger) Warningf(format string, args ...interface{}) {
+func (l *zapLogger) Warningf(format string, args ...any) {
 	if l.lvl >= logger.WARNING {
 		l.z.Warnf(strings.TrimRight(format, "\n"), args...)
 	}
 }
 
-func (l *zapLogger) Errorf(format string, args ...interface{}) {
+func (l *zapLogger) Errorf(format string, args ...any) {
 	if l.lvl >= logger.ERROR {
 		l.z.Errorf(strings.TrimRight(format, "\n"), args...)
 	}
 }
 
-func (l *zapLogger) Panicf(format string, args ...interface{}) {
+func (l *zapLogger) Panicf(format string, args ...any) {
 	l.z.Panicf(strings.TrimRight(format, "\n"), args...)
 }

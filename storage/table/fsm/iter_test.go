@@ -303,7 +303,7 @@ func Test_iterOptionsForBounds(t *testing.T) {
 
 func generateSequence[V any](n int, gen func(n int) V) iter.Seq[V] {
 	return func(yield func(V) bool) {
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if !yield(gen(i)) {
 				return
 			}

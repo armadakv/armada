@@ -159,7 +159,7 @@ func (s *nodeStates) load(dirname string, fn fileNum, fs vfs.FS) (err error) {
 	if err != nil {
 		return err
 	}
-	for i := uint64(0); i < sz; i++ {
+	for range sz {
 		var entries index
 		var snapshots index
 		var state index

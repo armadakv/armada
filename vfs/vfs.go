@@ -78,7 +78,7 @@ type File interface {
 // backed by an OS descriptor.
 // Note: the special value is consistent with what os.File implementation
 // returns on a nil receiver.
-const InvalidFd = ^(uintptr(0))
+const InvalidFd = ^uintptr(0)
 
 // OpenOption provide an interface to do work on file handles in the Open()
 // call.

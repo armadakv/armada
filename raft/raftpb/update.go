@@ -209,7 +209,7 @@ func (u *Update) Unmarshal(buf []byte) error {
 	if count > 0 {
 		u.EntriesToSave = make([]Entry, count)
 	}
-	for i := uint32(0); i < count; i++ {
+	for i := range count {
 		l := binary.LittleEndian.Uint32(buf[offset:])
 		var entry Entry
 		if err := entry.Unmarshal(buf[offset+4 : offset+4+int(l)]); err != nil {

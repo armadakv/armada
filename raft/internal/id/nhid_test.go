@@ -28,7 +28,7 @@ func TestIsNodeHostID(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	values := make(map[string]struct{})
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		u := New()
 		values[u.String()] = struct{}{}
 	}

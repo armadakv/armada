@@ -229,7 +229,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 	rnd := rand.New(rand.NewSource(1))
 
 	w := newWriter(buf)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		length := len(p) + rnd.Intn(3*blockSize)
 		s := string(uint8(i)) + "123456789abcdefgh"
 		_, _ = w.writeRecord([]byte(big(s, length)))
@@ -239,7 +239,7 @@ func TestNonExhaustiveRead(t *testing.T) {
 	}
 
 	r := newReader(buf, 0 /* logNum */)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		rr, _ := r.next()
 		_, err := io.ReadFull(rr, p)
 		if err != nil {
@@ -795,7 +795,7 @@ func TestSize(t *testing.T) {
 	var buf bytes.Buffer
 	zeroes := make([]byte, 8<<10)
 	w := newWriter(&buf)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		n := rand.Intn(len(zeroes))
 		_, err := w.writeRecord(zeroes[:n])
 		require.NoError(t, err)

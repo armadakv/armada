@@ -43,7 +43,7 @@ func setupFullAndIncrArtefacts(t *testing.T, ctx context.Context, bucket objfs.B
 	}, FullMetaKey(table, tipFull))
 
 	prev := tipFull
-	for i := 0; i < incrCount; i++ {
+	for range incrCount {
 		next := prev + 10
 		uploadTestSnap(t, ctx, bucket, IncrSnapKey(table, prev, next))
 		uploadTestMeta(t, ctx, bucket, Meta{

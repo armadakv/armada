@@ -63,7 +63,7 @@ func (q *IndexNotificationQueue) Run() {
 		case <-gc.C:
 			iterx.Consume(q.items.Values(), func(h *heap.Heap[*item]) {
 				l := h.Len()
-				for i := 0; i < l; i++ {
+				for i := range l {
 					elem := h.Slice[i]
 					if elem.ctx.Err() != nil {
 						// Reorder
@@ -72,7 +72,7 @@ func (q *IndexNotificationQueue) Run() {
 					}
 				}
 				h.Fix(0)
-				for i := 0; i < l; i++ {
+				for range l {
 					elem := h.Peek()
 					if elem.revision == 0 {
 						h.Pop()
@@ -87,7 +87,7 @@ func (q *IndexNotificationQueue) Run() {
 		case n := <-q.notif:
 			h, _ := q.items.Load(n.table)
 			l := h.Len()
-			for i := 0; i < l; i++ {
+			for range l {
 				elem := h.Peek()
 				if elem.ctx.Err() != nil {
 					elem.waitCh <- elem.ctx.Err()

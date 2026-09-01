@@ -412,7 +412,7 @@ func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.FS) {
 		}
 	}()
 	nodes.Add(100, 2, serverAddress)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		msg := raftpb.Message{
 			Type:    raftpb.Heartbeat,
 			To:      2,
@@ -424,7 +424,7 @@ func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.FS) {
 		}
 	}
 	done := false
-	for i := 0; i < 200; i++ {
+	for range 200 {
 		time.Sleep(100 * time.Millisecond)
 		count := handler.getRequestCount(100, 2)
 		plog.Infof("%d test messages received", count)
@@ -457,7 +457,7 @@ func testMessageCanBeSent(t *testing.T, mutualTLS bool, sz uint64, fs vfs.FS) {
 		t.Errorf("failed to send the large msg")
 	}
 	received := false
-	for i := 0; i < 400; i++ {
+	for range 400 {
 		time.Sleep(100 * time.Millisecond)
 		if handler.getRequestCount(100, 2) == 21 {
 			received = true
@@ -510,7 +510,7 @@ func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.F
 		}
 	}()
 	nodes.Add(100, 2, serverAddress)
-	for i := 0; i < 128; i++ {
+	for range 128 {
 		msg := raftpb.Message{
 			Type:    raftpb.Replicate,
 			To:      2,
@@ -523,7 +523,7 @@ func testMessageCanBeSentWithLargeLatency(t *testing.T, mutualTLS bool, fs vfs.F
 		}
 	}
 	done := false
-	for i := 0; i < 400; i++ {
+	for range 400 {
 		time.Sleep(100 * time.Millisecond)
 		if handler.getRequestCount(100, 2) == 128 {
 			done = true
@@ -560,7 +560,7 @@ func testMessageBatchWithNotMatchedDBVAreDropped(t *testing.T,
 	}()
 	nodes.Add(100, 2, serverAddress)
 	trans.SetPreSendBatchHook(f)
-	for i := 0; i < 100; i++ {
+	for range 100 {
 		msg := raftpb.Message{
 			Type:    raftpb.Heartbeat,
 			To:      2,
@@ -973,14 +973,14 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 	}()
 	nodes.Add(100, 2, serverAddress)
 	conns := make([]*Sink, 0)
-	for i := uint64(0); i < maxConnectionCount; i++ {
+	for range maxConnectionCount {
 		sink := trans.GetStreamSink(100, 2)
 		if sink == nil {
 			t.Errorf("failed to get sink")
 		}
 		conns = append(conns, sink)
 	}
-	for i := uint64(0); i < maxConnectionCount; i++ {
+	for range maxConnectionCount {
 		if sink := trans.GetStreamSink(100, 2); sink != nil {
 			t.Errorf("connection is not limited")
 		}
@@ -989,7 +989,7 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 		close(v.j.ch)
 	}
 	for {
-		if atomic.LoadUint64(&trans.jobs) != 0 {
+		if trans.jobs.Load() != 0 {
 			time.Sleep(time.Millisecond)
 		} else {
 			break
@@ -998,7 +998,7 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 	breaker := trans.GetCircuitBreaker(serverAddress)
 	breaker.Reset()
 	plog.Infof("circuit breaker for %s is now ready", serverAddress)
-	for i := uint64(0); i < maxConnectionCount; i++ {
+	for i := range maxConnectionCount {
 		if sink := trans.GetStreamSink(100, 2); sink == nil {
 			t.Fatalf("failed to get sink again %d", i)
 		}
@@ -1176,7 +1176,7 @@ func TestInitialMessageCanBeSent(t *testing.T) {
 	if !ok {
 		t.Errorf("send failed")
 	}
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if atomic.LoadUint64(&noopTransport.connected) != 0 {
 			break
 		}
@@ -1220,7 +1220,7 @@ func TestFailedConnectionIsRemovedFromTransport(t *testing.T) {
 	// fail or the one below is going to fail. after the send below, failure will
 	// eventually be triggered and we just need to check & wait.
 	tt.Send(msg)
-	for i := 0; i < 5000; i++ {
+	for range 5000 {
 		if tt.queueSize() != 0 {
 			time.Sleep(time.Millisecond)
 		} else {
@@ -1257,7 +1257,7 @@ func TestCircuitBreakerCauseFailFast(t *testing.T) {
 	// see comments in TestFailedConnectionIsRemovedFromTransport for why
 	// the returned value of the below Send() is not checked
 	tt.Send(msg)
-	for i := 0; i < 1000; i++ {
+	for range 1000 {
 		if tt.queueSize() != 0 {
 			time.Sleep(time.Millisecond)
 		} else {
@@ -1265,7 +1265,7 @@ func TestCircuitBreakerCauseFailFast(t *testing.T) {
 		}
 	}
 	req.SetToFail(false)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		ok = tt.Send(msg)
 		if ok {
 			t.Errorf("send unexpectedly returned ok")
@@ -1308,13 +1308,13 @@ func TestCircuitBreakerForResolveNotShared(t *testing.T) {
 	if ok := tt.Send(msg); !ok {
 		t.Errorf("send failed")
 	}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		if ok := tt.Send(msgUnknownNode); ok {
 			t.Errorf("send unexpectedly returned ok")
 		}
 		time.Sleep(time.Millisecond)
 	}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		if ok := tt.Send(msg); !ok {
 			t.Errorf("send failed for known host")
 		}
@@ -1366,7 +1366,7 @@ func TestFailedStreamConnectionWillHaveSnapshotStatusUpdated(t *testing.T) {
 	req.SetToFail(true)
 	tt.GetStreamSink(100, 2)
 	failedSnapshotReported := false
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		if handler.getFailedSnapshotCount(100, 2) != 1 {
 			time.Sleep(time.Millisecond)
 			continue
@@ -1390,7 +1390,7 @@ func TestFailedStreamingDueToTooManyConnectionsHaveStatusUpdated(t *testing.T) {
 		}
 	}()
 	nodes.Add(100, 2, serverAddress)
-	for i := uint64(0); i < maxConnectionCount; i++ {
+	for range maxConnectionCount {
 		sink := tt.GetStreamSink(100, 2)
 		if sink == nil {
 			t.Errorf("failed to connect")
@@ -1403,7 +1403,7 @@ func TestFailedStreamingDueToTooManyConnectionsHaveStatusUpdated(t *testing.T) {
 		}
 	}
 	failedSnapshotReported := false
-	for i := 0; i < 10000; i++ {
+	for range 10000 {
 		count := handler.getFailedSnapshotCount(100, 2)
 		if count != 2*maxConnectionCount {
 			time.Sleep(time.Millisecond)
@@ -1438,7 +1438,7 @@ func TestInMemoryEntrySizeCanBeLimitedWhenSendingMessages(t *testing.T) {
 		Entries: []raftpb.Entry{e},
 	}
 	req.SetBlocked(true)
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		sent, reason := tt.send(msg)
 		if !sent {
 			if reason != rateLimited {
@@ -1483,7 +1483,7 @@ func TestInMemoryEntrySizeCanDropToZero(t *testing.T) {
 	for len(sq.ch) != 0 {
 		time.Sleep(time.Millisecond)
 	}
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		sent := tt.Send(msg)
 		if !sent {
 			t.Errorf("failed to send2")
@@ -1492,7 +1492,7 @@ func TestInMemoryEntrySizeCanDropToZero(t *testing.T) {
 	for len(sq.ch) != 0 {
 		time.Sleep(time.Millisecond)
 	}
-	for i := 0; i < 1000; i++ {
+	for i := range 1000 {
 		time.Sleep(10 * time.Millisecond)
 		if sq.rl.Get() == 0 {
 			return
