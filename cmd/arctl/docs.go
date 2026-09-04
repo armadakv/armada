@@ -40,7 +40,7 @@ var docsCmd = &cli.Command{
 		}
 		defer f.Close()
 
-		_, err = f.WriteString("---\ntitle: \"arctl\"\nsection: \"operations_guide\"\nsubsection: \"cli\"\norder: 1\n---\n")
+		_, err = f.WriteString("---\ntitle: \"arctl\"\nsection: \"operations_guide\"\nsubsection: \"cli\"\norder: 3\n---\n")
 		if err != nil {
 			return err
 		}

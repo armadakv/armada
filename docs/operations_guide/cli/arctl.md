@@ -2,7 +2,7 @@
 title: "arctl"
 section: "operations_guide"
 subsection: "cli"
-order: 1
+order: 3
 ---
 # NAME
 

@@ -3,10 +3,13 @@
 package fsm
 
 import (
+	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
+	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
@@ -108,6 +111,79 @@ func Test_handleDeleteBatch(t *testing.T) {
 	index, err := readLocalIndex(db, sysLocalIndex)
 	r.NoError(err)
 	r.Equal(c.index, index)
+}
+
+func Test_handleDeleteAllPreservesSystemState(t *testing.T) {
+	r := require.New(t)
+	db, err := rp.OpenDB("/", rp.WithFS(vfs.NewMem()))
+	r.NoError(err)
+	defer db.Close()
+
+	putLeaderIndex := uint64(10)
+	c := &updateContext{
+		batch:       db.NewBatch(),
+		db:          db,
+		index:       1,
+		leaderIndex: &putLeaderIndex,
+	}
+	defer func() { _ = c.Close() }()
+
+	keys := [][]byte{
+		[]byte("first"),
+		bytes.Repeat([]byte{0xff}, key.LatestVersionLen),
+	}
+	puts := make([]*armadapb.RequestOp_Put, 0, len(keys))
+	for _, userKey := range keys {
+		puts = append(puts, &armadapb.RequestOp_Put{Key: userKey, Value: []byte("value")})
+	}
+	_, err = handlePutBatch(c, puts)
+	r.NoError(err)
+	gcHorizon := make([]byte, 8)
+	binary.LittleEndian.PutUint64(gcHorizon, 7)
+	r.NoError(c.batch.Set(sysGCHorizon, gcHorizon, nil))
+	r.NoError(c.Commit())
+
+	deleteLeaderIndex := uint64(20)
+	c.batch = db.NewBatch()
+	c.index = 2
+	c.leaderIndex = &deleteLeaderIndex
+	response, err := handleDelete(c, &armadapb.RequestOp_DeleteRange{
+		Key:      []byte{0},
+		RangeEnd: []byte{0},
+		Count:    true,
+		PrevKv:   true,
+	})
+	r.NoError(err)
+	r.Equal(int64(len(keys)), response.GetDeleted())
+	r.Len(response.GetPrevKvs(), len(keys))
+	r.NoError(c.Commit())
+
+	r.Empty(liveUserKeys(t, db))
+	localIndex, err := readLocalIndex(db, sysLocalIndex)
+	r.NoError(err)
+	r.Equal(uint64(2), localIndex)
+	leaderIndex, err := readLocalIndex(db, sysLeaderIndex)
+	r.NoError(err)
+	r.Equal(deleteLeaderIndex, leaderIndex)
+	storedGCHorizon, err := readLocalIndex(db, sysGCHorizon)
+	r.NoError(err)
+	r.Equal(uint64(7), storedGCHorizon)
+
+	iter, err := db.NewIter(allUserKeysOpts())
+	r.NoError(err)
+	defer iter.Close()
+	latestVersions := 0
+	for valid := iter.First(); valid; {
+		decoded, err := key.DecodeBytes(iter.Key())
+		r.NoError(err)
+		r.Equal(key.TypeUser, decoded.KeyType)
+		r.Equal(deleteLeaderIndex, decoded.Seqno)
+		r.True(isTombstone(iter.Value()))
+		latestVersions++
+		physicalKey := append([]byte(nil), iter.Key()...)
+		valid = iterNextUserKey(iter, physicalKey)
+	}
+	r.Equal(len(keys), latestVersions)
 }
 
 func Test_handleDeleteRange(t *testing.T) {

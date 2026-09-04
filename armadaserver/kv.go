@@ -36,10 +36,10 @@ func rangeEndContainsNullByte(k []byte) bool {
 }
 
 // rangeKeyContainsNullByte is like keyContainsNullByte but allows the
-// single-byte \x00 sentinel as a range start key, which represents
-// "start from the beginning of the keyspace" in a range scan.
-func rangeKeyContainsNullByte(k []byte) bool {
-	if len(k) == 1 && k[0] == 0 {
+// single-byte \x00 sentinel when the request has a range end. In that case it
+// represents "start from the beginning of the keyspace" rather than a user key.
+func rangeKeyContainsNullByte(k, rangeEnd []byte) bool {
+	if len(rangeEnd) > 0 && len(k) == 1 && k[0] == 0 {
 		return false
 	}
 	return bytes.IndexByte(k, 0) >= 0
@@ -48,7 +48,7 @@ func rangeKeyContainsNullByte(k []byte) bool {
 // validateTxnKeys checks all keys embedded in a TxnRequest for null bytes.
 func validateTxnKeys(req *armadapb.TxnRequest) error {
 	for _, cmp := range req.Compare {
-		if keyContainsNullByte(cmp.Key) {
+		if rangeKeyContainsNullByte(cmp.Key, cmp.RangeEnd) {
 			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
 		}
 		if rangeEndContainsNullByte(cmp.RangeEnd) {
@@ -70,7 +70,7 @@ func validateTxnKeys(req *armadapb.TxnRequest) error {
 
 func validateRequestOpKeys(op *armadapb.RequestOp) error {
 	if r := op.GetRequestRange(); r != nil {
-		if rangeKeyContainsNullByte(r.Key) {
+		if rangeKeyContainsNullByte(r.Key, r.RangeEnd) {
 			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
 		}
 		if rangeEndContainsNullByte(r.RangeEnd) {
@@ -83,7 +83,7 @@ func validateRequestOpKeys(op *armadapb.RequestOp) error {
 		}
 	}
 	if d := op.GetRequestDeleteRange(); d != nil {
-		if keyContainsNullByte(d.Key) {
+		if rangeKeyContainsNullByte(d.Key, d.RangeEnd) {
 			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
 		}
 		if rangeEndContainsNullByte(d.RangeEnd) {
@@ -125,7 +125,7 @@ func (s *KVServer) Range(ctx context.Context, req *armadapb.RangeRequest) (*arma
 		return nil, status.Error(codes.InvalidArgument, "key must be set")
 	}
 
-	if rangeKeyContainsNullByte(req.GetKey()) {
+	if rangeKeyContainsNullByte(req.GetKey(), req.GetRangeEnd()) {
 		return nil, status.Error(codes.InvalidArgument, "key must not contain null bytes")
 	}
 
@@ -170,7 +170,7 @@ func (s *KVServer) IterateRange(req *armadapb.RangeRequest, srv armadapb.KV_Iter
 		return status.Error(codes.InvalidArgument, "key must be set")
 	}
 
-	if keyContainsNullByte(req.GetKey()) {
+	if rangeKeyContainsNullByte(req.GetKey(), req.GetRangeEnd()) {
 		return status.Error(codes.InvalidArgument, "key must not contain null bytes")
 	}
 
@@ -244,7 +244,7 @@ func (s *KVServer) DeleteRange(ctx context.Context, req *armadapb.DeleteRangeReq
 		return nil, status.Errorf(codes.InvalidArgument, "key must be set")
 	}
 
-	if keyContainsNullByte(req.GetKey()) {
+	if rangeKeyContainsNullByte(req.GetKey(), req.GetRangeEnd()) {
 		return nil, status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
 	}
 

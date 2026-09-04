@@ -3,6 +3,7 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -17,6 +18,7 @@ import (
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/logreader"
 	"github.com/armadakv/armada/storage/table"
+	tablekey "github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util/iterx"
 	"github.com/armadakv/armada/version"
 	lvfs "github.com/armadakv/armada/vfs"
@@ -617,6 +619,61 @@ func TestEngine_Delete(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func TestEngine_DeleteAllAppliesThroughRaft(t *testing.T) {
+	ctx := cancellableTestContext(t)
+	e := newTestEngine(t, newTestConfig())
+	require.NoError(t, e.Start())
+	require.NoError(t, e.WaitUntilReady(ctx))
+	createTable(t, e)
+
+	keys := [][]byte{
+		[]byte("first"),
+		bytes.Repeat([]byte{0xff}, tablekey.LatestVersionLen),
+	}
+	for _, userKey := range keys {
+		_, err := e.Put(ctx, &armadapb.PutRequest{Table: []byte(testTableName), Key: userKey, Value: []byte("value")})
+		require.NoError(t, err)
+	}
+
+	stream, err := e.IterateRange(ctx, &armadapb.RangeRequest{
+		Table:     []byte(testTableName),
+		Key:       []byte{0},
+		RangeEnd:  []byte{0},
+		CountOnly: true,
+	})
+	require.NoError(t, err)
+	before := int64(0)
+	for response := range stream {
+		before += response.GetCount()
+	}
+	require.Equal(t, int64(len(keys)), before)
+
+	deleted, err := e.Delete(ctx, &armadapb.DeleteRangeRequest{
+		Table:    []byte(testTableName),
+		Key:      []byte{0},
+		RangeEnd: []byte{0},
+		Count:    true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(len(keys)), deleted.GetDeleted())
+
+	after, err := e.Range(ctx, &armadapb.RangeRequest{
+		Table:     []byte(testTableName),
+		Key:       []byte{0},
+		RangeEnd:  []byte{0},
+		CountOnly: true,
+	})
+	require.NoError(t, err)
+	require.Zero(t, after.GetCount())
+
+	_, err = e.Put(ctx, &armadapb.PutRequest{Table: []byte(testTableName), Key: []byte("after"), Value: []byte("new")})
+	require.NoError(t, err)
+	visible, err := e.Range(ctx, &armadapb.RangeRequest{Table: []byte(testTableName), Key: []byte("after")})
+	require.NoError(t, err)
+	require.Len(t, visible.GetKvs(), 1)
+	require.Equal(t, []byte("new"), visible.GetKvs()[0].GetValue())
 }
 
 func TestEngine_Txn(t *testing.T) {

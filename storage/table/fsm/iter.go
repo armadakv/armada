@@ -144,10 +144,10 @@ func iterOptionsForBounds(low, high []byte) (*pebble.IterOptions, error) { //nol
 	copy(iterOptions.LowerBound, lowBuf.Bytes())
 
 	if bytes.Equal(high, wildcard) {
-		// In order to include the last key in the iterator as well we have to increment the rightmost byte of the maximum user key.
-		iterOptions.UpperBound = make([]byte, len(maxUserKey))
-		copy(iterOptions.UpperBound, maxUserKey)
-		iterOptions.UpperBound = incrementRightmostByte(iterOptions.UpperBound)
+		// Key type is encoded before the user key, so the first possible system
+		// key is an exclusive upper bound for every V2 user key regardless of its
+		// length or contents.
+		iterOptions.UpperBound = append([]byte(nil), userKeyUpperBound...)
 	} else {
 		highBuf := bufferPool.Get()
 		defer bufferPool.Put(highBuf)

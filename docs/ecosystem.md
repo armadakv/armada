@@ -12,8 +12,11 @@ The `regatta-` prefixes in some tool and library names are a legacy of Armada's 
 fork of the Regatta project. See [Regatta and Armada](regatta.md) for the full story.
 
 ## CLIs
-Armada ships its own official [`arctl`](operations_guide/cli/arctl.md) control-plane CLI for
-maintenance and administration workflows such as backup, restore, and table management.
+Armada ships two official client CLIs:
+
+* [`arctl`](operations_guide/cli/arctl.md) for control-plane maintenance and administration workflows such as backup, restore, and table management.
+* [`arq`](operations_guide/cli/arq.md) for querying and modifying key-value data.
+
 Community tools include:
 
 * [regatta-client](https://github.com/Tantalor93/regatta-client) — unofficial CLI for querying and manipulating the Armada store.

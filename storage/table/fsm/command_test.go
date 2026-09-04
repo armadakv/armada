@@ -108,10 +108,7 @@ func allUserKeysOpts() *pebble.IterOptions {
 			KeyType: key.TypeUser,
 			Key:     key.LatestMinKey,
 		}),
-		UpperBound: incrementRightmostByte(mustEncodeKey(key.Key{
-			KeyType: key.TypeUser,
-			Key:     key.LatestMaxKey,
-		})),
+		UpperBound: append([]byte(nil), userKeyUpperBound...),
 	}
 }
 

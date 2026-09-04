@@ -3,6 +3,7 @@
 package fsm
 
 import (
+	"bytes"
 	"math"
 	"testing"
 
@@ -139,6 +140,22 @@ func TestRunGC_SingleTombstoneBelowHorizon_Deleted(t *testing.T) {
 
 	require.Nil(t, lookupVisible(t, p, []byte("k")))
 	require.Equal(t, 0, physicalVersionCount(p.pebble.Load(), []byte("k")))
+}
+
+// The wildcard user-key bound must include the longest key accepted by ActiveTable.
+func TestRunGC_MaxAcceptedKeyLength(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+
+	userKey := bytes.Repeat([]byte{0xff}, key.LatestVersionLen)
+	applyEntries(p,
+		putEntry(1, userKey, []byte("value")),
+		deleteEntry(3, userKey),
+	)
+	require.Equal(t, 2, physicalVersionCount(p.pebble.Load(), userKey))
+
+	require.NoError(t, p.runGC(p.pebble.Load(), 10))
+	require.Equal(t, 0, physicalVersionCount(p.pebble.Load(), userKey))
 }
 
 // Case 3 with older versions: multiple live versions all below gcIndex.
