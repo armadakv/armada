@@ -393,10 +393,7 @@ func (n *nodeIndex) compaction() []fileNum {
 	sfn := n.snapshotCompaction()
 	stateFn := n.stateCompaction()
 	maxObsoleteFileNum := fileNum(0)
-	maxObsoleteFileNum = min(efn, sfn)
-	if stateFn < maxObsoleteFileNum {
-		maxObsoleteFileNum = stateFn
-	}
+	maxObsoleteFileNum = min(stateFn, min(efn, sfn))
 	if maxObsoleteFileNum == fileNum(math.MaxUint64) ||
 		maxObsoleteFileNum == fileNum(0) {
 		return nil

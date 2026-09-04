@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package cmd
+package main
 
 import (
 	"context"
@@ -17,14 +17,13 @@ import (
 	"github.com/armadakv/armada/storage"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
 
 // setupCommonEnvironment sets up the common environment for both leader and follower modes.
 // It initializes logging, sets up signal handling, and returns the logger and shutdown channel.
 func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal) {
-	logger := rl.NewLogger(viper.GetBool("dev-mode"), viper.GetString("log-level"))
+	logger := rl.NewLogger(k.Bool("dev-mode"), k.String("log-level"))
 	zap.ReplaceGlobals(logger)
 	log := logger.Sugar().Named("root")
 	engineLog := logger.Named("engine")
@@ -39,8 +38,8 @@ func setupCommonEnvironment() (*zap.Logger, *zap.SugaredLogger, chan os.Signal) 
 
 // createEngineConfig creates a common storage engine configuration for both leader and follower modes.
 func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table string, rev uint64)) (storage.Config, error) {
-	raftAddress := viper.GetString("raft.address")
-	nodeID, initialMembers, err := parseInitialMembersList(viper.GetStringSlice("raft.initial-members"), raftAddress)
+	raftAddress := k.String("raft.address")
+	nodeID, initialMembers, err := parseInitialMembersList(k.Strings("raft.initial-members"), raftAddress)
 	if err != nil {
 		return storage.Config{}, fmt.Errorf("failed to parse raft.initial-members: %w", err)
 	}
@@ -55,7 +54,7 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 	// Gossip shares the raft UDP port (ALPN multiplexing). When memberlist.members
 	// is not explicitly set, fall back to the raft peer addresses as gossip seeds
 	// so operators don't need to repeat them under a different flag.
-	gossipMembers := filterNonEmpty(viper.GetStringSlice("memberlist.members"))
+	gossipMembers := filterNonEmpty(k.Strings("memberlist.members"))
 	if len(gossipMembers) == 0 {
 		for _, addr := range initialMembers {
 			gossipMembers = append(gossipMembers, addr)
@@ -64,63 +63,63 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 
 	return storage.Config{
 		Log:                 engineLog.Sugar(),
-		ClientAddress:       viper.GetString("api.advertise-address"),
+		ClientAddress:       k.String("api.advertise-address"),
 		NodeID:              nodeID,
 		InitialMembers:      initialMembers,
-		WALDir:              viper.GetString("raft.wal-dir"),
-		NodeHostDir:         viper.GetString("raft.node-host-dir"),
-		RTTMillisecond:      uint64(viper.GetDuration("raft.rtt").Milliseconds()),
+		WALDir:              k.String("raft.wal-dir"),
+		NodeHostDir:         k.String("raft.node-host-dir"),
+		RTTMillisecond:      uint64(k.Duration("raft.rtt").Milliseconds()),
 		RaftAddress:         raftAddress,
-		ListenAddress:       viper.GetString("raft.listen-address"),
+		ListenAddress:       k.String("raft.listen-address"),
 		EnableMetrics:       true,
-		MaxReceiveQueueSize: viper.GetUint64("raft.max-recv-queue-size"),
-		MaxSendQueueSize:    viper.GetUint64("raft.max-send-queue-size"),
-		QUICUDPBufferSize:   viper.GetInt("raft.quic-udp-buffer-size"),
+		MaxReceiveQueueSize: uint64(k.Int64("raft.max-recv-queue-size")),
+		MaxSendQueueSize:    uint64(k.Int64("raft.max-send-queue-size")),
+		QUICUDPBufferSize:   k.Int("raft.quic-udp-buffer-size"),
 		RaftTLS: security.TLSInfo{
-			CertFile:       viper.GetString("raft.tls-cert-file"),
-			KeyFile:        viper.GetString("raft.tls-key-file"),
-			TrustedCAFile:  viper.GetString("raft.tls-ca-file"),
-			ClientCertAuth: viper.GetString("raft.tls-ca-file") != "",
+			CertFile:       k.String("raft.tls-cert-file"),
+			KeyFile:        k.String("raft.tls-key-file"),
+			TrustedCAFile:  k.String("raft.tls-ca-file"),
+			ClientCertAuth: k.String("raft.tls-ca-file") != "",
 		},
 		Gossip: storage.GossipConfig{
-			AdvertiseAddress: viper.GetString("memberlist.advertise-address"),
+			AdvertiseAddress: k.String("memberlist.advertise-address"),
 			InitialMembers:   gossipMembers,
-			ClusterName:      viper.GetString("memberlist.cluster-name"),
-			NodeName:         viper.GetString("memberlist.node-name"),
+			ClusterName:      k.String("memberlist.cluster-name"),
+			NodeName:         k.String("memberlist.node-name"),
 			TLS: security.TLSInfo{
-				CertFile:       viper.GetString("memberlist.tls-cert-file"),
-				KeyFile:        viper.GetString("memberlist.tls-key-file"),
-				TrustedCAFile:  viper.GetString("memberlist.tls-ca-file"),
-				ClientCertAuth: viper.GetString("memberlist.tls-ca-file") != "",
+				CertFile:       k.String("memberlist.tls-cert-file"),
+				KeyFile:        k.String("memberlist.tls-key-file"),
+				TrustedCAFile:  k.String("memberlist.tls-ca-file"),
+				ClientCertAuth: k.String("memberlist.tls-ca-file") != "",
 			},
 		},
 		Table: storage.TableConfig{
 			FS:                   vfs.Default,
-			ElectionRTT:          viper.GetUint64("raft.election-rtt"),
-			HeartbeatRTT:         viper.GetUint64("raft.heartbeat-rtt"),
-			SnapshotEntries:      viper.GetUint64("raft.snapshot-entries"),
-			CompactionOverhead:   viper.GetUint64("raft.compaction-overhead"),
-			MaxInMemLogSize:      viper.GetUint64("raft.max-in-mem-log-size"),
-			DataDir:              viper.GetString("raft.state-machine-dir"),
-			RecoveryType:         toRecoveryType(viper.GetString("raft.snapshot-recovery-type")),
-			BlockCacheSize:       viper.GetInt64("storage.block-cache-size"),
-			TableCacheSize:       viper.GetInt("storage.table-cache-size"),
+			ElectionRTT:          uint64(k.Int64("raft.election-rtt")),
+			HeartbeatRTT:         uint64(k.Int64("raft.heartbeat-rtt")),
+			SnapshotEntries:      uint64(k.Int64("raft.snapshot-entries")),
+			CompactionOverhead:   uint64(k.Int64("raft.compaction-overhead")),
+			MaxInMemLogSize:      uint64(k.Int64("raft.max-in-mem-log-size")),
+			DataDir:              k.String("raft.state-machine-dir"),
+			RecoveryType:         toRecoveryType(k.String("raft.snapshot-recovery-type")),
+			BlockCacheSize:       k.Int64("storage.block-cache-size"),
+			TableCacheSize:       k.Int("storage.table-cache-size"),
 			AppliedIndexListener: appliedIndexListener,
 		},
 		Meta: storage.MetaConfig{
-			ElectionRTT:        viper.GetUint64("raft.election-rtt"),
-			HeartbeatRTT:       viper.GetUint64("raft.heartbeat-rtt"),
-			SnapshotEntries:    viper.GetUint64("raft.snapshot-entries"),
-			CompactionOverhead: viper.GetUint64("raft.compaction-overhead"),
-			MaxInMemLogSize:    viper.GetUint64("raft.max-in-mem-log-size"),
+			ElectionRTT:        uint64(k.Int64("raft.election-rtt")),
+			HeartbeatRTT:       uint64(k.Int64("raft.heartbeat-rtt")),
+			SnapshotEntries:    uint64(k.Int64("raft.snapshot-entries")),
+			CompactionOverhead: uint64(k.Int64("raft.compaction-overhead")),
+			MaxInMemLogSize:    uint64(k.Int64("raft.max-in-mem-log-size")),
 		},
 	}, nil
 }
 
 // setupRESTServer creates and starts a REST server.
 func setupRESTServer(log *zap.SugaredLogger) *armadaserver.RESTServer {
-	addr, _, _ := resolveURL(viper.GetString("rest.address"))
-	hs := armadaserver.NewRESTServer(addr, viper.GetDuration("rest.read-timeout"))
+	addr, _, _ := resolveURL(k.String("rest.address"))
+	hs := armadaserver.NewRESTServer(addr, k.Duration("rest.read-timeout"))
 	go func() {
 		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Errorf("REST listenAndServe failed: %v", err)
@@ -133,9 +132,9 @@ func setupRESTServer(log *zap.SugaredLogger) *armadaserver.RESTServer {
 // prefix are either all set or all empty.  A partial set is rejected because
 // it produces a silently degraded TLS configuration.
 func validateTLSTriplet(prefix string) error {
-	cert := viper.GetString(prefix + "-cert-file")
-	key := viper.GetString(prefix + "-key-file")
-	ca := viper.GetString(prefix + "-ca-file")
+	cert := k.String(prefix + "-cert-file")
+	key := k.String(prefix + "-key-file")
+	ca := k.String(prefix + "-ca-file")
 	set := 0
 	for _, v := range []string{cert, key, ca} {
 		if v != "" {

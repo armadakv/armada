@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package cmd
+package main
 
 import (
 	"os"
@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/armadakv/armada/storage/table"
-	"github.com/spf13/viper"
+
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
@@ -164,19 +164,19 @@ func TestParseInitialMembersList(t *testing.T) {
 
 func TestSetupRESTServer(t *testing.T) {
 	// Save the original value of the rest.address config
-	originalAddress := viper.GetString("rest.address")
-	originalTimeout := viper.GetDuration("rest.read-timeout")
+	originalAddress := k.String("rest.address")
+	originalTimeout := k.Duration("rest.read-timeout")
 	defer func() {
 		// Restore the original value
-		viper.Set("rest.address", originalAddress)
-		viper.Set("rest.read-timeout", originalTimeout)
+		k.Set("rest.address", originalAddress)
+		k.Set("rest.read-timeout", originalTimeout)
 	}()
 
 	// Set up a test address and timeout
 	testAddr := "http://localhost:0" // Use port 0 to let the OS choose a free port
 	testTimeout := 5 * time.Second
-	viper.Set("rest.address", testAddr)
-	viper.Set("rest.read-timeout", testTimeout)
+	k.Set("rest.address", testAddr)
+	k.Set("rest.read-timeout", testTimeout)
 
 	// Create a test logger
 	logger := zaptest.NewLogger(t).Sugar()
@@ -210,60 +210,60 @@ func TestWaitForShutdown(t *testing.T) {
 func TestCreateEngineConfig(t *testing.T) {
 	// Save the original values of the config
 	originalValues := map[string]any{
-		"api.advertise-address":        viper.Get("api.advertise-address"),
-		"raft.initial-members":         viper.Get("raft.initial-members"),
-		"raft.wal-dir":                 viper.Get("raft.wal-dir"),
-		"raft.node-host-dir":           viper.Get("raft.node-host-dir"),
-		"raft.rtt":                     viper.Get("raft.rtt"),
-		"raft.address":                 viper.Get("raft.address"),
-		"raft.listen-address":          viper.Get("raft.listen-address"),
-		"raft.max-recv-queue-size":     viper.Get("raft.max-recv-queue-size"),
-		"raft.max-send-queue-size":     viper.Get("raft.max-send-queue-size"),
-		"memberlist.address":           viper.Get("memberlist.address"),
-		"memberlist.advertise-address": viper.Get("memberlist.advertise-address"),
-		"memberlist.members":           viper.Get("memberlist.members"),
-		"memberlist.cluster-name":      viper.Get("memberlist.cluster-name"),
-		"memberlist.node-name":         viper.Get("memberlist.node-name"),
-		"raft.election-rtt":            viper.Get("raft.election-rtt"),
-		"raft.heartbeat-rtt":           viper.Get("raft.heartbeat-rtt"),
-		"raft.snapshot-entries":        viper.Get("raft.snapshot-entries"),
-		"raft.compaction-overhead":     viper.Get("raft.compaction-overhead"),
-		"raft.max-in-mem-log-size":     viper.Get("raft.max-in-mem-log-size"),
-		"raft.state-machine-dir":       viper.Get("raft.state-machine-dir"),
-		"raft.snapshot-recovery-type":  viper.Get("raft.snapshot-recovery-type"),
-		"storage.block-cache-size":     viper.Get("storage.block-cache-size"),
-		"storage.table-cache-size":     viper.Get("storage.table-cache-size"),
+		"api.advertise-address":        k.Get("api.advertise-address"),
+		"raft.initial-members":         k.Get("raft.initial-members"),
+		"raft.wal-dir":                 k.Get("raft.wal-dir"),
+		"raft.node-host-dir":           k.Get("raft.node-host-dir"),
+		"raft.rtt":                     k.Get("raft.rtt"),
+		"raft.address":                 k.Get("raft.address"),
+		"raft.listen-address":          k.Get("raft.listen-address"),
+		"raft.max-recv-queue-size":     k.Get("raft.max-recv-queue-size"),
+		"raft.max-send-queue-size":     k.Get("raft.max-send-queue-size"),
+		"memberlist.address":           k.Get("memberlist.address"),
+		"memberlist.advertise-address": k.Get("memberlist.advertise-address"),
+		"memberlist.members":           k.Get("memberlist.members"),
+		"memberlist.cluster-name":      k.Get("memberlist.cluster-name"),
+		"memberlist.node-name":         k.Get("memberlist.node-name"),
+		"raft.election-rtt":            k.Get("raft.election-rtt"),
+		"raft.heartbeat-rtt":           k.Get("raft.heartbeat-rtt"),
+		"raft.snapshot-entries":        k.Get("raft.snapshot-entries"),
+		"raft.compaction-overhead":     k.Get("raft.compaction-overhead"),
+		"raft.max-in-mem-log-size":     k.Get("raft.max-in-mem-log-size"),
+		"raft.state-machine-dir":       k.Get("raft.state-machine-dir"),
+		"raft.snapshot-recovery-type":  k.Get("raft.snapshot-recovery-type"),
+		"storage.block-cache-size":     k.Get("storage.block-cache-size"),
+		"storage.table-cache-size":     k.Get("storage.table-cache-size"),
 	}
 	defer func() {
 		// Restore the original values
-		for k, v := range originalValues {
-			viper.Set(k, v)
+		for key, v := range originalValues {
+			k.Set(key, v)
 		}
 	}()
 
 	// Set up test values
-	viper.Set("api.advertise-address", "http://localhost:8443")
-	viper.Set("raft.initial-members", []string{"localhost:8080"})
-	viper.Set("raft.wal-dir", "/tmp/wal")
-	viper.Set("raft.node-host-dir", "/tmp/node")
-	viper.Set("raft.rtt", 50*time.Millisecond)
-	viper.Set("raft.address", "localhost:8080")
-	viper.Set("raft.listen-address", "")
-	viper.Set("raft.max-recv-queue-size", uint64(0))
-	viper.Set("raft.max-send-queue-size", uint64(0))
-	viper.Set("memberlist.advertise-address", "")
-	viper.Set("memberlist.members", []string{""})
-	viper.Set("memberlist.cluster-name", "test")
-	viper.Set("memberlist.node-name", "")
-	viper.Set("raft.election-rtt", uint64(20))
-	viper.Set("raft.heartbeat-rtt", uint64(1))
-	viper.Set("raft.snapshot-entries", uint64(10000))
-	viper.Set("raft.compaction-overhead", uint64(5000))
-	viper.Set("raft.max-in-mem-log-size", uint64(6*1024*1024))
-	viper.Set("raft.state-machine-dir", "/tmp/state-machine")
-	viper.Set("raft.snapshot-recovery-type", "checkpoint")
-	viper.Set("storage.block-cache-size", int64(16*1024*1024))
-	viper.Set("storage.table-cache-size", 1024)
+	k.Set("api.advertise-address", "http://localhost:8443")
+	k.Set("raft.initial-members", []string{"localhost:8080"})
+	k.Set("raft.wal-dir", "/tmp/wal")
+	k.Set("raft.node-host-dir", "/tmp/node")
+	k.Set("raft.rtt", 50*time.Millisecond)
+	k.Set("raft.address", "localhost:8080")
+	k.Set("raft.listen-address", "")
+	k.Set("raft.max-recv-queue-size", uint64(0))
+	k.Set("raft.max-send-queue-size", uint64(0))
+	k.Set("memberlist.advertise-address", "")
+	k.Set("memberlist.members", []string{""})
+	k.Set("memberlist.cluster-name", "test")
+	k.Set("memberlist.node-name", "")
+	k.Set("raft.election-rtt", uint64(20))
+	k.Set("raft.heartbeat-rtt", uint64(1))
+	k.Set("raft.snapshot-entries", uint64(10000))
+	k.Set("raft.compaction-overhead", uint64(5000))
+	k.Set("raft.max-in-mem-log-size", uint64(6*1024*1024))
+	k.Set("raft.state-machine-dir", "/tmp/state-machine")
+	k.Set("raft.snapshot-recovery-type", "checkpoint")
+	k.Set("storage.block-cache-size", int64(16*1024*1024))
+	k.Set("storage.table-cache-size", 1024)
 
 	// Create a test logger
 	logger := zaptest.NewLogger(t)

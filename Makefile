@@ -15,7 +15,7 @@ run: build
 .PHONY: run-follower
 run-follower: build
 	./armada follower --dev-mode --raft.address=127.0.0.1:6012 --raft.initial-members='127.0.0.1:6012' \
- --memberlist.address=:7433 --api.address=http://127.0.0.1:9443 --maintenance.enabled=false --rest.address=http://127.0.0.1:8080 \
+ --api.address=http://127.0.0.1:9443 --maintenance.enabled=false --rest.address=http://127.0.0.1:8080 \
  --replication.leader-address=https://127.0.0.1:8444 --replication.ca-filename=hack/replication/ca.crt --replication.cert-filename=hack/replication/client.crt --replication.key-filename=hack/replication/client.key \
  --raft.node-host-dir=/tmp/armada-follower/raft --raft.state-machine-dir=/tmp/armada-follower/state-machine
 
@@ -44,12 +44,12 @@ run-cluster-follower-dev: build
 clean-cluster-dev:
 	rm -rf /tmp/armada-cluster
 
-# Run golangci-lint on the code
-.PHONY: check
-check: proto
-	@echo "Running check"
+# Run golangci-lint linters
+.PHONY: lint
+lint: proto
+	@echo "Running lint"
 ifeq (, $(shell which golangci-lint))
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b ${GOPATH}/bin v1.57.2
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b ${GOPATH}/bin v2.13.2
 endif
 	golangci-lint run
 
@@ -58,24 +58,30 @@ test:
 	go test ./... -cover -race -v
 
 .PHONY: build
-build: proto proto-docs docs armada
+build: proto proto-docs docs armada arctl
 
-# Run golangci-lint on the code
+# Format the code with golangci-lint
 .PHONY: fmt
 fmt: proto
 	@echo "Running fmt"
 ifeq (, $(shell which golangci-lint))
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b ${GOPATH}/bin v1.57.2
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b ${GOPATH}/bin v2.13.2
 endif
 	golangci-lint fmt
 
-docs: armada
+docs: armada arctl
 	./armada docs --destination=docs/operations_guide/cli
+	./arctl docs --destination=docs/operations_guide/cli
 
 .PHONY: armada
 armada:
 	test $(VERSION) || (echo "version not set"; exit 1)
-	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o armada
+	CGO_ENABLED=$(CGO_ENABLED) go build -tags=grpcnotrace -ldflags="$(LDFLAGS)" -o armada ./cmd/armada
+
+.PHONY: arctl
+arctl:
+	test $(VERSION) || (echo "version not set"; exit 1)
+	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -o arctl ./cmd/arctl
 
 PROTO_GO_OUTS=armadapb/mvcc.pb.go armadapb/mvcc_vtproto.pb.go \
  armadapb/armada.pb.go armadapb/armada_grpc.pb.go armadapb/armada_vtproto.pb.go \
@@ -106,4 +112,4 @@ kind-cluster:
 
 .PHONY: clean
 clean:
-	rm -f armada
+	rm -f armada arctl

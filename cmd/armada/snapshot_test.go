@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package cmd
+package main
 
 import (
 	"context"
@@ -49,7 +49,8 @@ func TestNewBucketFromConfig_FilesystemMissingDirectory(t *testing.T) {
 }
 
 func TestReplicationExporterConfig_Defaults(t *testing.T) {
-	initConfig(leaderCmd.PersistentFlags())
+	k.Set("replication.snapshot-timeout", 10*time.Minute)
+	defer k.Delete("replication.snapshot-timeout")
 
 	cfg := replicationExporterConfig("node-1", nil)
 	assert.Equal(t, "node-1", cfg.NodeID)
@@ -57,7 +58,10 @@ func TestReplicationExporterConfig_Defaults(t *testing.T) {
 }
 
 func TestSharedStoreGCConfig_Defaults(t *testing.T) {
-	initConfig(leaderCmd.PersistentFlags())
+	k.Set("shared-store.retention", 48*time.Hour)
+	k.Set("shared-store.gc-interval", 1*time.Hour)
+	defer k.Delete("shared-store.retention")
+	defer k.Delete("shared-store.gc-interval")
 
 	cfg := sharedStoreGCConfig(nil)
 	assert.Equal(t, 48*time.Hour, cfg.Retention)

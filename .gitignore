@@ -3,6 +3,7 @@
 
 .vscode
 /armada
+/arctl
 /report
 .DS_Store
 .pre-commit-config.yaml
