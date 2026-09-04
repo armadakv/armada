@@ -7,10 +7,39 @@ no cross-table atomicity.
 
 ## Managing Tables
 
-Tables are managed through the `regatta.v1.Tables` gRPC API. You can interact with it using
-[grpcurl](https://github.com/fullstorydev/grpcurl) or the official client libraries.
+Tables are managed through the `regatta.v1.Tables` gRPC API. The easiest way to manage them
+is with the [`arctl`](cli/arctl.md) control-plane CLI, which talks to that API for you. You can
+also call the API directly with [grpcurl](https://github.com/fullstorydev/grpcurl) or the
+official client libraries.
 
-### Create a Table
+Creating and deleting tables is only possible on a leader cluster; followers replicate table
+changes automatically. Listing tables works on both leader and follower clusters.
+
+### Using `arctl`
+
+The Tables API (and the Maintenance API) is served by the API server on the API address
+(`--api.address`, default port `8443`). Point `arctl` at that address; the scheme selects the
+transport (`http`/`unix` for plaintext, `https`/`unixs` for TLS):
+
+```bash
+# Create a table
+arctl --address=http://127.0.0.1:8443 tables create my-table
+
+# List all tables
+arctl --address=http://127.0.0.1:8443 tables list
+
+# Delete a table
+arctl --address=http://127.0.0.1:8443 tables delete my-table
+```
+
+`arctl` also honours the global `--ca`, `--cert`, `--key`, and `--token` flags (see the
+[CLI reference](cli/arctl.md)). Use an `https`/`unixs` address when the Tables API is protected
+by a token — tokens are only sent over secure connections — or when the API port requires mutual
+TLS (pass `--cert`/`--key`). Pass `--format=json` to `arctl tables list` for machine-readable output.
+
+### Using grpcurl
+
+#### Create a Table
 
 ```bash
 grpcurl -plaintext \
@@ -18,13 +47,13 @@ grpcurl -plaintext \
   127.0.0.1:8443 regatta.v1.Tables/Create
 ```
 
-### List Tables
+#### List Tables
 
 ```bash
 grpcurl -plaintext 127.0.0.1:8443 regatta.v1.Tables/List
 ```
 
-### Delete a Table
+#### Delete a Table
 
 ```bash
 grpcurl -plaintext \
@@ -52,6 +81,12 @@ grpcurl -plaintext \
   -H 'authorization: Bearer my-secret-token' \
   -d '{"name": "my-table"}' \
   127.0.0.1:8443 regatta.v1.Tables/Create
+```
+
+With `arctl`, pass the token via the `--token` flag over a TLS (`https`) address:
+
+```bash
+arctl --address=https://127.0.0.1:8443 --token=my-secret-token tables create my-table
 ```
 
 If `--tables.token` is not set, no authentication is required for the Tables API.

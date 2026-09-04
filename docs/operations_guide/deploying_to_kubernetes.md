@@ -13,8 +13,8 @@ See
 [Armada](https://github.com/armadakv/armada-helm/blob/3dc1954d2a08c4a983c7cef0c2e853bfa5ef65aa/charts/regatta/values.yaml#L114),
 [Replication](https://github.com/armadakv/armada-helm/blob/3dc1954d2a08c4a983c7cef0c2e853bfa5ef65aa/charts/regatta/values.yaml#L197), and
 [Maintenance API](https://github.com/armadakv/armada-helm/blob/3dc1954d2a08c4a983c7cef0c2e853bfa5ef65aa/charts/regatta/values.yaml#L285)
-definitions in the Helm Chart or [`armada leader`](cli/armada_leader.md)
-and [`armada follower`](cli/armada_follower.md) commands for reference. The Helm repository still uses the legacy `regatta` chart name.
+definitions in the Helm Chart or [`armada leader`](cli/armada.md#leader)
+and [`armada follower`](cli/armada.md#follower) commands for reference. The Helm repository still uses the legacy `regatta` chart name.
 
 ## Deploying Armada leader cluster
 

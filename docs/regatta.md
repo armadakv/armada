@@ -28,10 +28,10 @@ Regatta to Armada is straightforward. The table below summarises what is and is 
 
 The recommended migration path is:
 
-1. Take a backup of each table from the live Regatta cluster using `armada backup` (or the
+1. Take a backup of each table from the live Regatta cluster using `arctl backup` (or the
    equivalent Regatta CLI — the backup format is identical).
 2. Deploy a fresh Armada cluster.
-3. Restore each table backup onto the new Armada cluster using `armada restore`.
+3. Restore each table backup onto the new Armada cluster using `arctl restore`.
 
 Because the KV wire API is fully compatible, clients can be pointed at the new Armada cluster
 with no code changes needed.

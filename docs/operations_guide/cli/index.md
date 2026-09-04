@@ -1,7 +1,7 @@
 ---
 title: "CLI Reference"
 subtitle: "Command-line interface documentation"
-description: "Complete reference for the ArmadaKV CLI — leader, follower, backup, restore, and version commands."
+description: "Complete reference for the ArmadaKV CLIs — the armada server binary and the arctl control-plane binary."
 section: "operations_guide"
 subsection: "cli"
 subsection_label: "CLI Reference"
@@ -11,15 +11,25 @@ order: 1
 
 # CLI Reference
 
-The `armada` CLI is used to start and manage ArmadaKV nodes.
+Armada ships two CLIs:
 
-## Commands
+* `armada` — the server binary used to start and run ArmadaKV nodes.
+* [`arctl`](arctl.md) — the control-plane and maintenance CLI used for backup, restore, and table administration.
+
+## `armada` Commands
 
 | Command | Description |
 |---------|-------------|
 | [armada](armada.md) | Root command |
-| [armada leader](armada_leader.md) | Start Armada in leader mode |
-| [armada follower](armada_follower.md) | Start Armada in follower mode |
-| [armada backup](armada_backup.md) | Backup Armada to local files |
-| [armada restore](armada_restore.md) | Restore Armada from local files |
-| [armada version](armada_version.md) | Print current version |
+| [armada leader](armada.md#leader) | Start Armada in leader mode |
+| [armada follower](armada.md#follower) | Start Armada in follower mode |
+| [armada version](armada.md#version) | Print current version |
+
+## `arctl` Commands
+
+| Command | Description |
+|---------|-------------|
+| [arctl](arctl.md) | Control-plane and maintenance CLI |
+| [arctl backup](arctl.md#backup) | Backup Armada to local files |
+| [arctl restore](arctl.md#restore) | Restore Armada from local files |
+| [arctl tables](arctl.md#tables) | Create, list, and delete tables |

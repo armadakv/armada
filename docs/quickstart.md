@@ -45,7 +45,12 @@ tar -xf armada-darwin-amd64.tar
 ```
 This command will start an Armada leader cluster with a single instance locally.
 
-Create the `armada-test` table using the API.
+Create the `armada-test` table using the [`arctl`](operations_guide/cli/arctl.md) CLI.
+```bash
+arctl --address=http://127.0.0.1:8443 tables create armada-test
+```
+
+Alternatively, call the API directly with grpcurl:
 ```bash
 grpcurl -plaintext -d "{\"name\": \"armada-test\"}" 127.0.0.1:8443 regatta.v1.Tables/Create
 ```
@@ -69,7 +74,12 @@ docker run \
 
 This command will start an Armada leader cluster with a single instance in a Docker container.
 
-Create the `armada-test` table using the API.
+Create the `armada-test` table using the [`arctl`](operations_guide/cli/arctl.md) CLI.
+```bash
+arctl --address=http://127.0.0.1:8443 tables create armada-test
+```
+
+Alternatively, call the API directly with grpcurl:
 ```bash
 grpcurl -plaintext -d "{\"name\": \"armada-test\"}" 127.0.0.1:8443 regatta.v1.Tables/Create
 ```

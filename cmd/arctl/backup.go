@@ -4,16 +4,11 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
-	"crypto/x509"
-	"os"
 
 	rl "github.com/armadakv/armada/log"
 	"github.com/armadakv/armada/replication/backup"
 	"github.com/urfave/cli/v3"
 	"go.uber.org/zap"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
 
 var backupCmd = &cli.Command{
@@ -33,26 +28,11 @@ Backup consists of file per a table in a binary compressed form and a human-read
 			k.Set("dir", c.String("dir"))
 		}
 
-		var cp *x509.CertPool
-		ca := k.String("ca")
-		if ca != "" {
-			caBytes, err := os.ReadFile(ca)
-			if err != nil {
-				return err
-			}
-			cp = x509.NewCertPool()
-			cp.AppendCertsFromPEM(caBytes)
-		}
-
-		creds := credentials.NewTLS(&tls.Config{
-			MinVersion: tls.VersionTLS12,
-			RootCAs:    cp,
-		})
-
-		conn, err := grpc.NewClient(k.String("address"), grpc.WithTransportCredentials(creds), grpc.WithPerRPCCredentials(tokenCredentials(k.String("token"))))
+		conn, err := dial()
 		if err != nil {
 			return err
 		}
+		defer conn.Close()
 
 		b := backup.Backup{
 			Conn: conn,
