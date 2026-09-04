@@ -29,24 +29,26 @@ pull-based replication across locations. There are two types of clusters within 
 
 Thanks to this topology, the user can dynamically add additional follower clusters.
 
-```
-                        ┌────────────────────────────┐
-                        │       Leader Cluster        │
-                        │   (core / hub)   writes ──► │
-                        │   Node 1 · Node 2 · Node 3  │
-                        └──────────┬─────────────┬────┘
-              async pull           │             │   async pull
-           ┌───────────────────────┘             └──────────────────────────┐
-           ▼                                                                 ▼
-  ┌────────────────────┐                                          ┌────────────────────┐
-  │  Follower Cluster  │                                          │  Follower Cluster  │
-  │   (edge / spoke)   │  ...more follower clusters can be        │   (edge / spoke)   │
-  │  Node 1 · Node 2 · │      added at any time without          │  Node 1 · Node 2 · │
-  │       Node 3       │      modifying the leader               │       Node 3       │
-  └────────────────────┘                                          └────────────────────┘
-```
+```mermaid
+flowchart TB
+    subgraph Leader["Leader Cluster — core / hub (accepts writes)"]
+        direction LR
+        L1[Node 1] --- L2[Node 2] --- L3[Node 3]
+    end
 
-![Armada hub-and-spoke topology](static/topology.png "Armada hub-and-spoke topology")
+    Leader -->|async pull| Follower1
+    Leader -->|async pull| Follower2
+
+    subgraph Follower1["Follower Cluster — edge / spoke"]
+        direction LR
+        A1[Node 1] --- A2[Node 2] --- A3[Node 3]
+    end
+
+    subgraph Follower2["Follower Cluster — edge / spoke"]
+        direction LR
+        B1[Node 1] --- B2[Node 2] --- B3[Node 3]
+    end
+```
 
 ## Raft
 
@@ -58,24 +60,23 @@ leader cluster without adding cross-location latency to each request.
 The consensus algorithm provides fault-tolerance by allowing the system to operate as long as the majority of members
 are available. This is not only useful for disaster scenarios but also enables the easy rolling update of the cluster.
 
-```
-  ┌───────────────────────────────── Single Cluster ──────────────────────────────────┐
-  │                                                                                    │
-  │   Client write                                                                     │
-  │       │                                                                            │
-  │       ▼                                                                            │
-  │  ┌─────────┐   Raft log   ┌─────────┐   Raft log   ┌─────────┐                   │
-  │  │ Node 1  │─────────────►│ Node 2  │◄─────────────│ Node 3  │                   │
-  │  │ (leader)│              │(follower│              │(follower│                   │
-  │  └─────────┘              └─────────┘              └─────────┘                   │
-  │       │                        │                        │                         │
-  │       └────────────────────────┴────────────────────────┘                         │
-  │                      Majority quorum required                                      │
-  │                      before write is confirmed                                     │
-  └────────────────────────────────────────────────────────────────────────────────────┘
-```
+```mermaid
+flowchart TB
+    Client(["Client write"]) --> Leader
 
-![Armada Raft](static/raft.png "Armada Raft")
+    subgraph Cluster["Single Cluster (one Raft group)"]
+        direction LR
+        Leader["Node 1 (leader)"]
+        F1["Node 2 (follower)"]
+        F2["Node 3 (follower)"]
+        Leader ==>|Raft log| F1
+        Leader ==>|Raft log| F2
+        F1 -.->|ack| Leader
+        F2 -.->|ack| Leader
+    end
+
+    Leader --> Confirm(["Write confirmed after majority quorum"])
+```
 
 ### Raft Library
 
