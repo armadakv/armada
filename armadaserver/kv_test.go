@@ -577,6 +577,16 @@ func TestKVServer_NullByteValidation(t *testing.T) {
 		require.ErrorContains(t, err, "key must be set")
 	})
 
+	t.Run("IterateRange wildcard start key allowed", func(t *testing.T) {
+		wildcardKey := []byte{0}
+		responses := iter.Seq[*armadapb.RangeResponse](func(yield func(*armadapb.RangeResponse) bool) {})
+		storage.On("IterateRange", mock.Anything, mock.Anything).Return(responses, nil).Once()
+		srv := &mockIterateRangeServer{}
+		srv.On("Context").Return(context.Background())
+		err := kv.IterateRange(&armadapb.RangeRequest{Table: table1Name, Key: wildcardKey, RangeEnd: wildcardRangeEnd}, srv)
+		require.NoError(t, err)
+	})
+
 	t.Run("Put key", func(t *testing.T) {
 		_, err := kv.Put(context.Background(), &armadapb.PutRequest{Table: table1Name, Key: nullKey})
 		require.EqualError(t, err, wantErr)
@@ -596,6 +606,18 @@ func TestKVServer_NullByteValidation(t *testing.T) {
 		storage.On("Delete", mock.Anything, mock.Anything).Return(&armadapb.DeleteRangeResponse{}, nil).Once()
 		_, err := kv.DeleteRange(context.Background(), &armadapb.DeleteRangeRequest{Table: table1Name, Key: key1Name, RangeEnd: wildcardRangeEnd})
 		require.NoError(t, err)
+	})
+
+	t.Run("DeleteRange wildcard start key allowed", func(t *testing.T) {
+		wildcardKey := []byte{0}
+		storage.On("Delete", mock.Anything, mock.Anything).Return(&armadapb.DeleteRangeResponse{}, nil).Once()
+		_, err := kv.DeleteRange(context.Background(), &armadapb.DeleteRangeRequest{Table: table1Name, Key: wildcardKey, RangeEnd: wildcardRangeEnd})
+		require.NoError(t, err)
+	})
+
+	t.Run("DeleteRange null exact key rejected", func(t *testing.T) {
+		_, err := kv.DeleteRange(context.Background(), &armadapb.DeleteRangeRequest{Table: table1Name, Key: []byte{0}})
+		require.EqualError(t, err, wantErr)
 	})
 
 	t.Run("Txn compare key", func(t *testing.T) {
@@ -624,6 +646,17 @@ func TestKVServer_NullByteValidation(t *testing.T) {
 			},
 		})
 		require.EqualError(t, err, wantRangeEndErr)
+	})
+
+	t.Run("Txn wildcard range starts allowed", func(t *testing.T) {
+		wildcardKey := []byte{0}
+		err := validateTxnKeys(&armadapb.TxnRequest{
+			Compare: []*armadapb.Compare{{Key: wildcardKey, RangeEnd: wildcardRangeEnd}},
+			Success: []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestDeleteRange{
+				RequestDeleteRange: &armadapb.RequestOp_DeleteRange{Key: wildcardKey, RangeEnd: wildcardRangeEnd},
+			}}},
+		})
+		require.NoError(t, err)
 	})
 }
 

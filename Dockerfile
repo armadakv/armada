@@ -10,7 +10,7 @@ COPY . .
 
 # Build
 ARG VERSION=dev
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build GOMODCACHE=/go/pkg/mod GOCACHE=/root/.cache/go-build CGO_ENABLED=0 VERSION=${VERSION} make armada arctl
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build GOMODCACHE=/go/pkg/mod GOCACHE=/root/.cache/go-build CGO_ENABLED=0 VERSION=${VERSION} make armada arctl arq
 
 # Runtime
 FROM gcr.io/distroless/static-debian13
@@ -27,6 +27,7 @@ WORKDIR /
 COPY --from=builder /usr/share/zoneinfo/ /usr/share/zoneinfo/
 COPY --from=builder --chown=65532:65532 /github.com/armadakv/armada/armada /usr/local/bin/
 COPY --from=builder --chown=65532:65532 /github.com/armadakv/armada/arctl /usr/local/bin/
+COPY --from=builder --chown=65532:65532 /github.com/armadakv/armada/arq /usr/local/bin/
 
 USER nonroot:nonroot
 

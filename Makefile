@@ -58,7 +58,7 @@ test:
 	go test ./... -cover -race -v
 
 .PHONY: build
-build: proto proto-docs docs armada arctl
+build: proto proto-docs docs armada arctl arq
 
 # Format the code with golangci-lint
 .PHONY: fmt
@@ -69,9 +69,10 @@ ifeq (, $(shell which golangci-lint))
 endif
 	golangci-lint fmt
 
-docs: armada arctl
+docs: armada arctl arq
 	./armada docs --destination=docs/operations_guide/cli
 	./arctl docs --destination=docs/operations_guide/cli
+	./arq docs --destination=docs/operations_guide/cli
 
 .PHONY: armada
 armada:
@@ -82,6 +83,11 @@ armada:
 arctl:
 	test $(VERSION) || (echo "version not set"; exit 1)
 	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -o arctl ./cmd/arctl
+
+.PHONY: arq
+arq:
+	test $(VERSION) || (echo "version not set"; exit 1)
+	CGO_ENABLED=$(CGO_ENABLED) go build -ldflags="$(LDFLAGS)" -o arq ./cmd/arq
 
 PROTO_GO_OUTS=armadapb/mvcc.pb.go armadapb/mvcc_vtproto.pb.go \
  armadapb/armada.pb.go armadapb/armada_grpc.pb.go armadapb/armada_vtproto.pb.go \
@@ -112,4 +118,4 @@ kind-cluster:
 
 .PHONY: clean
 clean:
-	rm -f armada arctl
+	rm -f armada arctl arq

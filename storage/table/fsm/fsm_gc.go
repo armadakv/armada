@@ -96,7 +96,7 @@ func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 	seqnoFilter := rp.NewMVCCSeqnoFilter(gcIndex)
 	iter, err := snap.NewIter(&pebble.IterOptions{
 		LowerBound:      mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: key.LatestMinKey}),
-		UpperBound:      incrementRightmostByte(append([]byte(nil), maxUserKey...)),
+		UpperBound:      userKeyUpperBound,
 		PointKeyFilters: []pebble.BlockPropertyFilter{seqnoFilter},
 	})
 	if err != nil {

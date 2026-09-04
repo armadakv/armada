@@ -39,9 +39,9 @@ var (
 		KeyType: key.TypeSystem,
 		Key:     []byte("gc_horizon"),
 	})
-	maxUserKey = mustEncodeKey(key.Key{
-		KeyType: key.TypeUser,
-		Key:     key.LatestMaxKey,
+	userKeyUpperBound = mustEncodeKey(key.Key{
+		KeyType: key.TypeSystem,
+		Seqno:   ^uint64(0),
 	})
 )
 

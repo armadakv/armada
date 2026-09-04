@@ -210,6 +210,37 @@ func Test_txnCompare(t *testing.T) {
 	}
 }
 
+func TestHandleTxnDeleteAll(t *testing.T) {
+	db, err := rp.OpenDB("/", rp.WithFS(vfs.NewMem()))
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := &updateContext{batch: db.NewBatch(), db: db, index: 1}
+	defer func() { _ = ctx.Close() }()
+	_, err = handlePutBatch(ctx, []*armadapb.RequestOp_Put{
+		{Key: []byte("first"), Value: []byte("one")},
+		{Key: []byte("second"), Value: []byte("two")},
+	})
+	require.NoError(t, err)
+	require.NoError(t, ctx.Commit())
+
+	ctx.batch = db.NewBatch()
+	ctx.index = 2
+	succeeded, responses, err := handleTxn(ctx, nil, []*armadapb.RequestOp{{
+		Request: &armadapb.RequestOp_RequestDeleteRange{RequestDeleteRange: &armadapb.RequestOp_DeleteRange{
+			Key:      []byte{0},
+			RangeEnd: []byte{0},
+			Count:    true,
+		}},
+	}}, nil)
+	require.NoError(t, err)
+	require.True(t, succeeded)
+	require.Len(t, responses, 1)
+	require.Equal(t, int64(2), responses[0].GetResponseDeleteRange().GetDeleted())
+	require.NoError(t, ctx.Commit())
+	require.Empty(t, liveUserKeys(t, db))
+}
+
 func Test_handleTxn(t *testing.T) {
 	r := require.New(t)
 
