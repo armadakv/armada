@@ -71,11 +71,14 @@ go test ./storage/table/...
 go test ./storage/table/... -run '^TestTableManager$'
 ```
 
-### Lint
+### Lint & format
 
 ```bash
 # Run the linter (runs make proto first)
-make check
+make lint
+
+# Auto-format the code with golangci-lint
+make fmt
 ```
 
 ### Run locally

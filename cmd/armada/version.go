@@ -24,7 +24,7 @@ var versionCmd = &cli.Command{
 			slices.SortFunc(sorted, func(a, b debug.BuildSetting) int { return cmp.Compare(a.Key, b.Key) })
 			additional = fmt.Sprintf("Go: %s (%s/%s)\n", info.GoVersion, getBuildSetting(sorted, "GOOS"), getBuildSetting(sorted, "GOARCH"))
 		}
-		fmt.Printf("Copyright Armada Contributors\n\nArmada arctl\nVersion: %s\n%s", version.Version, additional)
+		fmt.Printf("Copyright Armada Contributors\n\nArmada\nVersion: %s\n%s", version.Version, additional)
 		return nil
 	},
 }

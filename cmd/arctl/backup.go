@@ -3,13 +3,14 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"os"
 
 	rl "github.com/armadakv/armada/log"
 	"github.com/armadakv/armada/replication/backup"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -26,7 +27,7 @@ Backup consists of file per a table in a binary compressed form and a human-read
 			Usage: "Target directory (current directory if empty).",
 		},
 	},
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		// If dir is set on this command, we add it to koanf explicitly
 		if c.IsSet("dir") {
 			k.Set("dir", c.String("dir"))

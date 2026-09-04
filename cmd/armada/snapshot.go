@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package cmd
+package main
 
 import (
 	"context"
@@ -12,7 +12,6 @@ import (
 	objfaszblob "github.com/armadakv/objfs/azblob"
 	objfgcs "github.com/armadakv/objfs/gcs"
 	objfss3 "github.com/armadakv/objfs/s3"
-	"github.com/spf13/viper"
 )
 
 type BucketConfig struct {
@@ -102,7 +101,7 @@ func replicationExporterConfig(nodeID string, bucket objfs.Bucket) store.Exporte
 	return store.ExporterConfig{
 		Bucket:          bucket,
 		NodeID:          nodeID,
-		SnapshotTimeout: viper.GetDuration("replication.snapshot-timeout"),
+		SnapshotTimeout: k.Duration("replication.snapshot-timeout"),
 	}
 }
 
@@ -110,7 +109,7 @@ func replicationExporterConfig(nodeID string, bucket objfs.Bucket) store.Exporte
 func sharedStoreGCConfig(bucket objfs.Bucket) store.GCConfig {
 	return store.GCConfig{
 		Bucket:    bucket,
-		Retention: viper.GetDuration("shared-store.retention"),
-		Interval:  viper.GetDuration("shared-store.gc-interval"),
+		Retention: k.Duration("shared-store.retention"),
+		Interval:  k.Duration("shared-store.gc-interval"),
 	}
 }

@@ -1,12 +1,11 @@
 // Copyright JAMF Software, LLC
 
-package cmd
+package main
 
 import (
 	"context"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,24 +26,24 @@ func TestAuthFunc(t *testing.T) {
 	// which is beyond the scope of this test.
 }
 
-func TestViperConfigReader(t *testing.T) {
+func TestKoanfConfigReader(t *testing.T) {
 	// Save original values
-	originalMaintenanceToken := viper.GetString("maintenance.token")
-	originalTablesToken := viper.GetString("tables.token")
-	originalTestValue := viper.GetString("test.value")
+	originalMaintenanceToken := k.String("maintenance.token")
+	originalTablesToken := k.String("tables.token")
+	originalTestValue := k.String("test.value")
 	defer func() {
-		viper.Set("maintenance.token", originalMaintenanceToken)
-		viper.Set("tables.token", originalTablesToken)
-		viper.Set("test.value", originalTestValue)
+		k.Set("maintenance.token", originalMaintenanceToken)
+		k.Set("tables.token", originalTablesToken)
+		k.Set("test.value", originalTestValue)
 	}()
 
 	// Set test values
-	viper.Set("maintenance.token", "secret-maintenance-token")
-	viper.Set("tables.token", "secret-tables-token")
-	viper.Set("test.value", "test-value")
+	k.Set("maintenance.token", "secret-maintenance-token")
+	k.Set("tables.token", "secret-tables-token")
+	k.Set("test.value", "test-value")
 
 	// Get config
-	config := viperConfigReader()
+	config := koanfConfigReader()
 
 	// Check that sensitive values are masked
 	require.Equal(t, "**********", config["maintenance.token"])

@@ -13,7 +13,7 @@ import (
 
 var docsCmd = &cli.Command{
 	Name:   "docs",
-	Usage:  "Generate arctl CLI documentation.",
+	Usage:  "Generate Armada CLI documentation.",
 	Hidden: true,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
@@ -34,13 +34,13 @@ var docsCmd = &cli.Command{
 			return err
 		}
 
-		f, err := os.Create(docsDest + "/arctl.md")
+		f, err := os.Create(docsDest + "/armada.md")
 		if err != nil {
 			return err
 		}
 		defer f.Close()
 
-		_, err = f.WriteString("---\ntitle: \"arctl\"\nsection: \"operations_guide\"\nsubsection: \"cli\"\norder: 1\n---\n")
+		_, err = f.WriteString("---\ntitle: \"armada\"\nsection: \"operations_guide\"\nsubsection: \"cli\"\norder: 1\n---\n")
 		if err != nil {
 			return err
 		}

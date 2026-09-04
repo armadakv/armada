@@ -27,7 +27,7 @@ arctl provides backup, restore, and other cluster administration workflows for A
 **Usage**:
 
 ```
-arctl [GLOBAL OPTIONS] command [COMMAND OPTIONS] [ARGUMENTS...]
+arctl [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 ```
 
 # GLOBAL OPTIONS
@@ -51,15 +51,33 @@ Backup Armada to local files.
 
 **--dir**="": Target directory (current directory if empty).
 
+**--help, -h**: show help
+
+### help, h
+
+Shows a list of commands or help for one command
+
 ## restore
 
 Restore Armada from local files.
 
 **--dir**="": Directory containing the backups (current directory if empty)
 
+**--help, -h**: show help
+
+### help, h
+
+Shows a list of commands or help for one command
+
 ## version
 
 Print current version.
+
+**--help, -h**: show help
+
+### help, h
+
+Shows a list of commands or help for one command
 
 ## help, h
 

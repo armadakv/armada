@@ -1,6 +1,6 @@
 // Copyright JAMF Software, LLC
 
-package cmd
+package main
 
 import (
 	"context"
@@ -19,63 +19,51 @@ import (
 	"github.com/armadakv/objfs"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/logging"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
+	"github.com/urfave/cli/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 )
 
-func init() {
-	// Base flags
-	leaderCmd.PersistentFlags().AddFlagSet(rootFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(apiFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(restFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(raftFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(memberlistFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(storageFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(maintenanceFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(tablesFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(experimentalFlagSet)
-	leaderCmd.PersistentFlags().AddFlagSet(sharedStoreFlagSet)
-
-	// Tables flags
-	leaderCmd.PersistentFlags().StringSlice("tables.names", nil, "Create Armada tables with given names.")
-	leaderCmd.PersistentFlags().StringSlice("tables.delete", nil, "Delete Armada tables with given names.")
-	_ = leaderCmd.PersistentFlags().MarkDeprecated("tables.names", "Use `regatta.v1.Tables/Create` API to create tables instead.")
-	_ = leaderCmd.PersistentFlags().MarkDeprecated("tables.delete", "Use `regatta.v1.Tables/Delete` API to delete tables instead.")
-
-	// Replication flags
-	leaderCmd.PersistentFlags().Bool("replication.enabled", true, "Whether replication API is enabled.")
-	leaderCmd.PersistentFlags().Uint64("replication.max-send-message-size-bytes", armadaserver.DefaultMaxGRPCSize, `The target maximum size of single replication message allowed to send.
-Under some circumstances, a larger message could be sent. Followers should be able to accept slightly larger messages.`)
-	leaderCmd.PersistentFlags().String("replication.address", "http://0.0.0.0:8444", "Replication API server address. The address the server listens on.")
-	leaderCmd.PersistentFlags().String("replication.cert-filename", "", "Path to the API server certificate.")
-	leaderCmd.PersistentFlags().String("replication.key-filename", "", "Path to the API server private key file.")
-	leaderCmd.PersistentFlags().String("replication.ca-filename", "", "Path to the API server CA cert file.")
-	leaderCmd.PersistentFlags().Bool("replication.client-cert-auth", false, "Replication server client certificate auth enabled. If set to true the `replication.ca-filename` should be provided as well.")
-}
-
-var leaderCmd = &cobra.Command{
-	Use:   "leader",
-	Short: "Start Armada in leader mode.",
-	RunE:  leader,
-	PreRunE: func(cmd *cobra.Command, args []string) error {
-		initConfig(cmd.PersistentFlags())
-		return validateLeaderConfig()
+var leaderCmd = &cli.Command{
+	Name:  "leader",
+	Usage: "Start Armada in leader mode.",
+	Flags: mergeFlags(
+		rootFlags, apiFlags, restFlags, raftFlags, memberlistFlags,
+		storageFlags, maintenanceFlags, tablesFlags, experimentalFlags,
+		sharedStoreFlags,
+		[]cli.Flag{
+			&cli.StringSliceFlag{Name: "tables.names", Usage: "Create Armada tables with given names."},
+			&cli.StringSliceFlag{Name: "tables.delete", Usage: "Delete Armada tables with given names."},
+			&cli.BoolFlag{Name: "replication.enabled", Value: true, Usage: "Whether replication API is enabled."},
+			&cli.Uint64Flag{Name: "replication.max-send-message-size-bytes", Value: armadaserver.DefaultMaxGRPCSize, Usage: "The target maximum size of single replication message allowed to send."},
+			&cli.StringFlag{Name: "replication.address", Value: "http://0.0.0.0:8444", Usage: "Replication API server address. The address the server listens on."},
+			&cli.StringFlag{Name: "replication.cert-filename", Value: "", Usage: "Path to the API server certificate."},
+			&cli.StringFlag{Name: "replication.key-filename", Value: "", Usage: "Path to the API server private key file."},
+			&cli.StringFlag{Name: "replication.ca-filename", Value: "", Usage: "Path to the API server CA cert file."},
+			&cli.BoolFlag{Name: "replication.client-cert-auth", Value: false, Usage: "Replication server client certificate auth enabled. If set to true the `replication.ca-filename` should be provided as well."},
+		},
+	),
+	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
+		if err := initConfig(c); err != nil {
+			return context.TODO(), err
+		}
+		return context.Background(), validateLeaderConfig()
 	},
-	DisableAutoGenTag: true,
+	Action: func(ctx context.Context, c *cli.Command) error {
+		return leader()
+	},
 }
 
 func validateLeaderConfig() error {
-	if !viper.IsSet("raft.address") {
+	if !k.Exists("raft.address") {
 		return errors.New("raft address must be set")
 	}
 	return nil
 }
 
-func leader(_ *cobra.Command, _ []string) error {
+func leader() error {
 	logger, log, shutdown := setupCommonEnvironment()
 	defer func() {
 		_ = logger.Sync()
@@ -103,15 +91,15 @@ func leader(_ *cobra.Command, _ []string) error {
 	snapshotCtx, cancelSnapshot := context.WithCancel(context.Background())
 	defer cancelSnapshot()
 	var sharedStoreBucket objfs.Bucket
-	if backend := viper.GetString("shared-store.backend"); backend != "" && backend != "none" {
+	if backend := k.String("shared-store.backend"); backend != "" && backend != "none" {
 		bkt, err := newBucketFromConfig(snapshotCtx, BucketConfig{
 			Backend:        backend,
-			Directory:      viper.GetString("shared-store.filesystem.directory"),
-			S3Bucket:       viper.GetString("shared-store.s3.bucket"),
-			GCSBucket:      viper.GetString("shared-store.gcs.bucket"),
-			AzureContainer: viper.GetString("shared-store.azure.container"),
-			AzureAccount:   viper.GetString("shared-store.azure.account"),
-			AzureKey:       viper.GetString("shared-store.azure.key"),
+			Directory:      k.String("shared-store.filesystem.directory"),
+			S3Bucket:       k.String("shared-store.s3.bucket"),
+			GCSBucket:      k.String("shared-store.gcs.bucket"),
+			AzureContainer: k.String("shared-store.azure.container"),
+			AzureAccount:   k.String("shared-store.azure.account"),
+			AzureKey:       k.String("shared-store.azure.key"),
 		})
 		if err != nil {
 			return fmt.Errorf("snapshot-store: %w", err)
@@ -119,7 +107,7 @@ func leader(_ *cobra.Command, _ []string) error {
 		sharedStoreBucket = bkt
 		// Use the Raft address as a human-readable, cluster-unique node identifier
 		// in snapshot meta files. There is no separate node-id config option.
-		nodeAddress := viper.GetString("raft.address")
+		nodeAddress := k.String("raft.address")
 
 		exp := store.NewSnapshotExporter(
 			store.NewEngineTableService(engine),
@@ -141,7 +129,7 @@ func leader(_ *cobra.Command, _ []string) error {
 		waitForEngine(context.Background(), engine, log)
 
 		// Create and delete tables as specified in configuration.
-		tNames := viper.GetStringSlice("tables.names")
+		tNames := k.Strings("tables.names")
 		for _, table := range tNames {
 			log.Debugf("creating table %s", table)
 			if _, err := engine.CreateTable(table); err != nil {
@@ -152,7 +140,7 @@ func leader(_ *cobra.Command, _ []string) error {
 				}
 			}
 		}
-		dNames := viper.GetStringSlice("tables.delete")
+		dNames := k.Strings("tables.delete")
 		for _, table := range dNames {
 			log.Debugf("deleting table %s", table)
 			err := engine.DeleteTable(table)
@@ -171,13 +159,13 @@ func leader(_ *cobra.Command, _ []string) error {
 				})
 				armadapb.RegisterClusterServer(r, &armadaserver.ClusterServer{
 					Cluster: engine,
-					Config:  viperConfigReader,
+					Config:  koanfConfigReader,
 				})
-				if viper.GetBool("tables.enabled") {
-					armadapb.RegisterTablesServer(r, &armadaserver.TablesServer{Tables: engine, AuthFunc: authFunc(viper.GetString("tables.token"))})
+				if k.Bool("tables.enabled") {
+					armadapb.RegisterTablesServer(r, &armadaserver.TablesServer{Tables: engine, AuthFunc: authFunc(k.String("tables.token"))})
 				}
-				if viper.GetBool("maintenance.enabled") {
-					armadapb.RegisterMaintenanceServer(r, &armadaserver.BackupServer{Tables: engine, AuthFunc: authFunc(viper.GetString("maintenance.token"))})
+				if k.Bool("maintenance.enabled") {
+					armadapb.RegisterMaintenanceServer(r, &armadaserver.BackupServer{Tables: engine, AuthFunc: authFunc(k.String("maintenance.token"))})
 				}
 
 				// Register metrics server for Prometheus metrics via gRPC
@@ -196,14 +184,14 @@ func leader(_ *cobra.Command, _ []string) error {
 			defer regatta.Shutdown()
 		}
 
-		if viper.GetBool("replication.enabled") {
+		if k.Bool("replication.enabled") {
 			// Load replication API certificate
 			replication, err := createReplicationServer(logger.Named("server.replication"), func(r grpc.ServiceRegistrar) {
 				ls := armadaserver.NewLogServer(
 					engine,
 					engine.LogReader,
 					logger,
-					viper.GetUint64("replication.max-send-message-size-bytes"),
+					uint64(k.Int64("replication.max-send-message-size-bytes")),
 				)
 				armadapb.RegisterMetadataServer(r, &armadaserver.MetadataServer{Tables: engine})
 				armadapb.RegisterSnapshotServer(r, &armadaserver.SnapshotServer{Tables: engine, SnapshotStore: sharedStoreBucket})
@@ -241,7 +229,7 @@ type replicationServer interface {
 }
 
 func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar), httpReg func(mux *http.ServeMux)) (replicationServer, error) {
-	addr, secure, nw := resolveURL(viper.GetString("replication.address"))
+	addr, secure, nw := resolveURL(k.String("replication.address"))
 	lopts := []logging.Option{logging.WithLogOnEvents(logging.FinishCall), logging.WithLevels(codeToLevel)}
 	opts := []grpc.ServerOption{
 		grpc.ChainStreamInterceptor(
@@ -256,12 +244,12 @@ func createReplicationServer(log *zap.Logger, reg func(r grpc.ServiceRegistrar),
 	var tlsCfg *tls.Config
 	if secure {
 		ti := security.TLSInfo{
-			CertFile:        viper.GetString("replication.cert-filename"),
-			KeyFile:         viper.GetString("replication.key-filename"),
-			TrustedCAFile:   viper.GetString("replication.ca-filename"),
-			ClientCertAuth:  viper.GetBool("replication.client-cert-auth"),
-			AllowedCN:       viper.GetString("replication.allowed-cn"),
-			AllowedHostname: viper.GetString("replication.allowed-hostname"),
+			CertFile:        k.String("replication.cert-filename"),
+			KeyFile:         k.String("replication.key-filename"),
+			TrustedCAFile:   k.String("replication.ca-filename"),
+			ClientCertAuth:  k.Bool("replication.client-cert-auth"),
+			AllowedCN:       k.String("replication.allowed-cn"),
+			AllowedHostname: k.String("replication.allowed-hostname"),
 			Logger:          log.Named("cert").Sugar(),
 		}
 		cfg, err := ti.ServerConfig()

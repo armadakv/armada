@@ -1,9 +1,9 @@
-// Copyright JAMF Software, LLC
+// Copyright Armada Contributors
 
-// Package cmd contains the Cobra CLI commands for Armada.
-// It defines the root command and the "leader", "follower", "backup", "restore", "version",
-// and "docs" sub-commands, wiring together configuration, logging, and server startup.
-package cmd
+// Command armada is the Armada server binary.
+// It defines the root command and the "leader", "follower", "version", and
+// "docs" sub-commands, wiring together configuration, logging, and server startup.
+package main
 
 import (
 	"context"
@@ -11,8 +11,10 @@ import (
 	"log"
 	"net"
 	"net/url"
+	"path/filepath"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -23,8 +25,16 @@ import (
 	"github.com/armadakv/armada/storage/table"
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
+	"github.com/knadh/koanf/parsers/json"
+	"github.com/knadh/koanf/parsers/toml"
+	"github.com/knadh/koanf/parsers/yaml"
+	"github.com/knadh/koanf/providers/confmap"
+	"github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/spf13/viper"
+	"github.com/urfave/cli/v3"
+
 	"go.uber.org/zap"
 	"golang.org/x/net/netutil"
 	"google.golang.org/grpc"
@@ -33,6 +43,80 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 )
+
+var k = koanf.New(".")
+
+func initConfig(c *cli.Command) error {
+	// Load configuration into the koanf instance with flat, dot-separated keys
+	// (e.g. "raft.address"). Sources are loaded from lowest to highest priority:
+	// flag defaults < environment variables < explicitly set command-line flags.
+	defaults := make(map[string]any)
+	explicit := make(map[string]any)
+	for _, f := range c.Flags {
+		name := f.Names()[0]
+		if c.IsSet(name) {
+			explicit[name] = c.Value(name)
+		} else {
+			defaults[name] = c.Value(name)
+		}
+	}
+
+	// 1. Flag defaults (lowest priority).
+	if err := k.Load(confmap.Provider(defaults, "."), nil); err != nil {
+		return err
+	}
+
+	// 2. Config file, if one was specified via --config. The format is detected
+	// from the file extension. Values here override flag defaults but are
+	// overridden by environment variables and explicitly set flags.
+	if path := c.String("config"); path != "" {
+		parser, err := configParser(path)
+		if err != nil {
+			return err
+		}
+		if err := k.Load(file.Provider(path), parser); err != nil {
+			return fmt.Errorf("failed to load config file %q: %w", path, err)
+		}
+	}
+
+	// 3. Environment variables prefixed with ARMADA_. The prefix is stripped and
+	// remaining underscores are converted to dots so ARMADA_RAFT_ADDRESS maps to
+	// the "raft.address" key.
+	if err := k.Load(env.Provider("ARMADA_", ".", func(s string) string {
+		return strings.ReplaceAll(strings.ToLower(strings.TrimPrefix(s, "ARMADA_")), "_", ".")
+	}), nil); err != nil {
+		return err
+	}
+
+	// 4. Explicitly set command-line flags (highest priority).
+	if err := k.Load(confmap.Provider(explicit, "."), nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// configParser returns the koanf parser matching the config file's extension.
+func configParser(path string) (koanf.Parser, error) {
+	switch ext := strings.ToLower(filepath.Ext(path)); ext {
+	case ".yaml", ".yml":
+		return yaml.Parser(), nil
+	case ".json":
+		return json.Parser(), nil
+	case ".toml":
+		return toml.Parser(), nil
+	default:
+		return nil, fmt.Errorf("unsupported config file format %q (supported: .yaml, .yml, .json, .toml)", ext)
+	}
+}
+
+func mergeFlags(flagSlices ...[]cli.Flag) []cli.Flag {
+	var merged []cli.Flag
+	for _, fs := range flagSlices {
+		merged = append(merged, fs...)
+	}
+	return merged
+}
 
 var (
 	apiBuckets  = []float64{.0001, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 30}
@@ -44,7 +128,7 @@ func init() {
 }
 
 func createAPIServer(log *zap.Logger, reg func(grpc.ServiceRegistrar)) (*armadaserver.Server, error) {
-	addr, secure, nw := resolveURL(viper.GetString("api.address"))
+	addr, secure, nw := resolveURL(k.String("api.address"))
 	opts := []grpc.ServerOption{
 		grpc.KeepaliveParams(keepalive.ServerParameters{MaxConnectionAge: 60 * time.Second}),
 		grpc.ChainStreamInterceptor(
@@ -55,9 +139,9 @@ func createAPIServer(log *zap.Logger, reg func(grpc.ServiceRegistrar)) (*armadas
 			auth.UnaryServerInterceptor(defaultAuthFunc),
 			grpcmetrics.UnaryServerInterceptor(),
 		),
-		grpc.MaxConcurrentStreams(viper.GetUint32("api.max-concurrent-streams")),
+		grpc.MaxConcurrentStreams(uint32(k.Int("api.max-concurrent-streams"))),
 	}
-	workers := viper.GetInt("api.stream-workers")
+	workers := k.Int("api.stream-workers")
 	if workers > 0 {
 		opts = append(opts, grpc.NumStreamWorkers(uint32(workers)))
 	} else if workers == 0 {
@@ -65,12 +149,12 @@ func createAPIServer(log *zap.Logger, reg func(grpc.ServiceRegistrar)) (*armadas
 	}
 	if secure {
 		ti := security.TLSInfo{
-			CertFile:        viper.GetString("api.cert-filename"),
-			KeyFile:         viper.GetString("api.key-filename"),
-			TrustedCAFile:   viper.GetString("api.ca-filename"),
-			ClientCertAuth:  viper.GetBool("api.client-cert-auth"),
-			AllowedCN:       viper.GetString("api.allowed-cn"),
-			AllowedHostname: viper.GetString("api.allowed-hostname"),
+			CertFile:        k.String("api.cert-filename"),
+			KeyFile:         k.String("api.key-filename"),
+			TrustedCAFile:   k.String("api.ca-filename"),
+			ClientCertAuth:  k.Bool("api.client-cert-auth"),
+			AllowedCN:       k.String("api.allowed-cn"),
+			AllowedHostname: k.String("api.allowed-hostname"),
 			Logger:          log.Named("cert").Sugar(),
 		}
 		cfg, err := ti.ServerConfig()
@@ -83,7 +167,7 @@ func createAPIServer(log *zap.Logger, reg func(grpc.ServiceRegistrar)) (*armadas
 	if err != nil {
 		return nil, err
 	}
-	if limit := viper.GetUint32("api.max-concurrent-connections"); limit > 0 {
+	if limit := uint32(k.Int("api.max-concurrent-connections")); limit > 0 {
 		l = netutil.LimitListener(l, int(limit))
 	}
 	server := armadaserver.NewServer(l, log.Sugar(), opts...)
@@ -143,6 +227,7 @@ var defaultAuthFunc = authFunc("")
 
 type tokenCredentials string
 
+// nolint:unparam
 func (t tokenCredentials) GetRequestMetadata(_ context.Context, _ ...string) (map[string]string, error) {
 	if t != "" {
 		return map[string]string{"authorization": "Bearer " + string(t)}, nil
@@ -200,13 +285,13 @@ var secretConfigs = []string{
 	"tables.token",
 }
 
-func viperConfigReader() map[string]any {
+func koanfConfigReader() map[string]any {
 	res := make(map[string]any)
-	for _, key := range viper.AllKeys() {
+	for _, key := range k.Keys() {
 		if slices.Contains(secretConfigs, key) {
 			res[key] = "**********"
 		} else {
-			res[key] = viper.Get(key)
+			res[key] = k.Get(key)
 		}
 	}
 	return res
