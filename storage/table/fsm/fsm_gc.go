@@ -95,8 +95,8 @@ func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 	// databases with mostly-recent data.
 	seqnoFilter := rp.NewMVCCSeqnoFilter(gcIndex)
 	iter, err := snap.NewIter(&pebble.IterOptions{
-		LowerBound:      mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: key.LatestMinKey}),
-		UpperBound:      userKeyUpperBound,
+		LowerBound:      minEncodedUserKey,
+		UpperBound:      incrementRightmostByte(append([]byte(nil), maxEncodedUserKey...)),
 		PointKeyFilters: []pebble.BlockPropertyFilter{seqnoFilter},
 	})
 	if err != nil {

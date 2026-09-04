@@ -39,9 +39,16 @@ var (
 		KeyType: key.TypeSystem,
 		Key:     []byte("gc_horizon"),
 	})
-	userKeyUpperBound = mustEncodeKey(key.Key{
-		KeyType: key.TypeSystem,
+	// minEncodedUserKey uses the highest logical seqno, whose inverted physical
+	// suffix is all zeroes, so every physical version sorts at or above it.
+	minEncodedUserKey = mustEncodeKey(key.Key{
+		KeyType: key.TypeUser,
+		Key:     key.LatestMinKey,
 		Seqno:   ^uint64(0),
+	})
+	maxEncodedUserKey = mustEncodeKey(key.Key{
+		KeyType: key.TypeUser,
+		Key:     key.LatestMaxKey,
 	})
 )
 
@@ -87,7 +94,7 @@ func (s *snapshotHeader) snapshotType() SnapshotRecoveryType {
 	return SnapshotRecoveryType(s[6])
 }
 
-func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, compactionScheduler pebble.CompactionScheduler, srt SnapshotRecoveryType, af func(applied uint64)) sm.CreateOnDiskStateMachineFunc {
+func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, compactionScheduler *rp.ConcurrencyLimitScheduler, srt SnapshotRecoveryType, af func(applied uint64)) sm.CreateOnDiskStateMachineFunc {
 	if fs == nil {
 		fs = vfs.Default
 	}
@@ -125,7 +132,7 @@ type FSM struct {
 	closed              bool
 	log                 *zap.SugaredLogger
 	blockCache          *pebble.Cache
-	compactionScheduler pebble.CompactionScheduler
+	compactionScheduler *rp.ConcurrencyLimitScheduler
 	metrics             *metrics
 	recoveryType        SnapshotRecoveryType
 	appliedFunc         func(applied uint64)
@@ -185,11 +192,12 @@ func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	p.pebble.Store(db)
-
-	if err := prometheus.Register(p); err != nil {
-		p.log.Errorf("unable to register metrics for FSM: %s", err)
-	}
+	installed := false
+	defer func() {
+		if !installed {
+			_ = db.Close()
+		}
+	}()
 
 	idx, err := readLocalIndex(db, sysLocalIndex)
 	if err != nil {
@@ -206,18 +214,27 @@ func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
 	gcH, _ := readLocalIndex(db, sysGCHorizon)
 	p.gcHorizon.Store(gcH)
 
+	p.pebble.Store(db)
+	if err := prometheus.Register(p); err != nil {
+		p.log.Errorf("unable to register metrics for FSM: %s", err)
+	}
+
 	// Start background GC worker.
 	p.startGCWorker()
+	installed = true
 
 	return idx, nil
 }
 
 func (p *FSM) openDB(dbdir string) (*pebble.DB, error) {
+	if p.compactionScheduler == nil {
+		p.compactionScheduler = rp.NewConcurrencyLimitScheduler()
+	}
 	return rp.OpenDB(
 		dbdir,
 		rp.WithFS(p.fs),
 		rp.WithCache(p.blockCache),
-		rp.WithCompactionScheduler(p.compactionScheduler),
+		rp.WithCompactionScheduler(p.compactionScheduler.NewScheduler()),
 		rp.WithLogger(p.log),
 		rp.WithEventListener(makeLoggingEventListener(p.log)),
 		rp.WithMVCCBlockPropertyCollector(),

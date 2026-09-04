@@ -190,6 +190,26 @@ func TestEncoder_Encode(t *testing.T) {
 	}
 }
 
+func TestLatestVersionKeyLimits(t *testing.T) {
+	require.Equal(t, V2KeyLen, V2Len(LatestVersionLen))
+	require.Equal(t, []byte{0}, LatestMinKey)
+	require.Len(t, LatestMaxKey, LatestVersionLen)
+}
+
+func TestV2MaximumUserKeyRoundTrip(t *testing.T) {
+	userKey := bytes.Repeat([]byte{0xff}, V2MaxUserKeyLen)
+	encoded := bytes.NewBuffer(make([]byte, 0, V2KeyLen))
+
+	n, err := NewEncoder(encoded).Encode(&Key{KeyType: TypeUser, Key: userKey, Seqno: 42})
+	require.NoError(t, err)
+	require.Equal(t, V2KeyLen, n)
+
+	var decoded Key
+	require.NoError(t, NewDecoder(bytes.NewReader(encoded.Bytes())).Decode(&decoded))
+	require.Equal(t, userKey, decoded.Key)
+	require.Equal(t, uint64(42), decoded.Seqno)
+}
+
 func TestKey_reset(t *testing.T) {
 	type fields struct {
 		version uint8

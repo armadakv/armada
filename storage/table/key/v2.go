@@ -8,11 +8,12 @@ import (
 )
 
 const (
-	V2           uint8 = 2
-	V2SeqLen           = 8
-	V2SepLen           = 1 // null separator between user key and seqno
-	V2KeyLen           = 1024
-	keyV2BodyLen       = V2KeyLen - keyHeaderLen
+	V2              uint8 = 2
+	V2SeqLen              = 8
+	V2SepLen              = 1 // null separator between user key and seqno
+	V2MaxUserKeyLen       = 1024
+	V2KeyLen              = keyHeaderLen + 1 + V2MaxUserKeyLen + V2SepLen + V2SeqLen
+	keyV2BodyLen          = V2KeyLen - keyHeaderLen
 )
 
 // V2Len computes length of a V2 key.
@@ -21,12 +22,11 @@ func V2Len(userkeyLen int) int {
 }
 
 var V2MinKey = func() []byte {
-	minKey := make([]byte, keyV2BodyLen-1-V2SepLen-V2SeqLen)
-	return minKey
+	return []byte{0}
 }
 
 var V2MaxKey = func() []byte {
-	maxKey := make([]byte, keyV2BodyLen-1-V2SepLen-V2SeqLen)
+	maxKey := make([]byte, V2MaxUserKeyLen)
 	for i := range maxKey {
 		maxKey[i] = 0xFF
 	}
