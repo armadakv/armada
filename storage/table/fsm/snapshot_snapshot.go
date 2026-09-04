@@ -113,6 +113,12 @@ func (s *snapshot) recover(r io.Reader, stopc <-chan struct{}) (er error) {
 	if err != nil {
 		return err
 	}
+	installed := false
+	defer func() {
+		if !installed {
+			_ = db.Close()
+		}
+	}()
 
 	var (
 		count int
@@ -126,6 +132,7 @@ read:
 		select {
 		case <-stopc:
 			_ = db.Close()
+			installed = true
 			if err := rp.CleanupNodeDataDir(s.fsm.fs, s.fsm.dirname); err != nil {
 				s.fsm.log.Debugf("unable to cleanup directory")
 			}
@@ -173,6 +180,7 @@ read:
 		return err
 	}
 	old := s.fsm.pebble.Swap(db)
+	installed = true
 	s.fsm.metrics.applied.Store(idx)
 	s.fsm.log.Info("snapshot recovery finished")
 	s.fsm.notifyRecovered()

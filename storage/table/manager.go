@@ -79,7 +79,7 @@ type Manager struct {
 	cleanupTimeout     time.Duration
 	log                *zap.SugaredLogger
 	blockCache         *pebble.Cache
-	scheduler          pebble.CompactionScheduler
+	scheduler          *ap.ConcurrencyLimitScheduler
 }
 
 type Lease struct {

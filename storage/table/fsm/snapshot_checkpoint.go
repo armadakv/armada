@@ -165,6 +165,12 @@ func (c *checkpoint) recover(r io.Reader, stopc <-chan struct{}) error {
 	if err != nil {
 		return err
 	}
+	installed := false
+	defer func() {
+		if !installed {
+			_ = db.Close()
+		}
+	}()
 	idx, err := readLocalIndex(db, sysLocalIndex)
 	if err != nil {
 		return err
@@ -176,6 +182,7 @@ func (c *checkpoint) recover(r io.Reader, stopc <-chan struct{}) error {
 		return err
 	}
 	old := c.fsm.pebble.Swap(db)
+	installed = true
 	c.fsm.metrics.applied.Store(idx)
 	c.fsm.log.Info("snapshot recovery finished")
 	c.fsm.notifyRecovered()
