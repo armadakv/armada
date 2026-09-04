@@ -12,10 +12,14 @@ The `regatta-` prefixes in some tool and library names are a legacy of Armada's 
 fork of the Regatta project. See [Regatta and Armada](regatta.md) for the full story.
 
 ## CLIs
+Armada ships its own official [`arctl`](operations_guide/cli/arctl.md) control-plane CLI for
+maintenance and administration workflows such as backup, restore, and table management.
+Community tools include:
+
 * [regatta-client](https://github.com/Tantalor93/regatta-client) — unofficial CLI for querying and manipulating the Armada store.
 
 ## UI consoles
-* [regatta-console](https://github.com/coufalja/regatta-console) — unofficial web UI for querying and administration of an Armada cluster.
+* [console](https://github.com/armadakv/console) — official web UI for querying, monitoring, and administration of an Armada cluster.
 
 ## Client libraries
 * [armada-go](https://github.com/armadakv/armada-go) — official Go client library. *(Package still published under the legacy `regatta-go` module path.)*

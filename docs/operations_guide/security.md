@@ -12,17 +12,17 @@ Each Armada endpoint has different trust requirements:
 
 | Endpoint | Default port | Who connects | Recommended security |
 |----------|-------------|--------------|----------------------|
-| API (KV, Tables, Cluster) | `8443` | Application clients | TLS, optionally mTLS |
+| API (KV, Tables, Cluster, Maintenance) | `8443` | Application clients / operators | TLS, optionally mTLS; token for the Maintenance and Tables APIs |
 | Replication API | `8444` | Follower clusters only | mTLS |
-| Maintenance API | `8445` | Operators / CI | TLS + token |
 | REST (metrics/health) | `8080` | Prometheus, load balancers | Network-level isolation |
 
 **Replication API** is the highest-risk endpoint because it streams the full contents of the
 key-value store to any caller. Always protect it with mTLS in production so that only
 authorized follower clusters can connect.
 
-**Maintenance API** can trigger backups and restores. Always set `--maintenance.token` to a
-strong random value in production.
+**Maintenance API** can trigger backups and restores. It is served on the API server (there is
+no separate maintenance port). Always set `--maintenance.token` to a strong random value in
+production.
 
 **REST endpoint** does not support TLS. Restrict access using firewall rules or a reverse proxy.
 
@@ -124,6 +124,18 @@ Optionally restrict to a specific CN or hostname:
   --api.allowed-hostname=client.example.com
 ```
 
+Clients such as `arctl` connect to an mTLS-protected API port by presenting their client
+certificate over an `https` (or `unixs`) address:
+
+```bash
+arctl \
+  --address=https://armada.example.com:8443 \
+  --ca=ca.crt \
+  --cert=client.crt \
+  --key=client.key \
+  tables list
+```
+
 ---
 
 ## Replication API TLS (Leader)
@@ -179,14 +191,14 @@ armada follower \
 
 The Maintenance API (backup/restore) is protected by a token rather than a separate TLS
 configuration. Set `--maintenance.token` on startup and pass the same value to the
-`armada backup` or `armada restore` command via `--token`:
+`arctl backup` or `arctl restore` command via `--token`:
 
 ```bash
 # Server
 armada leader --maintenance.token=supersecret ...
 
 # Client
-armada backup --address=127.0.0.1:8445 --token=supersecret --ca=ca.crt --dir=/backup
+arctl backup --address=https://127.0.0.1:8443 --token=supersecret --ca=ca.crt --dir=/backup
 ```
 
 If `--maintenance.token` is left empty (the default), no token is checked. Always set a
@@ -205,6 +217,13 @@ The Tables API (create/delete/list tables) can be protected by a token in the sa
 
 ```bash
 armada leader --tables.token=mytablestoken ...
+```
+
+Clients then pass the same value via `--token`, for example with `arctl` (over a TLS address,
+since tokens are only sent over secure connections):
+
+```bash
+arctl --address=https://127.0.0.1:8443 --token=mytablestoken tables list
 ```
 
 ---
