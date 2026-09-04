@@ -24,8 +24,8 @@ const (
 
 	// LatestVersion latest key version implemented.
 	LatestVersion = V2
-	// LatestVersionLen latest key version maximum length.
-	LatestVersionLen = V2KeyLen
+	// LatestVersionLen is the maximum user-key length supported by the latest key version.
+	LatestVersionLen = V2MaxUserKeyLen
 	// UnknownVersion unknown key version (versions are numbered from 1).
 	UnknownVersion = 0
 )

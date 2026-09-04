@@ -104,11 +104,8 @@ func TestUpdateContext_Commit(t *testing.T) {
 // all the user keys.
 func allUserKeysOpts() *pebble.IterOptions {
 	return &pebble.IterOptions{
-		LowerBound: mustEncodeKey(key.Key{
-			KeyType: key.TypeUser,
-			Key:     key.LatestMinKey,
-		}),
-		UpperBound: append([]byte(nil), userKeyUpperBound...),
+		LowerBound: append([]byte(nil), minEncodedUserKey...),
+		UpperBound: incrementRightmostByte(append([]byte(nil), maxEncodedUserKey...)),
 	}
 }
 

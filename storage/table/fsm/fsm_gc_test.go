@@ -4,6 +4,7 @@ package fsm
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 	"testing"
 
@@ -103,6 +104,23 @@ func TestRunGC_ZeroIndex(t *testing.T) {
 	require.Equal(t, 1, physicalVersionCount(p.pebble.Load(), []byte("k")))
 }
 
+func TestRunGC_IncludesKeysBelowTheAPIBoundary(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+
+	// Null-prefixed keys are now rejected by the API, but may exist in legacy
+	// data and must not fall below the GC iterator's physical lower bound.
+	userKey := []byte{0}
+	applyEntries(p,
+		putEntry(1, userKey, []byte("value")),
+		deleteEntry(3, userKey),
+	)
+	require.Equal(t, 2, physicalVersionCount(p.pebble.Load(), userKey))
+
+	require.NoError(t, p.runGC(p.pebble.Load(), 10))
+	require.Equal(t, 0, physicalVersionCount(p.pebble.Load(), userKey))
+}
+
 func TestRunGC_EmptyDatabase(t *testing.T) {
 	p := emptySM()
 	defer func() { require.NoError(t, p.Close()) }()
@@ -142,7 +160,7 @@ func TestRunGC_SingleTombstoneBelowHorizon_Deleted(t *testing.T) {
 	require.Equal(t, 0, physicalVersionCount(p.pebble.Load(), []byte("k")))
 }
 
-// The wildcard user-key bound must include the longest key accepted by ActiveTable.
+// The wildcard user-key bound must include the longest valid V2 user key.
 func TestRunGC_MaxAcceptedKeyLength(t *testing.T) {
 	p := emptySM()
 	defer func() { require.NoError(t, p.Close()) }()
@@ -289,6 +307,32 @@ func TestRunGC_ExactBoundary_SeqnoAtGCIndex_Kept(t *testing.T) {
 }
 
 // Multiple keys — each processed independently and correctly.
+func TestRunGC_FlushedSSTsPreserveDistinctKeys(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+
+	const keyCount = 128
+	for i := range keyCount {
+		userKey := fmt.Appendf(nil, "key-%03d", i)
+		applyEntries(p, putEntry(uint64(i+1), userKey, fmt.Appendf(nil, "old-%03d", i)))
+	}
+	require.NoError(t, p.pebble.Load().Flush())
+
+	for i := range keyCount {
+		userKey := fmt.Appendf(nil, "key-%03d", i)
+		applyEntries(p, putEntry(uint64(keyCount+i+1), userKey, fmt.Appendf(nil, "new-%03d", i)))
+	}
+	require.NoError(t, p.pebble.Load().Flush())
+
+	require.NoError(t, p.runGC(p.pebble.Load(), keyCount+1))
+
+	for i := range keyCount {
+		userKey := fmt.Appendf(nil, "key-%03d", i)
+		require.Equal(t, fmt.Appendf(nil, "new-%03d", i), lookupVisible(t, p, userKey))
+		require.Equal(t, 1, physicalVersionCount(p.pebble.Load(), userKey))
+	}
+}
+
 func TestRunGC_MultipleKeys_IndependentProcessing(t *testing.T) {
 	p := emptySM()
 	defer func() { require.NoError(t, p.Close()) }()

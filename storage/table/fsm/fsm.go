@@ -39,9 +39,16 @@ var (
 		KeyType: key.TypeSystem,
 		Key:     []byte("gc_horizon"),
 	})
-	userKeyUpperBound = mustEncodeKey(key.Key{
-		KeyType: key.TypeSystem,
+	// minEncodedUserKey uses the highest logical seqno, whose inverted physical
+	// suffix is all zeroes, so every physical version sorts at or above it.
+	minEncodedUserKey = mustEncodeKey(key.Key{
+		KeyType: key.TypeUser,
+		Key:     key.LatestMinKey,
 		Seqno:   ^uint64(0),
+	})
+	maxEncodedUserKey = mustEncodeKey(key.Key{
+		KeyType: key.TypeUser,
+		Key:     key.LatestMaxKey,
 	})
 )
 

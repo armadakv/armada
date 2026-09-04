@@ -271,7 +271,7 @@ func Test_iterOptionsForBounds(t *testing.T) {
 			},
 			want: &pebble.IterOptions{
 				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
-				UpperBound: append([]byte(nil), userKeyUpperBound...),
+				UpperBound: incrementRightmostByte(append([]byte{}, maxEncodedUserKey...)),
 			},
 			wantErr: require.NoError,
 		},
@@ -283,14 +283,14 @@ func Test_iterOptionsForBounds(t *testing.T) {
 			},
 			want: &pebble.IterOptions{
 				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: wildcard, Seqno: ^uint64(0)}),
-				UpperBound: append([]byte(nil), userKeyUpperBound...),
+				UpperBound: incrementRightmostByte(append([]byte{}, maxEncodedUserKey...)),
 			},
 			wantErr: require.NoError,
 		},
 	}
 
-	userKeyUpperBoundCopy := append([]byte{}, userKeyUpperBound...)
-	defer require.Equal(t, userKeyUpperBound, userKeyUpperBoundCopy, "user key upper bound must remain immutable")
+	maxEncodedUserKeyCopy := append([]byte{}, maxEncodedUserKey...)
+	defer require.Equal(t, maxEncodedUserKey, maxEncodedUserKeyCopy, "maximum encoded user key must remain immutable")
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
