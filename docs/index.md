@@ -15,18 +15,12 @@ It distributes data globally using a
 [*hub-and-spoke model*](https://en.wikipedia.org/wiki/Spoke%E2%80%93hub_distribution_paradigm),
 with an emphasis on *high read throughput*, *fault-tolerance*, and *low operational overhead*.
 
-```
-                         ┌──────────────────┐
-                         │   Leader Cluster  │
-                         │   (core / hub)    │
-                         └────────┬─────────┘
-                 pull replication │ (async)
-           ┌─────────────────┬────┘────────────────┐
-           ▼                 ▼                      ▼
-  ┌──────────────┐  ┌──────────────┐      ┌──────────────┐
-  │   Follower   │  │   Follower   │  ... │   Follower   │
-  │  (edge DC 1) │  │  (edge DC 2) │      │  (edge DC N) │
-  └──────────────┘  └──────────────┘      └──────────────┘
+```mermaid
+flowchart TB
+    Leader["Leader Cluster<br/>(core / hub)"]
+    Leader -->|async pull| F1["Follower<br/>(edge DC 1)"]
+    Leader -->|async pull| F2["Follower<br/>(edge DC 2)"]
+    Leader -->|async pull| FN["Follower<br/>(edge DC N)"]
 ```
 
 A single **leader cluster** accepts all writes and replicates them asynchronously to any number

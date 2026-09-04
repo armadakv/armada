@@ -24,36 +24,22 @@ rather than the leader pushing to followers. This design choice has important im
 
 The following describes the full lifecycle of a single replication cycle for one table:
 
-```
-Follower replication worker
-         │
-         │  1. Acquire table lease (only one node in the follower cluster runs this worker)
-         │
-         │  2. Read stored leader index from local state machine
-         │
-         │  3. Call leader Log.Replicate RPC with stored leader index
-         │        │
-         │        │  Leader LogServer
-         │        │    a. Look up the Raft log entry at the requested index
-         │        │    b. If the entry is still in the log:
-         │        │         Convert raftpb.Entry → regattapb.Command
-         │        │         Stream Command batches to follower (up to max-send-message-size-bytes)
-         │        │    c. If the entry is below the GC horizon / was compacted:
-         │        │         Return a "use snapshot" signal
-         │        │
-         │  4a. Log replay path (normal operation):
-         │        Receive Command batch from leader
-         │        Wrap individual Commands in a Command_SEQUENCE
-         │        Re-propose the sequence into the follower's local Raft group for this table
-         │        The follower FSM applies the entry and persists the leader index
-         │
-         │  4b. Snapshot recovery path (catch-up / new follower):
-         │        Call leader Snapshot.Get RPC
-         │        Stream full or incremental snapshot into a temporary recovery shard
-         │        Apply a final dummy command carrying the latest leader index
-         │        Atomically swap the recovery shard for the live table
-         │
-         └─ 5. Repeat from step 2 after poll-interval
+```mermaid
+flowchart TB
+    Start(["Follower replication worker"])
+    Start --> S1["1. Acquire table lease<br/>(one node per follower cluster)"]
+    S1 --> S2["2. Read stored leader index<br/>from local state machine"]
+    S2 --> S3["3. Call leader Log.Replicate RPC<br/>with stored leader index"]
+    S3 --> LS{"Leader LogServer:<br/>entry still in the Raft log?"}
+    LS -->|Yes| A1["Convert raftpb.Entry to regattapb.Command<br/>Stream Command batches to follower"]
+    LS -->|"No (below GC horizon / compacted)"| B1["Return a 'use snapshot' signal"]
+
+    A1 --> A2["4a. Log replay path:<br/>wrap Commands in a Command_SEQUENCE,<br/>re-propose into the follower's Raft group,<br/>FSM applies and persists the leader index"]
+    B1 --> B2["4b. Snapshot recovery path:<br/>call Snapshot.Get, stream into a recovery shard,<br/>apply a dummy command with the latest leader index,<br/>atomically swap the recovery shard for the live table"]
+
+    A2 --> Loop["5. Wait poll-interval"]
+    B2 --> Loop
+    Loop --> S2
 ```
 
 ### Logical Command Replication
@@ -105,17 +91,17 @@ follower **forwards write requests to the leader** and then waits for the result
 be applied locally before returning a response to the caller. This ensures that a client
 connected to a follower sees its own writes immediately:
 
-```
-Client → Follower gRPC API
-              │
-              │  Forward Put/DeleteRange/Txn to leader
-              │◄──────────────────────────────────────
-              │  Leader returns the committed revision (leader index)
-              │
-              │  Wait on IndexNotificationQueue until the follower's
-              │  local replication has applied that revision
-              │
-              └─ Return success to client
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as Follower gRPC API
+    participant L as Leader
+
+    C->>F: Put / DeleteRange / Txn
+    F->>L: Forward write to leader
+    L-->>F: Committed revision (leader index)
+    Note over F: Wait on IndexNotificationQueue until local<br/>replication has applied that revision
+    F-->>C: Return success
 ```
 
 This means follower write latency includes the round-trip to the leader **plus** the time for
