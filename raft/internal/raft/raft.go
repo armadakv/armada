@@ -1967,8 +1967,8 @@ func (r *raft) handleReadIndexLeaderConfirmation(m pb.Message) {
 				To:       s.from,
 				Type:     pb.ReadIndexResp,
 				LogIndex: s.index,
-				Hint:     m.Hint,
-				HintHigh: m.HintHigh,
+				Hint:     s.ctx.Low,
+				HintHigh: s.ctx.High,
 			})
 		}
 	}

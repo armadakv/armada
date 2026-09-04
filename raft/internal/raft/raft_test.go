@@ -3044,6 +3044,41 @@ func TestHandleLeaderReadIndex(t *testing.T) {
 	}
 }
 
+func TestReadIndexResponsesPreserveBatchedRequestContexts(t *testing.T) {
+	r := newTestRaft(1, []uint64{1, 2, 3}, 5, 1, NewTestLogDB())
+	r.becomeFollower(1, NoLeader)
+	r.becomeCandidate()
+	ne(r.becomeLeader(), t)
+
+	first := getTestSystemCtx(10001)
+	second := getTestSystemCtx(10002)
+	r.readIndex.addRequest(10, first, 2)
+	r.readIndex.addRequest(20, second, 3)
+	r.msgs = nil
+
+	r.handleReadIndexLeaderConfirmation(pb.Message{
+		From:     2,
+		Hint:     second.Low,
+		HintHigh: second.High,
+	})
+
+	if len(r.msgs) != 2 {
+		t.Fatalf("got %d responses, want 2", len(r.msgs))
+	}
+	responses := make(map[uint64]pb.Message)
+	for _, msg := range r.msgs {
+		responses[msg.To] = msg
+	}
+	if msg := responses[2]; msg.Hint != first.Low || msg.HintHigh != first.High {
+		t.Errorf("first response context = %d/%d, want %d/%d",
+			msg.Hint, msg.HintHigh, first.Low, first.High)
+	}
+	if msg := responses[3]; msg.Hint != second.Low || msg.HintHigh != second.High {
+		t.Errorf("second response context = %d/%d, want %d/%d",
+			msg.Hint, msg.HintHigh, second.Low, second.High)
+	}
+}
+
 func TestWitnessReadIndex(t *testing.T) {
 	r := newTestRaft(1, []uint64{1}, 5, 1, NewTestLogDB())
 

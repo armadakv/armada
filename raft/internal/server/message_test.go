@@ -144,6 +144,28 @@ func TestAddedSnapshotWillBeReturned(t *testing.T) {
 	}
 }
 
+func TestTickCanBeAddedWhenMessageQueueIsFull(t *testing.T) {
+	q := NewMessageQueue(2, false, 0, 0)
+	for range 2 {
+		added, stopped := q.Add(pb.Message{Type: pb.Heartbeat})
+		require.True(t, added)
+		require.False(t, stopped)
+	}
+
+	require.True(t, q.AddTick(10))
+	require.True(t, q.AddTick(11))
+	require.True(t, q.AddTick(12))
+
+	msgs := q.Get()
+	require.Len(t, msgs, 3)
+	tick := msgs[len(msgs)-1]
+	require.Equal(t, pb.LocalTick, tick.Type)
+	require.Equal(t, uint64(12), tick.Hint)
+	require.Equal(t, uint64(3), tick.HintHigh)
+
+	require.Empty(t, q.Get())
+}
+
 func TestMessageQueueCanBeStopped(t *testing.T) {
 	q := NewMessageQueue(8, false, 0, 0)
 	q.Close()
@@ -155,6 +177,9 @@ func TestMessageQueueCanBeStopped(t *testing.T) {
 	}
 	if q.MustAdd(pb.Message{Type: pb.InstallSnapshot}) {
 		t.Errorf("unexpectedly added snapshot")
+	}
+	if q.AddTick(1) {
+		t.Errorf("unexpectedly added tick")
 	}
 }
 

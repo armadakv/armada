@@ -401,6 +401,9 @@ func (e *Engine) WaitUntilReady(ctx context.Context) error {
 	eg.Go(func() error {
 		return e.tableStore.WaitForLeader(ctx)
 	})
+	eg.Go(func() error {
+		return e.Manager.WaitUntilReady(ctx)
+	})
 	return eg.Wait()
 }
 

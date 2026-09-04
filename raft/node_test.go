@@ -426,6 +426,33 @@ func stopNodes(nodes []*node) {
 	}
 }
 
+func TestCoalescedLocalTickAdvancesRaftClock(t *testing.T) {
+	fs := vfs.NewMem()
+	defer leaktest.AfterTest(t)()
+	defer cleanupTestDir(fs)
+	nodes, _, _, ldb := getTestRaftNodes(1, false, fs)
+	defer stopNodes(nodes)
+	defer ldb.Close()
+
+	done, err := nodes[0].handleMessage(pb.Message{
+		Type:     pb.LocalTick,
+		Hint:     100,
+		HintHigh: 3,
+	})
+	if err != nil {
+		t.Fatalf("failed to handle tick: %v", err)
+	}
+	if !done {
+		t.Fatalf("tick was not handled locally")
+	}
+	if nodes[0].currentTick != 3 {
+		t.Fatalf("current tick = %d, want 3", nodes[0].currentTick)
+	}
+	if got := nodes[0].pendingReadIndexes.getTick(); got != 100 {
+		t.Fatalf("request clock = %d, want 100", got)
+	}
+}
+
 func TestNodeCanBeCreatedAndStarted(t *testing.T) {
 	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
