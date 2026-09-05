@@ -130,10 +130,29 @@ type SendMessageBatchFunc func(pb.MessageBatch) (pb.MessageBatch, bool)
 type sendQueue struct {
 	ch chan pb.Message
 	rl *server.RateLimiter
+	mu struct {
+		sync.Mutex
+		retired bool
+	}
 }
 
-func (sq *sendQueue) rateLimited() bool {
-	return sq.rl.RateLimited()
+func (sq *sendQueue) enqueue(msg pb.Message) failedSend {
+	sq.mu.Lock()
+	defer sq.mu.Unlock()
+	if sq.mu.retired {
+		return queueRetired
+	}
+	if sq.rl.RateLimited() {
+		return rateLimited
+	}
+	sq.increase(msg)
+	select {
+	case sq.ch <- msg:
+		return success
+	default:
+		sq.decrease(msg)
+		return chanIsFull
+	}
 }
 
 func (sq *sendQueue) increase(msg pb.Message) {
@@ -166,13 +185,14 @@ const (
 	unknownTarget
 	rateLimited
 	chanIsFull
+	queueRetired
 )
 
 // Transport is the transport layer for delivering raft messages and snapshots.
 type Transport struct {
 	mu struct {
 		sync.Mutex
-		queues   map[string]sendQueue
+		queues   map[string]*sendQueue
 		breakers map[string]*circuit.Breaker
 	}
 	sysEvents    ITransportEvent
@@ -235,7 +255,7 @@ func NewTransport(nhConfig config.NodeHostConfig,
 	}
 	t.chunks = chunks
 	t.ctx, t.cancel = context.WithCancel(context.Background())
-	t.mu.queues = make(map[string]sendQueue)
+	t.mu.queues = make(map[string]*sendQueue)
 	t.mu.breakers = make(map[string]*circuit.Breaker)
 	msgConn := func() float64 {
 		t.mu.Lock()
@@ -361,7 +381,6 @@ func (t *Transport) send(req pb.Message) (bool, failedSend) {
 	}
 	toReplicaID := req.To
 	shardID := req.ShardID
-	from := req.From
 	addr, key, err := t.resolver.Resolve(shardID, toReplicaID)
 	if err != nil {
 		return false, unknownTarget
@@ -371,50 +390,81 @@ func (t *Transport) send(req pb.Message) (bool, failedSend) {
 		t.metrics.messageConnectionFailure()
 		return false, circuitBreakerNotReady
 	}
-	// get the channel, create it in case it is not in the queue map
-	t.mu.Lock()
-	sq, ok := t.mu.queues[key]
-	if !ok {
-		sq = sendQueue{
-			ch: make(chan pb.Message, sendQueueLen),
-			rl: server.NewRateLimiter(t.nhConfig.MaxSendQueueSize),
-		}
-		t.mu.queues[key] = sq
-	}
-	t.mu.Unlock()
-	if !ok {
-		shutdownQueue := func() {
-			t.mu.Lock()
-			delete(t.mu.queues, key)
-			t.mu.Unlock()
-		}
-		t.wg.Go(func() {
-			affected := make(nodeMap)
-			if !t.connectAndProcess(addr, sq, from, affected) {
-				t.notifyUnreachable(addr, affected)
+	for {
+		// Get the current queue generation, creating it when necessary.
+		t.mu.Lock()
+		sq, ok := t.mu.queues[key]
+		if !ok {
+			sq = &sendQueue{
+				ch: make(chan pb.Message, sendQueueLen),
+				rl: server.NewRateLimiter(t.nhConfig.MaxSendQueueSize),
 			}
-			shutdownQueue()
-		})
+			t.mu.queues[key] = sq
+		}
+		t.mu.Unlock()
+		reason := sq.enqueue(req)
+		if reason == queueRetired {
+			continue
+		}
+		if !ok {
+			t.wg.Go(func() {
+				affected := make(nodeMap)
+				graceful := t.connectAndProcess(addr, sq, affected)
+				drained := t.retireQueue(key, sq)
+				for _, msg := range drained {
+					addAffected(affected, msg)
+				}
+				if !graceful || (len(drained) > 0 && !t.stopped()) {
+					t.notifyUnreachable(addr, affected)
+				}
+			})
+		}
+		return reason == success, reason
 	}
-	if sq.rateLimited() {
-		return false, rateLimited
-	}
+}
 
-	sq.increase(req)
-
+func (t *Transport) stopped() bool {
 	select {
-	case sq.ch <- req:
-		return true, success
+	case <-t.stopCh:
+		return true
 	default:
-		sq.decrease(req)
-		return false, chanIsFull
+		return false
 	}
+}
+
+func (t *Transport) retireQueue(key string, sq *sendQueue) []pb.Message {
+	sq.mu.Lock()
+	defer sq.mu.Unlock()
+	sq.mu.retired = true
+
+	drained := make([]pb.Message, 0, len(sq.ch))
+	for {
+		select {
+		case msg := <-sq.ch:
+			sq.decrease(msg)
+			drained = append(drained, msg)
+		default:
+			t.mu.Lock()
+			if current, ok := t.mu.queues[key]; ok && current == sq {
+				delete(t.mu.queues, key)
+			}
+			t.mu.Unlock()
+			return drained
+		}
+	}
+}
+
+func addAffected(affected nodeMap, req pb.Message) {
+	affected[raftio.NodeInfo{
+		ShardID:   req.ShardID,
+		ReplicaID: req.To,
+	}] = struct{}{}
 }
 
 // connectAndProcess returns a boolean value indicating whether it is stopped
 // gracefully when the system is being shutdown
 func (t *Transport) connectAndProcess(remoteHost string,
-	sq sendQueue, from uint64, affected nodeMap,
+	sq *sendQueue, affected nodeMap,
 ) bool {
 	breaker := t.GetCircuitBreaker(remoteHost)
 	successes := breaker.Successes()
@@ -446,7 +496,7 @@ func (t *Transport) connectAndProcess(remoteHost string,
 }
 
 func (t *Transport) processMessages(remoteHost string,
-	sq sendQueue, conn raftio.IConnection, affected nodeMap,
+	sq *sendQueue, conn raftio.IConnection, affected nodeMap,
 ) error {
 	idleTimer := time.NewTimer(idleTimeout)
 	defer idleTimer.Stop()
@@ -465,17 +515,14 @@ func (t *Transport) processMessages(remoteHost string,
 		case <-idleTimer.C:
 			return nil
 		case req := <-sq.ch:
-			n := raftio.NodeInfo{
-				ShardID:   req.ShardID,
-				ReplicaID: req.From,
-			}
-			affected[n] = struct{}{}
+			addAffected(affected, req)
 			sq.decrease(req)
 			sz += uint64(req.SizeUpperLimit())
 			requests = append(requests, req)
 			for done := false; !done && sz < maxMsgBatchSize; {
 				select {
 				case req = <-sq.ch:
+					addAffected(affected, req)
 					sq.decrease(req)
 					sz += uint64(req.SizeUpperLimit())
 					requests = append(requests, req)

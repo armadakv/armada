@@ -1328,7 +1328,7 @@ func (n *node) handleReceivedMessages() (bool, error) {
 	msgs := n.mq.Get()
 	for _, m := range msgs {
 		if m.Type == pb.LocalTick {
-			count++
+			count += max(uint64(1), m.HintHigh)
 		} else if m.Type == pb.Replicate && busy {
 			continue
 		}
@@ -1356,7 +1356,7 @@ func (n *node) handleReceivedMessages() (bool, error) {
 func (n *node) handleMessage(m pb.Message) (bool, error) {
 	switch m.Type {
 	case pb.LocalTick:
-		if err := n.tick(m.Hint); err != nil {
+		if err := n.tick(m.Hint, m.HintHigh); err != nil {
 			return false, err
 		}
 	case pb.SnapshotStatus:
@@ -1535,10 +1535,15 @@ func (n *node) processStreamStatus() bool {
 	return false
 }
 
-func (n *node) tick(tick uint64) error {
-	n.currentTick++
-	if err := n.p.Tick(); err != nil {
-		return err
+func (n *node) tick(tick uint64, count uint64) error {
+	if count == 0 {
+		count = 1
+	}
+	for range count {
+		n.currentTick++
+		if err := n.p.Tick(); err != nil {
+			return err
+		}
 	}
 	n.pendingSnapshot.tick(tick)
 	n.pendingProposals.tick(tick)

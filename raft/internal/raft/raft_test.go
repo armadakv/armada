@@ -136,6 +136,40 @@ func TestNilLogdbWillPanic(t *testing.T) {
 	newRaft(newTestConfig(1, 10, 1), nil)
 }
 
+type failingTermLogDB struct {
+	*TestLogDB
+	err  error
+	fail bool
+}
+
+func (db *failingTermLogDB) Term(index uint64) (uint64, error) {
+	if db.fail {
+		return 0, db.err
+	}
+	return db.TestLogDB.Term(index)
+}
+
+func TestLeaderReplicateResponsePropagatesCommitError(t *testing.T) {
+	db := &failingTermLogDB{TestLogDB: &TestLogDB{entries: make([]pb.Entry, 0)}, err: ErrUnavailable}
+	r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, db)
+	r.becomeCandidate()
+	ne(r.becomeLeader(), t)
+
+	entry := r.log.inmem.entries[0]
+	if err := db.Append([]pb.Entry{entry}); err != nil {
+		t.Fatalf("failed to persist test entry: %v", err)
+	}
+	r.log.inmem.entries = nil
+	r.log.inmem.markerIndex = entry.Index + 1
+	r.log.inmem.savedTo = entry.Index
+	db.fail = true
+
+	err := r.handleLeaderReplicateResp(pb.Message{From: 2, LogIndex: entry.Index}, r.remotes[2])
+	if err != ErrUnavailable {
+		t.Fatalf("got %v, want %v", err, ErrUnavailable)
+	}
+}
+
 func TestTryCommitResetsMatchArray(t *testing.T) {
 	p := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
 	p.becomeCandidate()
@@ -3041,6 +3075,41 @@ func TestHandleLeaderReadIndex(t *testing.T) {
 	}
 	if len(r.readIndex.pending) != 1 || len(r.readIndex.queue) != 1 {
 		t.Errorf("readIndex not updated")
+	}
+}
+
+func TestReadIndexResponsesPreserveBatchedRequestContexts(t *testing.T) {
+	r := newTestRaft(1, []uint64{1, 2, 3}, 5, 1, NewTestLogDB())
+	r.becomeFollower(1, NoLeader)
+	r.becomeCandidate()
+	ne(r.becomeLeader(), t)
+
+	first := getTestSystemCtx(10001)
+	second := getTestSystemCtx(10002)
+	r.readIndex.addRequest(10, first, 2)
+	r.readIndex.addRequest(20, second, 3)
+	r.msgs = nil
+
+	r.handleReadIndexLeaderConfirmation(pb.Message{
+		From:     2,
+		Hint:     second.Low,
+		HintHigh: second.High,
+	})
+
+	if len(r.msgs) != 2 {
+		t.Fatalf("got %d responses, want 2", len(r.msgs))
+	}
+	responses := make(map[uint64]pb.Message)
+	for _, msg := range r.msgs {
+		responses[msg.To] = msg
+	}
+	if msg := responses[2]; msg.Hint != first.Low || msg.HintHigh != first.High {
+		t.Errorf("first response context = %d/%d, want %d/%d",
+			msg.Hint, msg.HintHigh, first.Low, first.High)
+	}
+	if msg := responses[3]; msg.Hint != second.Low || msg.HintHigh != second.High {
+		t.Errorf("second response context = %d/%d, want %d/%d",
+			msg.Hint, msg.HintHigh, second.Low, second.High)
 	}
 }
 

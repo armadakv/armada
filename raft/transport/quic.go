@@ -50,11 +50,17 @@ const (
 	raftStreamType     byte = 0x01
 	snapshotStreamType byte = 0x02
 
-	// maxFrameSize caps incoming frames at 128 MiB to prevent runaway
-	// allocations while still accommodating the largest possible raft message
-	// batch (settings.MaxMessageBatchSize = settings.LargeEntitySize = 64 MiB)
-	// and snapshot chunks (settings.SnapshotChunkSize = 2 MiB).
-	maxFrameSize = 128 * 1024 * 1024
+	// maxRaftFrameSize permits the configured maximum message batch plus ample
+	// protobuf framing overhead. Snapshot streams have a much smaller limit.
+	maxRaftFrameSize     = settings.MaxMessageBatchSize + 1024*1024
+	maxSnapshotFrameSize = settings.SnapshotChunkSize + 1024*1024
+
+	// These global limits bound resources consumed by unauthenticated inbound
+	// peers across all connections, rather than only per QUIC connection.
+	maxInboundConnections = 64
+	maxInboundStreams     = 64
+	inboundFrameBudget    = 256 * 1024 * 1024
+	frameBudgetUnit       = 64 * 1024
 )
 
 var (
@@ -92,25 +98,61 @@ func writeFrame(w io.Writer, data []byte) error {
 	return err
 }
 
+// frameBudget caps aggregate inbound frame allocations. A caller holds its
+// allocation until it has unmarshaled and dispatched the frame.
+type frameBudget struct {
+	tokens chan struct{}
+}
+
+func newFrameBudget(bytes uint64) *frameBudget {
+	return &frameBudget{tokens: make(chan struct{}, bytes/frameBudgetUnit)}
+}
+
+func (b *frameBudget) acquire(size uint32, done <-chan struct{}) (func(), error) {
+	count := (uint64(size) + frameBudgetUnit - 1) / frameBudgetUnit
+	acquired := uint64(0)
+	for range count {
+		select {
+		case b.tokens <- struct{}{}:
+			acquired++
+		case <-done:
+			for range acquired {
+				<-b.tokens
+			}
+			return nil, context.Canceled
+		}
+	}
+	return func() {
+		for range acquired {
+			<-b.tokens
+		}
+	}, nil
+}
+
 // readFrame reads a 4-byte big-endian length-prefixed frame from r.
 // It returns io.EOF when the stream has been cleanly closed by the sender.
-func readFrame(r io.Reader) ([]byte, error) {
+func readFrame(r io.Reader, maxSize uint64, budget *frameBudget, done <-chan struct{}) ([]byte, func(), error) {
 	var hdr [4]byte
 	if _, err := io.ReadFull(r, hdr[:]); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	size := binary.BigEndian.Uint32(hdr[:])
 	if size == 0 {
-		return nil, errors.New("quic transport: received zero-length frame")
+		return nil, nil, errors.New("quic transport: received zero-length frame")
 	}
-	if size > maxFrameSize {
-		return nil, errors.Newf("quic transport: frame size %d exceeds limit %d", size, maxFrameSize)
+	if uint64(size) > maxSize {
+		return nil, nil, errors.Newf("quic transport: frame size %d exceeds limit %d", size, maxSize)
+	}
+	release, err := budget.acquire(size, done)
+	if err != nil {
+		return nil, nil, err
 	}
 	buf := make([]byte, size)
 	if _, err := io.ReadFull(r, buf); err != nil {
-		return nil, err
+		release()
+		return nil, nil, err
 	}
-	return buf, nil
+	return buf, release, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -236,6 +278,10 @@ type QUIC struct {
 	// registers an ALPN listener on it instead of creating a new UDP socket.
 	// The caller retains ownership; this instance will NOT close it.
 	shared *Shared
+
+	inboundConnections chan struct{}
+	inboundStreams     chan struct{}
+	frameBudget        *frameBudget
 }
 
 // NewQUICTransport creates and returns a new QUIC transport module.
@@ -244,10 +290,20 @@ func NewQUICTransport(
 	requestHandler raftio.MessageHandler,
 	chunkHandler raftio.ChunkHandler,
 ) raftio.ITransport {
+	return newQUIC(nhConfig, requestHandler, chunkHandler, nil)
+}
+
+func newQUIC(nhConfig config.NodeHostConfig, requestHandler raftio.MessageHandler,
+	chunkHandler raftio.ChunkHandler, shared *Shared,
+) *QUIC {
 	return &QUIC{
-		nhConfig:       nhConfig,
-		requestHandler: requestHandler,
-		chunkHandler:   chunkHandler,
+		nhConfig:           nhConfig,
+		requestHandler:     requestHandler,
+		chunkHandler:       chunkHandler,
+		shared:             shared,
+		inboundConnections: make(chan struct{}, maxInboundConnections),
+		inboundStreams:     make(chan struct{}, maxInboundStreams),
+		frameBudget:        newFrameBudget(inboundFrameBudget),
 	}
 }
 
@@ -260,12 +316,7 @@ func NewQUICTransportWithShared(
 	chunkHandler raftio.ChunkHandler,
 	shared *Shared,
 ) raftio.ITransport {
-	return &QUIC{
-		nhConfig:       nhConfig,
-		requestHandler: requestHandler,
-		chunkHandler:   chunkHandler,
-		shared:         shared,
-	}
+	return newQUIC(nhConfig, requestHandler, chunkHandler, shared)
 }
 
 // Name returns the human-readable name of the transport module.
@@ -335,11 +386,17 @@ func (t *QUIC) Start() error {
 			if err != nil {
 				return
 			}
-			t.connWg.Add(1)
-			go func(c *quic.Conn) {
-				defer t.connWg.Done()
-				t.serveConn(c, ctx)
-			}(conn)
+			select {
+			case t.inboundConnections <- struct{}{}:
+				t.connWg.Add(1)
+				go func(c *quic.Conn) {
+					defer t.connWg.Done()
+					defer func() { <-t.inboundConnections }()
+					t.serveConn(c, ctx)
+				}(conn)
+			default:
+				_ = conn.CloseWithError(0, "too many inbound raft connections")
+			}
 		}
 	})
 
@@ -488,17 +545,24 @@ func (t *QUIC) serveConn(conn *quic.Conn, ctx context.Context) {
 		if err != nil {
 			return
 		}
-		wg.Add(1)
-		go func(s *quic.Stream) {
-			defer wg.Done()
-			defer s.CancelRead(0)
-			t.serveStream(s)
-		}(stream)
+		select {
+		case t.inboundStreams <- struct{}{}:
+			wg.Add(1)
+			go func(s *quic.Stream) {
+				defer wg.Done()
+				defer func() { <-t.inboundStreams }()
+				defer s.CancelRead(0)
+				t.serveStream(s, ctx)
+			}(stream)
+		default:
+			stream.CancelRead(0)
+			stream.CancelWrite(0)
+		}
 	}
 }
 
 // serveStream reads the stream-type byte and routes to the appropriate handler.
-func (t *QUIC) serveStream(stream *quic.Stream) {
+func (t *QUIC) serveStream(stream *quic.Stream, ctx context.Context) {
 	var typeBuf [1]byte
 	if _, err := io.ReadFull(stream, typeBuf[:]); err != nil {
 		if err != io.EOF {
@@ -508,9 +572,9 @@ func (t *QUIC) serveStream(stream *quic.Stream) {
 	}
 	switch typeBuf[0] {
 	case raftStreamType:
-		t.serveRaftStream(stream)
+		t.serveRaftStream(stream, ctx.Done())
 	case snapshotStreamType:
-		t.serveSnapshotStream(stream)
+		t.serveSnapshotStream(stream, ctx.Done())
 	default:
 		plog.Errorf("quic: unknown stream type 0x%02x, dropping stream", typeBuf[0])
 	}
@@ -518,9 +582,9 @@ func (t *QUIC) serveStream(stream *quic.Stream) {
 
 // serveRaftStream reads length-prefixed MessageBatch frames until the stream
 // is closed or an error occurs.
-func (t *QUIC) serveRaftStream(stream *quic.Stream) {
+func (t *QUIC) serveRaftStream(stream *quic.Stream, done <-chan struct{}) {
 	for {
-		data, err := readFrame(stream)
+		data, release, err := readFrame(stream, maxRaftFrameSize, t.frameBudget, done)
 		if err != nil {
 			if err != io.EOF {
 				plog.Errorf("quic: raft stream read error: %v", err)
@@ -529,10 +593,12 @@ func (t *QUIC) serveRaftStream(stream *quic.Stream) {
 		}
 		batch := pb.MessageBatch{}
 		if err := batch.Unmarshal(data); err != nil {
+			release()
 			plog.Errorf("quic: failed to unmarshal MessageBatch: %v", err)
 			return
 		}
 		t.requestHandler(batch)
+		release()
 	}
 }
 
@@ -544,7 +610,7 @@ func (t *QUIC) serveRaftStream(stream *quic.Stream) {
 // the sender and is used by QUICSnapshotConnection.Close() as a confirmation
 // that every chunk has been handed to the chunk handler — allowing the sender
 // to safely call conn.CloseWithError without racing with undelivered data.
-func (t *QUIC) serveSnapshotStream(stream *quic.Stream) {
+func (t *QUIC) serveSnapshotStream(stream *quic.Stream, done <-chan struct{}) {
 	// Always close the write side on exit so the sender's waitForServerFIN
 	// unblocks regardless of whether the loop completed successfully or not.
 	defer func() {
@@ -553,7 +619,7 @@ func (t *QUIC) serveSnapshotStream(stream *quic.Stream) {
 		}
 	}()
 	for {
-		data, err := readFrame(stream)
+		data, release, err := readFrame(stream, maxSnapshotFrameSize, t.frameBudget, done)
 		if err != nil {
 			if err != io.EOF {
 				plog.Errorf("quic: snapshot stream read error: %v", err)
@@ -562,10 +628,13 @@ func (t *QUIC) serveSnapshotStream(stream *quic.Stream) {
 		}
 		chunk := pb.Chunk{}
 		if err := chunk.Unmarshal(data); err != nil {
+			release()
 			plog.Errorf("quic: failed to unmarshal Chunk: %v", err)
 			return
 		}
-		if !t.chunkHandler(chunk) {
+		accepted := t.chunkHandler(chunk)
+		release()
+		if !accepted {
 			plog.Errorf("quic: chunk rejected %s", chunkKey(chunk))
 			return
 		}

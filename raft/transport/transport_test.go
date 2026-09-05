@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/armadakv/armada/vfs"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/netutil"
@@ -290,6 +291,12 @@ func (h *testMessageHandler) getRequestCount(shardID uint64,
 	replicaID uint64,
 ) uint64 {
 	return h.getMessageCount(h.requestCount, shardID, replicaID)
+}
+
+func (h *testMessageHandler) getUnreachableCount(shardID uint64,
+	replicaID uint64,
+) uint64 {
+	return h.getMessageCount(h.unreachableCount, shardID, replicaID)
 }
 
 func (h *testMessageHandler) getFailedSnapshotCount(shardID uint64,
@@ -615,6 +622,74 @@ func (t *Transport) queueSize() int {
 	return len(t.mu.queues)
 }
 
+func TestRetireQueueRejectsNewMessagesAndDrainsAcceptedMessages(t *testing.T) {
+	sq := &sendQueue{
+		ch: make(chan raftpb.Message, 1),
+		rl: server.NewRateLimiter(0),
+	}
+	msg := raftpb.Message{ShardID: 100, From: 1, To: 2, Type: raftpb.Heartbeat}
+	if reason := sq.enqueue(msg); reason != success {
+		t.Fatalf("enqueue failed: %d", reason)
+	}
+
+	trans := &Transport{}
+	trans.mu.queues = map[string]*sendQueue{"target": sq}
+	drained := trans.retireQueue("target", sq)
+	if len(drained) != 1 || drained[0].ShardID != msg.ShardID ||
+		drained[0].From != msg.From || drained[0].To != msg.To || drained[0].Type != msg.Type {
+		t.Fatalf("unexpected drained messages: %+v", drained)
+	}
+	if reason := sq.enqueue(msg); reason != queueRetired {
+		t.Fatalf("enqueue reason = %d, want queueRetired", reason)
+	}
+	if len(trans.mu.queues) != 0 {
+		t.Fatalf("retired queue remains registered")
+	}
+}
+
+func TestEnqueueRacingQueueRetirementIsRejectedOrDrained(t *testing.T) {
+	for range 100 {
+		sq := &sendQueue{
+			ch: make(chan raftpb.Message, 1),
+			rl: server.NewRateLimiter(0),
+		}
+		trans := &Transport{}
+		trans.mu.queues = map[string]*sendQueue{"target": sq}
+		msg := raftpb.Message{ShardID: 100, From: 1, To: 2, Type: raftpb.Heartbeat}
+
+		start := make(chan struct{})
+		var wg sync.WaitGroup
+		var reason failedSend
+		var drained []raftpb.Message
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			reason = sq.enqueue(msg)
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			drained = trans.retireQueue("target", sq)
+		}()
+		close(start)
+		wg.Wait()
+
+		switch reason {
+		case success:
+			if len(drained) != 1 {
+				t.Fatalf("accepted message was not drained")
+			}
+		case queueRetired:
+			if len(drained) != 0 {
+				t.Fatalf("retired queue unexpectedly drained %d messages", len(drained))
+			}
+		default:
+			t.Fatalf("unexpected enqueue result %d", reason)
+		}
+	}
+}
+
 func TestCircuitBreakerKicksInOnConnectivityIssue(t *testing.T) {
 	fs := vfs.NewMem()
 	defer leaktest.AfterTest(t)()
@@ -647,7 +722,18 @@ func TestCircuitBreakerKicksInOnConnectivityIssue(t *testing.T) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	time.Sleep(20 * time.Millisecond)
+	for range 100 {
+		if handler.getUnreachableCount(100, 2) == 1 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := handler.getUnreachableCount(100, 2); got != 1 {
+		t.Errorf("remote unreachable count = %d, want 1", got)
+	}
+	if got := handler.getUnreachableCount(100, 1); got != 0 {
+		t.Errorf("local replica was reported unreachable %d times", got)
+	}
 	breaker := trans.GetCircuitBreaker("nosuchhost:39001")
 	if breaker.Ready() {
 		t.Errorf("breaker is still ready?")
@@ -1003,6 +1089,29 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 			t.Fatalf("failed to get sink again %d", i)
 		}
 	}
+}
+
+func TestMissingSnapshotFileReportsFailureWithoutPanic(t *testing.T) {
+	fs := vfs.NewMem()
+	handler := newTestMessageHandler()
+	trans, nodes, _, _, _ := newNOOPTestTransport(handler, fs)
+	defer func() {
+		require.NoError(t, trans.Close())
+	}()
+	nodes.Add(100, 2, serverAddress)
+
+	m := getTestSnapshotMessage(2)
+	m.Snapshot.Filepath = "missing-snapshot.gbsnap"
+	m.Snapshot.FileSize = 1
+	require.True(t, trans.SendSnapshot(m))
+
+	for range 100 {
+		if handler.getFailedSnapshotCount(100, 2) == 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("missing snapshot file was not reported as a failed send")
 }
 
 func testFailedConnectionReportsSnapshotFailure(t *testing.T,

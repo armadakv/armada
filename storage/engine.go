@@ -40,7 +40,7 @@ func New(cfg Config) (*Engine, error) {
 		log:  cfg.Log,
 		stop: make(chan struct{}),
 	}
-	e.events = &events{eventsCh: make(chan any, 1), stopc: make(chan struct{}), donec: make(chan struct{}), engine: e}
+	e.events = newEvents(e)
 
 	// Create the shared QUIC transport that raft and gossip will both use.
 	// Use the listen address when set, otherwise fall back to the raft address.
@@ -169,13 +169,13 @@ func (e *Engine) Start() error {
 		return err
 	}
 	e.Manager.Start()
-	e.events.started.Store(true)
-	go e.events.dispatchEvents()
+	e.events.Start()
 	return nil
 }
 
 func (e *Engine) Close() error {
 	close(e.stop)
+	e.events.Stop()
 	e.Manager.Close()
 	if e.Cluster != nil {
 		_ = e.Cluster.Close()
@@ -183,9 +183,6 @@ func (e *Engine) Close() error {
 	e.NodeHost.Close()
 	if e.sharedQT != nil {
 		_ = e.sharedQT.Close()
-	}
-	if e.events.started.Load() {
-		<-e.events.donec
 	}
 	return nil
 }
@@ -400,6 +397,9 @@ func (e *Engine) WaitUntilReady(ctx context.Context) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
 		return e.tableStore.WaitForLeader(ctx)
+	})
+	eg.Go(func() error {
+		return e.Manager.WaitUntilReady(ctx)
 	})
 	return eg.Wait()
 }
