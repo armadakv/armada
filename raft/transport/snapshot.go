@@ -95,7 +95,7 @@ func (t *Transport) getStreamSink(shardID uint64, replicaID uint64) *Sink {
 func (t *Transport) sendSnapshot(m pb.Message) bool {
 	if !t.doSendSnapshot(m) {
 		if err := m.Snapshot.Unref(); err != nil {
-			panic(err)
+			plog.Errorf("failed to release snapshot %s: %v", dn(m.ShardID, m.To), err)
 		}
 		return false
 	}
@@ -129,7 +129,7 @@ func (t *Transport) doSendSnapshot(m pb.Message) bool {
 	shutdown := func() {
 		t.jobs.Add(^uint64(0))
 		if err := m.Snapshot.Unref(); err != nil {
-			panic(err)
+			plog.Errorf("failed to release snapshot %s: %v", dn(m.ShardID, m.To), err)
 		}
 	}
 	t.wg.Go(func() {

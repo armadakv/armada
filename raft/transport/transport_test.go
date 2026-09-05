@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/armadakv/armada/vfs"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/netutil"
@@ -1088,6 +1089,29 @@ func TestMaxSnapshotConnectionIsLimited(t *testing.T) {
 			t.Fatalf("failed to get sink again %d", i)
 		}
 	}
+}
+
+func TestMissingSnapshotFileReportsFailureWithoutPanic(t *testing.T) {
+	fs := vfs.NewMem()
+	handler := newTestMessageHandler()
+	trans, nodes, _, _, _ := newNOOPTestTransport(handler, fs)
+	defer func() {
+		require.NoError(t, trans.Close())
+	}()
+	nodes.Add(100, 2, serverAddress)
+
+	m := getTestSnapshotMessage(2)
+	m.Snapshot.Filepath = "missing-snapshot.gbsnap"
+	m.Snapshot.FileSize = 1
+	require.True(t, trans.SendSnapshot(m))
+
+	for range 100 {
+		if handler.getFailedSnapshotCount(100, 2) == 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("missing snapshot file was not reported as a failed send")
 }
 
 func testFailedConnectionReportsSnapshotFailure(t *testing.T,

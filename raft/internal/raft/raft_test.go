@@ -136,6 +136,40 @@ func TestNilLogdbWillPanic(t *testing.T) {
 	newRaft(newTestConfig(1, 10, 1), nil)
 }
 
+type failingTermLogDB struct {
+	*TestLogDB
+	err  error
+	fail bool
+}
+
+func (db *failingTermLogDB) Term(index uint64) (uint64, error) {
+	if db.fail {
+		return 0, db.err
+	}
+	return db.TestLogDB.Term(index)
+}
+
+func TestLeaderReplicateResponsePropagatesCommitError(t *testing.T) {
+	db := &failingTermLogDB{TestLogDB: &TestLogDB{entries: make([]pb.Entry, 0)}, err: ErrUnavailable}
+	r := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, db)
+	r.becomeCandidate()
+	ne(r.becomeLeader(), t)
+
+	entry := r.log.inmem.entries[0]
+	if err := db.Append([]pb.Entry{entry}); err != nil {
+		t.Fatalf("failed to persist test entry: %v", err)
+	}
+	r.log.inmem.entries = nil
+	r.log.inmem.markerIndex = entry.Index + 1
+	r.log.inmem.savedTo = entry.Index
+	db.fail = true
+
+	err := r.handleLeaderReplicateResp(pb.Message{From: 2, LogIndex: entry.Index}, r.remotes[2])
+	if err != ErrUnavailable {
+		t.Fatalf("got %v, want %v", err, ErrUnavailable)
+	}
+}
+
 func TestTryCommitResetsMatchArray(t *testing.T) {
 	p := newTestRaft(1, []uint64{1, 2, 3}, 10, 1, NewTestLogDB())
 	p.becomeCandidate()

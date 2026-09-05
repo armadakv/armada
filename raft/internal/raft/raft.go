@@ -1881,7 +1881,7 @@ func (r *raft) handleLeaderReplicateResp(m pb.Message, rp *remote) error {
 			rp.respondedTo()
 			ok, err := r.tryCommit()
 			if err != nil {
-				return nil
+				return err
 			}
 			if ok {
 				r.broadcastReplicateMessage()

@@ -86,8 +86,13 @@ func (c *checkpoint) save(ctx any, w io.Writer, stopc <-chan struct{}) error {
 			if err != nil {
 				return err
 			}
-			if _, err := io.Copy(tw, data); err != nil {
-				return err
+			_, copyErr := io.Copy(tw, data)
+			closeErr := data.Close()
+			if copyErr != nil {
+				return copyErr
+			}
+			if closeErr != nil {
+				return closeErr
 			}
 		}
 	}
@@ -147,16 +152,17 @@ func (c *checkpoint) recover(r io.Reader, stopc <-chan struct{}) error {
 			if err != nil {
 				return err
 			}
-			_, err = io.Copy(fileToWrite, tr) // #nosec G110
-			if err != nil {
-				return err
+			_, copyErr := io.Copy(fileToWrite, tr) // #nosec G110
+			syncErr := fileToWrite.Sync()
+			closeErr := fileToWrite.Close()
+			if copyErr != nil {
+				return copyErr
 			}
-
-			if err := fileToWrite.Sync(); err != nil {
-				return err
+			if syncErr != nil {
+				return syncErr
 			}
-			if err := fileToWrite.Close(); err != nil {
-				return err
+			if closeErr != nil {
+				return closeErr
 			}
 		}
 	}

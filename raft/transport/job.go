@@ -229,12 +229,10 @@ func (j *job) sendChunks(chunks []pb.Chunk) error {
 		}
 		chunk.DeploymentId = j.deploymentID
 		if !chunk.Witness {
-			// TODO: add a test for such error
-			// TODO: add a test to show that failed sendChunks for other reasons will
-			// 			 be reported
 			data, err := loadChunkData(chunk, chunkData, j.fs)
 			if err != nil {
-				panicNow(err)
+				return errors.Wrapf(err, "load snapshot chunk %d for %s",
+					chunk.ChunkId, dn(chunk.ShardID, chunk.ReplicaID))
 			}
 			chunk.Data = data
 		}

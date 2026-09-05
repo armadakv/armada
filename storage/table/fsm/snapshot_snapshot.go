@@ -155,14 +155,17 @@ read:
 			}
 			files = append(files, name)
 			count++
-			if _, err = io.CopyBuffer(f, io.LimitReader(r, int64(size)), buff); err != nil {
-				return err
+			_, copyErr := io.CopyBuffer(f, io.LimitReader(r, int64(size)), buff)
+			syncErr := f.Sync()
+			closeErr := f.Close()
+			if copyErr != nil {
+				return copyErr
 			}
-			if err := f.Sync(); err != nil {
-				return err
+			if syncErr != nil {
+				return syncErr
 			}
-			if err := f.Close(); err != nil {
-				return err
+			if closeErr != nil {
+				return closeErr
 			}
 		}
 	}
