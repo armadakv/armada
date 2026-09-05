@@ -206,7 +206,7 @@ func leader() error {
 
 			// Start server
 			go func() {
-				if err := replication.Serve(); err != nil {
+				if err := replication.Serve(); !errors.Is(err, http.ErrServerClosed) {
 					log.Errorf("grpc listenAndServe failed: %v", err)
 				}
 			}()

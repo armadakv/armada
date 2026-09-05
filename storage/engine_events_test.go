@@ -40,7 +40,7 @@ func TestEventsStopPreventsFurtherEnqueue(t *testing.T) {
 	e.LogCompacted(raftio.EntryInfo{ShardID: 1, Index: 1})
 	e.NodeReady(raftio.NodeInfo{})
 
-	require.Len(t, e.refreshCh, 0)
-	require.Len(t, e.compactionCh, 0)
+	require.Empty(t, e.refreshCh)
+	require.Empty(t, e.compactionCh)
 	require.Empty(t, e.compactions)
 }

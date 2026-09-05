@@ -175,8 +175,6 @@ func (e *events) LeaderUpdated(info raftio.LeaderInfo) {
 	e.diagnostic(leaderUpdated{ShardID: info.ShardID, ReplicaID: info.ReplicaID, Term: info.Term, LeaderID: info.LeaderID})
 }
 
-type nodeHostShuttingDown struct{}
-
 func (e *events) NodeHostShuttingDown() {
 	e.Stop()
 }

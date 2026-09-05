@@ -15,6 +15,7 @@
 package transport
 
 import (
+	"fmt"
 	"math/rand"
 	"reflect"
 	"testing"
@@ -203,24 +204,22 @@ func TestNotTrackedChunkWillBeIgnored(t *testing.T) {
 	runChunkTest(t, fn, fs)
 }
 
-func TestGetOrCreateSnapshotLock(t *testing.T) {
+func TestSnapshotLocksUseFixedStripes(t *testing.T) {
 	fn := func(t *testing.T, chunks *Chunk, handler *testMessageHandler) {
-		l := chunks.getSnapshotLock("k1")
-		l1, ok := chunks.locks["k1"]
-		if !ok || l != l1 {
-			t.Errorf("lock not recorded")
+		lock := chunks.getSnapshotLock("k1")
+		if lock == nil {
+			t.Fatal("lock not returned")
 		}
-		l2 := chunks.getSnapshotLock("k2")
-		l3 := chunks.getSnapshotLock("k3")
-		if l2 == nil || l3 == nil {
-			t.Errorf("lock not returned")
+		if lock != chunks.getSnapshotLock("k1") {
+			t.Fatal("same snapshot key did not use a stable lock")
 		}
-		ll := chunks.getSnapshotLock("k1")
-		if l1 != ll {
-			t.Errorf("lock changed")
+		for i := range 10_000 {
+			if chunks.getSnapshotLock(fmt.Sprintf("snapshot-%d", i)) == nil {
+				t.Fatal("lock not returned")
+			}
 		}
-		if len(chunks.locks) != 3 {
-			t.Errorf("%d locks, want 3", len(chunks.locks))
+		if got, want := len(chunks.locks), snapshotLockStripes; got != want {
+			t.Fatalf("got %d lock stripes, want %d", got, want)
 		}
 	}
 	fs := vfs.NewMem()
