@@ -47,6 +47,8 @@ var (
 
 var firstError = utils.FirstError
 
+const snapshotLockStripes = 256
+
 func chunkKey(c pb.Chunk) string {
 	return fmt.Sprintf("%d:%d:%d", c.ShardID, c.ReplicaID, c.Index)
 }
@@ -75,7 +77,7 @@ func (l *ssLock) unlock() {
 type Chunk struct {
 	fs        vfs.FS
 	tracked   map[string]*tracked
-	locks     map[string]*ssLock
+	locks     [snapshotLockStripes]ssLock
 	dir       server.SnapshotDirFunc
 	confirm   func(uint64, uint64, uint64)
 	onReceive func(pb.MessageBatch)
@@ -97,7 +99,6 @@ func NewChunk(onReceive func(pb.MessageBatch), confirm func(uint64, uint64, uint
 		onReceive: onReceive,
 		confirm:   confirm,
 		tracked:   make(map[string]*tracked),
-		locks:     make(map[string]*ssLock),
 		timeout:   snapshotChunkTimeoutTick,
 		gcTick:    gcIntervalTick,
 		dir:       dir,
@@ -196,15 +197,16 @@ func (c *Chunk) resetLocked(key string) {
 	delete(c.tracked, key)
 }
 
+// getSnapshotLock returns a stable stripe for a snapshot key. Stripes bound
+// lock storage while preserving mutual exclusion for chunks of the same
+// snapshot; unrelated snapshots sharing a stripe are safely serialized.
 func (c *Chunk) getSnapshotLock(key string) *ssLock {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	l, ok := c.locks[key]
-	if !ok {
-		l = &ssLock{}
-		c.locks[key] = l
+	hash := uint64(14695981039346656037)
+	for i := range len(key) {
+		hash ^= uint64(key[i])
+		hash *= 1099511628211
 	}
-	return l
+	return &c.locks[hash%snapshotLockStripes]
 }
 
 func (c *Chunk) full() bool {

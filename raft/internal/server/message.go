@@ -43,6 +43,8 @@ type MessageQueue struct {
 	mu            sync.Mutex
 	stopped       bool
 	leftInWrite   bool
+	pendingTicks  uint64
+	latestTick    uint64
 }
 
 // NewMessageQueue creates a new MessageQueue instance.
@@ -67,6 +69,19 @@ func NewMessageQueue(size uint64,
 // Tick increases the internal tick value.
 func (q *MessageQueue) Tick() {
 	q.tick.Add(1)
+}
+
+// AddTick records a Raft clock tick without consuming a bounded message slot.
+// Multiple pending ticks are coalesced into one LocalTick message returned by Get.
+func (q *MessageQueue) AddTick(tick uint64) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.stopped {
+		return false
+	}
+	q.pendingTicks++
+	q.latestTick = tick
+	return true
 }
 
 // Close closes the queue so no further messages can be added.
@@ -212,7 +227,10 @@ func (q *MessageQueue) Get() []pb.Message {
 	if q.rl.Enabled() {
 		q.rl.Set(0)
 	}
-	if len(q.nodrop) == 0 && len(q.delayed) == 0 {
+	pendingTicks := q.pendingTicks
+	latestTick := q.latestTick
+	q.pendingTicks = 0
+	if len(q.nodrop) == 0 && len(q.delayed) == 0 && pendingTicks == 0 {
 		return t[:sz]
 	}
 
@@ -226,5 +244,13 @@ func (q *MessageQueue) Get() []pb.Message {
 	if len(delayed) > 0 {
 		result = append(result, delayed...)
 	}
-	return append(result, t[:sz]...)
+	result = append(result, t[:sz]...)
+	if pendingTicks > 0 {
+		result = append(result, pb.Message{
+			Type:     pb.LocalTick,
+			Hint:     latestTick,
+			HintHigh: pendingTicks,
+		})
+	}
+	return result
 }

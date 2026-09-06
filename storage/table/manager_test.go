@@ -3,6 +3,7 @@
 package table
 
 import (
+	"context"
 	"net"
 	"testing"
 	"time"
@@ -251,6 +252,36 @@ func TestManager_Restore(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Greater(t, tab2.ClusterID, tab.ClusterID, "restored table should have higher ID assigned")
+}
+
+func TestManagerWaitUntilReadyStartsExistingTables(t *testing.T) {
+	const testTableName = "existing"
+	node, members := startRaftNode(t)
+	defer node.Close()
+
+	tm := NewManager(node, members, &kv.MapStore{}, minimalTestConfig())
+	tab, err := tm.createTable(testTableName)
+	require.NoError(t, err)
+
+	tm.Start()
+	defer tm.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.NoError(t, tm.WaitUntilReady(ctx))
+
+	active, err := tm.GetTable(testTableName)
+	require.NoError(t, err)
+	require.Equal(t, tab.ClusterID, active.ClusterID)
+	_, err = active.LocalIndex(ctx, false)
+	require.NoError(t, err)
+}
+
+func TestManagerWaitUntilReadyHonorsContext(t *testing.T) {
+	tm := &Manager{closed: make(chan struct{}), readyChan: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	require.ErrorIs(t, tm.WaitUntilReady(ctx), context.Canceled)
+	tm.Close()
 }
 
 func TestManager_reconcile(t *testing.T) {

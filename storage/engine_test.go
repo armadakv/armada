@@ -1010,7 +1010,7 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	require.NoError(t, err)
 
 	e := &Engine{cfg: cfg, stop: make(chan struct{}), log: zaptest.NewLogger(t).Sugar()}
-	e.events = &events{eventsCh: make(chan any, 1), stopc: make(chan struct{}), donec: make(chan struct{}), engine: e}
+	e.events = newEvents(e)
 	gossipAdvAddr := cfg.Gossip.AdvertiseAddress
 	if gossipAdvAddr == "" {
 		gossipAdvAddr = cfg.RaftAddress

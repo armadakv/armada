@@ -40,9 +40,10 @@ type leaderStore interface {
 }
 
 const (
-	keyPrefix                 = "/tables/"
-	sequenceKey               = keyPrefix + "sys/idseq"
-	tableIDsRangeStart uint64 = 10000
+	keyPrefix                       = "/tables/"
+	sequenceKey                     = keyPrefix + "sys/idseq"
+	tableIDsRangeStart       uint64 = 10000
+	initialReconcileInterval        = 100 * time.Millisecond
 )
 
 func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg Config) *Manager {
@@ -69,10 +70,13 @@ type Manager struct {
 	store              store
 	nh                 *raft.NodeHost
 	mtx                sync.RWMutex
+	reconcileMu        sync.Mutex
+	wg                 sync.WaitGroup
 	members            map[uint64]string
 	closed             chan struct{}
 	cfg                Config
 	readyChan          chan struct{}
+	readyOnce          sync.Once
 	reconcileInterval  time.Duration
 	cleanupInterval    time.Duration
 	cleanupGracePeriod time.Duration
@@ -250,37 +254,95 @@ func (m *Manager) GetTables() ([]Table, error) {
 }
 
 func (m *Manager) Start() {
-	go m.reconcileLoop()
-	go m.cleanupLoop()
+	m.wg.Go(m.reconcileLoop)
+	m.wg.Go(m.cleanupLoop)
+}
+
+func (m *Manager) WaitUntilReady(ctx context.Context) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-m.closed:
+		return serrors.ErrManagerClosed
+	case <-m.readyChan:
+		return nil
+	}
 }
 
 func (m *Manager) Close() {
 	close(m.closed)
+	m.wg.Wait()
 }
 
 func (m *Manager) reconcileLoop() {
-	t := time.NewTicker(m.reconcileInterval)
+	t := time.NewTimer(0)
 	defer t.Stop()
+	ready := false
 	for {
 		select {
 		case <-m.closed:
 			return
 		case <-t.C:
-			if ls, ok := m.store.(leaderStore); ok {
-				if !ls.HasLeader() {
-					m.log.Warnf("table store does not have a leader")
-					continue
-				}
+			succeeded := m.reconcileOnce()
+			if succeeded && !ready {
+				m.readyOnce.Do(func() { close(m.readyChan) })
+				ready = true
 			}
-			err := m.reconcile()
-			if err != nil {
-				m.log.Errorf("reconcile failed: %v", err)
+			interval := m.reconcileInterval
+			if !ready {
+				interval = initialReconcileInterval
 			}
+			t.Reset(interval)
 		}
 	}
 }
 
+func (m *Manager) reconcileOnce() bool {
+	if ls, ok := m.store.(leaderStore); ok && !ls.HasLeader() {
+		return false
+	}
+	if err := m.reconcile(); err != nil {
+		m.log.Errorf("reconcile failed: %v", err)
+		return false
+	}
+	return m.tablesReady()
+}
+
+func (m *Manager) tablesReady() bool {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	tables, err := m.getTables()
+	if err != nil {
+		m.log.Errorf("failed to load tables while checking readiness: %v", err)
+		return false
+	}
+	nhi := m.nh.GetNodeHostInfo(raft.NodeHostInfoOption{SkipLogInfo: true})
+	if nhi == nil {
+		return false
+	}
+	shards := make(map[uint64]raft.ShardInfo, len(nhi.ShardInfoList))
+	for _, shard := range nhi.ShardInfoList {
+		shards[shard.ShardID] = shard
+	}
+	for _, table := range tables {
+		for _, shardID := range []uint64{table.ClusterID, table.RecoverID} {
+			if shardID <= tableIDsRangeStart {
+				continue
+			}
+			shard, ok := shards[shardID]
+			if !ok || shard.Pending {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (m *Manager) reconcile() error {
+	m.reconcileMu.Lock()
+	defer m.reconcileMu.Unlock()
+
 	tabs, nhi, err := func() (map[string]Table, *raft.NodeHostInfo, error) {
 		m.mtx.RLock()
 		defer m.mtx.RUnlock()
@@ -288,7 +350,7 @@ func (m *Manager) reconcile() error {
 		if err != nil {
 			return nil, nil, err
 		}
-		nhi := m.nh.GetNodeHostInfo(raft.DefaultNodeHostInfoOption)
+		nhi := m.nh.GetNodeHostInfo(raft.NodeHostInfoOption{SkipLogInfo: true})
 		if nhi == nil {
 			return nil, nil, serrors.ErrNodeHostInfoUnavailable
 		}

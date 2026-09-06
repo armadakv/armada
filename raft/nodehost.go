@@ -1838,14 +1838,8 @@ func (nh *NodeHost) sendMessage(msg pb.Message) {
 
 func (nh *NodeHost) sendTickMessage(shards []*node, tick uint64) {
 	for _, n := range shards {
-		m := pb.Message{
-			Type: pb.LocalTick,
-			To:   n.replicaID,
-			From: n.replicaID,
-			Hint: tick,
-		}
 		n.mq.Tick()
-		n.mq.Add(m)
+		n.mq.AddTick(tick)
 	}
 }
 

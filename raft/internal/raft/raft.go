@@ -1881,7 +1881,7 @@ func (r *raft) handleLeaderReplicateResp(m pb.Message, rp *remote) error {
 			rp.respondedTo()
 			ok, err := r.tryCommit()
 			if err != nil {
-				return nil
+				return err
 			}
 			if ok {
 				r.broadcastReplicateMessage()
@@ -1967,8 +1967,8 @@ func (r *raft) handleReadIndexLeaderConfirmation(m pb.Message) {
 				To:       s.from,
 				Type:     pb.ReadIndexResp,
 				LogIndex: s.index,
-				Hint:     m.Hint,
-				HintHigh: m.HintHigh,
+				Hint:     s.ctx.Low,
+				HintHigh: s.ctx.High,
 			})
 		}
 	}
