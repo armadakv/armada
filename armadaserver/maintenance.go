@@ -93,8 +93,19 @@ func (m *BackupServer) Backup(req *armadapb.BackupRequest, srv armadapb.Maintena
 		_ = os.Remove(sf.Path())
 	}()
 
-	_, err = table.Snapshot(ctx, sf)
+	resp, err := table.Snapshot(ctx, sf)
 	if err != nil {
+		return err
+	}
+	final, err := (&armadapb.Command{
+		Table:       req.Table,
+		Type:        armadapb.Command_DUMMY,
+		LeaderIndex: &resp.Index,
+	}).MarshalVT()
+	if err != nil {
+		return err
+	}
+	if _, err := sf.Write(final); err != nil {
 		return err
 	}
 	err = sf.Sync()

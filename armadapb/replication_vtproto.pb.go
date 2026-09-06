@@ -128,6 +128,11 @@ func (m *Table) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.ClusterId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ClusterId))
+		i--
+		dAtA[i] = 0x18
+	}
 	if m.Type != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.Type))
 		i--
@@ -172,6 +177,11 @@ func (m *SnapshotRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ClusterId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ClusterId))
+		i--
+		dAtA[i] = 0x20
 	}
 	if m.LeaderIndex != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LeaderIndex))
@@ -277,6 +287,11 @@ func (m *SnapshotQueryRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) 
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ClusterId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ClusterId))
+		i--
+		dAtA[i] = 0x18
 	}
 	if m.FollowerIndex != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.FollowerIndex))
@@ -389,6 +404,11 @@ func (m *ReplicateRequest) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	if m.unknownFields != nil {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
+	}
+	if m.ClusterId != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ClusterId))
+		i--
+		dAtA[i] = 0x18
 	}
 	if m.LeaderIndex != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.LeaderIndex))
@@ -690,6 +710,9 @@ func (m *Table) SizeVT() (n int) {
 	if m.Type != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.Type))
 	}
+	if m.ClusterId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ClusterId))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -709,6 +732,9 @@ func (m *SnapshotRequest) SizeVT() (n int) {
 	}
 	if m.LeaderIndex != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.LeaderIndex))
+	}
+	if m.ClusterId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ClusterId))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -746,6 +772,9 @@ func (m *SnapshotQueryRequest) SizeVT() (n int) {
 	}
 	if m.FollowerIndex != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.FollowerIndex))
+	}
+	if m.ClusterId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ClusterId))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -793,6 +822,9 @@ func (m *ReplicateRequest) SizeVT() (n int) {
 	}
 	if m.LeaderIndex != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.LeaderIndex))
+	}
+	if m.ClusterId != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.ClusterId))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1104,6 +1136,25 @@ func (m *Table) UnmarshalVT(dAtA []byte) error {
 					break
 				}
 			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -1224,6 +1275,25 @@ func (m *SnapshotRequest) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.LeaderIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1449,6 +1519,25 @@ func (m *SnapshotQueryRequest) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.FollowerIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1746,6 +1835,25 @@ func (m *ReplicateRequest) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.LeaderIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -2405,6 +2513,25 @@ func (m *Table) UnmarshalVTUnsafe(dAtA []byte) error {
 					break
 				}
 			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -2522,6 +2649,25 @@ func (m *SnapshotRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.LeaderIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -2748,6 +2894,25 @@ func (m *SnapshotQueryRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.FollowerIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3043,6 +3208,25 @@ func (m *ReplicateRequest) UnmarshalVTUnsafe(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.LeaderIndex |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 3:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ClusterId", wireType)
+			}
+			m.ClusterId = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.ClusterId |= uint64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}

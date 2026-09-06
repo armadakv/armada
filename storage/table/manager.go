@@ -6,6 +6,7 @@
 package table
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -574,7 +575,7 @@ func (m *Manager) ApplySnapshot(name string, reader io.Reader) error {
 	if err != nil {
 		return err
 	}
-	return m.readIntoTable(tbl.ClusterID, reader)
+	return m.readIntoTable(tbl.ClusterID, name, reader)
 }
 
 func (m *Manager) Restore(name string, reader io.Reader) error {
@@ -605,7 +606,7 @@ func (m *Manager) Restore(name string, reader io.Reader) error {
 		return err
 	}
 
-	err = m.readIntoTable(tbl.RecoverID, reader)
+	err = m.readIntoTable(tbl.RecoverID, name, reader)
 	if err != nil {
 		return err
 	}
@@ -650,54 +651,17 @@ func (m *Manager) setTableVersion(tbl Table, version uint64) error {
 	return nil
 }
 
-func (m *Manager) readIntoTable(id uint64, reader io.Reader) error {
-	backOff := backoff.NewExponentialBackOff()
-	backOff.MaxElapsedTime = 0
+func (m *Manager) readIntoTable(id uint64, name string, reader io.Reader) error {
 	session := m.nh.GetNoOPSession(id)
-	msg := make([]byte, 1024*1024*4)
-
-	cmd := &armadapb.Command{}
-	batchCmd := &armadapb.Command{
-		Type: armadapb.Command_PUT_BATCH,
-	}
-	last := false
-
-	estimatedSize := 0
-	for {
-		n, err := reader.Read(msg)
-		if err != nil {
-			if err == io.EOF {
-				last = true
-			} else {
-				return err
-			}
-		}
-		estimatedSize += n
-
-		if !last {
-			cmd.Reset()
-			err = cmd.UnmarshalVT(msg[:n])
-			if err != nil {
-				return err
-			}
-
-			batchCmd.Table = cmd.Table
-			batchCmd.LeaderIndex = cmd.LeaderIndex
-
-			if uint64(estimatedSize) < m.cfg.Table.MaxInMemLogSize/2 {
-				batchCmd.Batch = append(batchCmd.Batch, cmd.Kv)
-				continue
-			}
-		}
-
-		bb, err := batchCmd.MarshalVT()
+	return readSnapshot(reader, name, m.cfg.Table.MaxInMemLogSize/2, func(cmd *armadapb.Command) error {
+		bb, err := cmd.MarshalVT()
 		if err != nil {
 			return err
 		}
-		batchCmd.LeaderIndex = nil
-		batchCmd.Batch = batchCmd.Batch[:0]
 
-		err = backoff.Retry(func() error {
+		backOff := backoff.NewExponentialBackOff()
+		backOff.MaxElapsedTime = 0
+		return backoff.Retry(func() error {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			_, err := m.nh.SyncPropose(ctx, session, bb)
@@ -706,22 +670,103 @@ func (m *Manager) readIntoTable(id uint64, reader io.Reader) error {
 					m.log.Warn("cluster not found recovery probably started on a different node")
 					return backoff.Permanent(err)
 				}
-				m.log.Warnf("error proposing batch %v", err)
+				m.log.Warnf("error proposing snapshot command: %v", err)
 				return err
 			}
 			return nil
 		}, backOff)
-		if err != nil {
+	})
+}
+
+// readSnapshot validates a command snapshot and proposes its source-indexed data
+// commands in bounded sequences. A final DUMMY command is required to durably
+// advance source progress after every data sequence has been applied.
+func readSnapshot(reader io.Reader, tableName string, maxBatchSize uint64, propose func(*armadapb.Command) error) error {
+	const maxSnapshotRecordSize = 4 * 1024 * 1024
+
+	msg := make([]byte, maxSnapshotRecordSize)
+	batch := &armadapb.Command{
+		Table: []byte(tableName),
+		Type:  armadapb.Command_SEQUENCE,
+	}
+	flush := func() error {
+		if len(batch.Sequence) == 0 {
+			return nil
+		}
+		if err := propose(batch); err != nil {
 			return err
 		}
+		clear(batch.Sequence)
+		batch.Sequence = batch.Sequence[:0]
+		return nil
+	}
 
-		estimatedSize = 0
+	var terminal *armadapb.Command
+	var maxDataLeaderIndex uint64
+	for {
+		n, err := reader.Read(msg)
+		if n > 0 {
+			if terminal != nil {
+				return fmt.Errorf("snapshot contains a record after its terminal marker")
+			}
 
-		if last {
-			break
+			cmd := &armadapb.Command{}
+			if err := cmd.UnmarshalVT(msg[:n]); err != nil {
+				return fmt.Errorf("unmarshal snapshot command: %w", err)
+			}
+			if !bytes.Equal(cmd.Table, []byte(tableName)) {
+				return fmt.Errorf("snapshot command is for table %q, expected %q", cmd.Table, tableName)
+			}
+
+			switch cmd.Type {
+			case armadapb.Command_DUMMY:
+				if cmd.LeaderIndex == nil {
+					return fmt.Errorf("snapshot terminal marker has no leader index")
+				}
+				if cmd.Kv != nil || len(cmd.Batch) != 0 || cmd.Txn != nil || len(cmd.Sequence) != 0 || len(cmd.RangeEnd) != 0 || cmd.PrevKvs || cmd.Count {
+					return fmt.Errorf("snapshot terminal marker contains data")
+				}
+				if *cmd.LeaderIndex < maxDataLeaderIndex {
+					return fmt.Errorf("snapshot terminal leader index %d is behind data index %d", *cmd.LeaderIndex, maxDataLeaderIndex)
+				}
+				terminal = cmd
+			case armadapb.Command_PUT, armadapb.Command_DELETE:
+				if cmd.Kv == nil || len(cmd.Kv.Key) == 0 {
+					return fmt.Errorf("snapshot %s command has no key-value", cmd.Type)
+				}
+				if cmd.LeaderIndex == nil {
+					return fmt.Errorf("snapshot %s command has no leader index", cmd.Type)
+				}
+				if *cmd.LeaderIndex > maxDataLeaderIndex {
+					maxDataLeaderIndex = *cmd.LeaderIndex
+				}
+				batch.Sequence = append(batch.Sequence, cmd)
+				if maxBatchSize > 0 && uint64(batch.SizeVT()) >= maxBatchSize {
+					if err := flush(); err != nil {
+						return err
+					}
+				}
+			default:
+				return fmt.Errorf("snapshot contains unsupported command type %s", cmd.Type)
+			}
+		}
+
+		if err != nil {
+			if !errors.Is(err, io.EOF) {
+				return err
+			}
+			if terminal == nil {
+				return fmt.Errorf("snapshot is missing its terminal marker")
+			}
+			if err := flush(); err != nil {
+				return err
+			}
+			return propose(terminal)
+		}
+		if n == 0 {
+			return io.ErrNoProgress
 		}
 	}
-	return nil
 }
 
 func (m *Manager) waitForLeader(clusterID uint64) error {

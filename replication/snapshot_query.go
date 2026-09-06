@@ -16,7 +16,7 @@ import (
 
 // SnapshotQueryResolver resolves the best snapshot metadata for follower recovery.
 type SnapshotQueryResolver interface {
-	Query(ctx context.Context, table string, followerIndex uint64) (*armadapb.SnapshotQueryResponse, error)
+	Query(ctx context.Context, table string, sourceID, followerIndex uint64) (*armadapb.SnapshotQueryResponse, error)
 }
 
 type grpcSnapshotQueryResolver struct {
@@ -31,10 +31,11 @@ func NewGRPCSnapshotQueryResolver(client armadapb.SnapshotClient) SnapshotQueryR
 	return &grpcSnapshotQueryResolver{client: client}
 }
 
-func (r *grpcSnapshotQueryResolver) Query(ctx context.Context, table string, followerIndex uint64) (*armadapb.SnapshotQueryResponse, error) {
+func (r *grpcSnapshotQueryResolver) Query(ctx context.Context, table string, sourceID, followerIndex uint64) (*armadapb.SnapshotQueryResponse, error) {
 	resp, err := r.client.Query(ctx, &armadapb.SnapshotQueryRequest{
 		Table:         table,
 		FollowerIndex: followerIndex,
+		ClusterId:     sourceID,
 	})
 	if err != nil {
 		if st, ok := status.FromError(err); ok && (st.Code() == codes.FailedPrecondition || st.Code() == codes.Unimplemented) {
@@ -57,7 +58,7 @@ func NewBucketSnapshotQueryResolver(bucket objfs.Bucket) SnapshotQueryResolver {
 	return &bucketSnapshotQueryResolver{bucket: bucket}
 }
 
-func (r *bucketSnapshotQueryResolver) Query(ctx context.Context, table string, followerIndex uint64) (*armadapb.SnapshotQueryResponse, error) {
+func (r *bucketSnapshotQueryResolver) Query(ctx context.Context, table string, _ uint64, followerIndex uint64) (*armadapb.SnapshotQueryResponse, error) {
 	metas, err := store.ListMeta(ctx, r.bucket, table)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot query failed: %w", err)

@@ -73,6 +73,10 @@ func TestMetadataServer_Get(t *testing.T) {
 				r.ErrorIs(err, tt.wantErr)
 				return
 			}
+			for _, table := range got.Tables {
+				r.NotZero(table.ClusterId)
+				table.ClusterId = 0
+			}
 			r.Equal(tt.want, got)
 		})
 	}
@@ -178,6 +182,11 @@ func TestSnapshotServer_Stream(t *testing.T) {
 			s := &SnapshotServer{
 				Tables: newInMemTestEngine(t, tt.fields.Tables...),
 			}
+			if len(tt.fields.Tables) > 0 {
+				table, err := s.Tables.GetTable(string(tt.args.req.Table))
+				require.NoError(t, err)
+				tt.args.req.ClusterId = table.ClusterID
+			}
 			capture := &captureSnapshotStream{}
 			tt.wantErr(t, s.Stream(tt.args.req, capture), fmt.Sprintf("Stream(%v)", tt.args.req))
 			require.Len(t, capture.chunks, tt.wantChunksCount)
@@ -201,8 +210,10 @@ func TestSnapshotServer_Stream(t *testing.T) {
 		require.NoError(t, err)
 
 		s := &SnapshotServer{Tables: engine}
+		table, err := engine.GetTable(string(table1Name))
+		require.NoError(t, err)
 		capture := &captureSnapshotStream{}
-		require.NoError(t, s.Stream(&armadapb.SnapshotRequest{Table: table1Name}, capture))
+		require.NoError(t, s.Stream(&armadapb.SnapshotRequest{Table: table1Name, ClusterId: table.ClusterID}, capture))
 		// At least 1 chunk must be present regardless of size.
 		require.NotEmpty(t, capture.chunks)
 
@@ -232,13 +243,17 @@ func TestSnapshotServer_Query(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, bucket.Upload(context.Background(), store.IncrMetaKey("orders", 100, 150), bytes.NewReader(raw)))
 
+		engine := newInMemTestEngine(t, "orders")
 		s := &SnapshotServer{
-			Tables:        newInMemTestEngine(t, "orders"),
+			Tables:        engine,
 			SnapshotStore: bucket,
 		}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
 		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
 			Table:         "orders",
 			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
 		})
 		require.NoError(t, err)
 		// No full snapshot available — incremental restore is not yet supported.
@@ -260,13 +275,17 @@ func TestSnapshotServer_Query(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, bucket.Upload(context.Background(), store.FullMetaKey("orders", 150), bytes.NewReader(raw)))
 
+		engine := newInMemTestEngine(t, "orders")
 		s := &SnapshotServer{
-			Tables:        newInMemTestEngine(t, "orders"),
+			Tables:        engine,
 			SnapshotStore: bucket,
 		}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
 		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
 			Table:         "orders",
 			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
 		})
 		require.NoError(t, err)
 		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
@@ -334,6 +353,11 @@ func TestLogServer_Replicate(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
 			defer cancel()
+			if len(tt.fields.Tables) > 0 {
+				table, err := te.GetTable(string(tt.args.req.Table))
+				require.NoError(t, err)
+				tt.args.req.ClusterId = table.ClusterID
+			}
 			stream := &captureLogStream{ctx: ctx}
 			tt.wantErr(t, l.Replicate(tt.args.req, stream), fmt.Sprintf("Replicate(%v)", tt.args.req))
 		})

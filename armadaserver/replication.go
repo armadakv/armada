@@ -45,8 +45,9 @@ func (m *MetadataServer) Get(context.Context, *armadapb.MetadataRequest) (*armad
 	resp := &armadapb.MetadataResponse{}
 	for _, tab := range tabs {
 		resp.Tables = append(resp.Tables, &armadapb.Table{
-			Type: armadapb.Table_REPLICATED,
-			Name: tab.Name,
+			Type:      armadapb.Table_REPLICATED,
+			Name:      tab.Name,
+			ClusterId: tab.ClusterID,
 		})
 		slices.SortFunc(resp.Tables, func(a, b *armadapb.Table) int {
 			return cmp.Compare(a.Name, b.Name)
@@ -66,6 +67,9 @@ func (s *SnapshotServer) Stream(req *armadapb.SnapshotRequest, srv armadapb.Snap
 	table, err := s.Tables.GetTable(string(req.Table))
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "unable to stream from table '%s': %v", req.GetTable(), err)
+	}
+	if req.GetClusterId() != table.ClusterID {
+		return status.Errorf(codes.Aborted, "table %q incarnation changed: requested shard %d, current shard %d", req.GetTable(), req.GetClusterId(), table.ClusterID)
 	}
 
 	ctx := srv.Context()
@@ -184,6 +188,13 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 	if req.GetTable() == "" {
 		return nil, status.Error(codes.InvalidArgument, "table is required")
 	}
+	table, err := s.Tables.GetTable(req.GetTable())
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "unable to query snapshot for table %q: %v", req.GetTable(), err)
+	}
+	if req.GetClusterId() != table.ClusterID {
+		return nil, status.Errorf(codes.Aborted, "table %q incarnation changed: requested shard %d, current shard %d", req.GetTable(), req.GetClusterId(), table.ClusterID)
+	}
 	if s.SnapshotStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "shared snapshot store is not configured")
 	}
@@ -285,6 +296,9 @@ func (l *LogServer) Replicate(req *armadapb.ReplicateRequest, server armadapb.Lo
 			return status.Error(codes.Unavailable, err.Error())
 		}
 		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if req.GetClusterId() != t.ClusterID {
+		return status.Errorf(codes.Aborted, "table %q incarnation changed: requested shard %d, current shard %d", req.GetTable(), req.GetClusterId(), t.ClusterID)
 	}
 
 	ctx := server.Context()

@@ -72,9 +72,9 @@ func commandIncrementalSnapshot(reader pebble.Reader, tableName string, sinceInd
 			if seqno > sinceIndex {
 				// This key changed after sinceIndex — emit it.
 				if isTombstone(iter.Value()) {
-					buffer, err = writeDeleteCommand(tableName, k.Key, buffer)
+					buffer, err = writeDeleteCommand(tableName, k.Key, seqno, buffer)
 				} else {
-					buffer, err = writeCommand(tableName, k.Key, iter.Value(), buffer)
+					buffer, err = writeCommand(tableName, k.Key, iter.Value(), seqno, buffer)
 				}
 				if err != nil {
 					return 0, err
@@ -94,11 +94,12 @@ func commandIncrementalSnapshot(reader pebble.Reader, tableName string, sinceInd
 }
 
 // writeDeleteCommand writes a DELETE proto.Command for key into (optionally provided) buffer.
-func writeDeleteCommand(tableName string, userKey []byte, buffer []byte) ([]byte, error) {
+func writeDeleteCommand(tableName string, userKey []byte, leaderIndex uint64, buffer []byte) ([]byte, error) {
 	cmd := armadapb.CommandFromVTPool()
 	defer cmd.ReturnToVTPool()
 	cmd.Table = []byte(tableName)
 	cmd.Type = armadapb.Command_DELETE
+	cmd.LeaderIndex = &leaderIndex
 	cmd.Kv = &armadapb.KeyValue{
 		Key: userKey,
 	}
@@ -145,7 +146,7 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 					iterNextUserKey(iter, currentKey)
 					continue
 				}
-				buffer, err = writeCommand(tableName, k.Key, iter.Value(), buffer)
+				buffer, err = writeCommand(tableName, k.Key, iter.Value(), k.Seqno, buffer)
 				if err != nil {
 					return 0, err
 				}
@@ -165,11 +166,12 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 }
 
 // writeCommand writes KV pair as PUT proto.Command into (optionally provided) buffer.
-func writeCommand(tableName string, key []byte, val []byte, buffer []byte) ([]byte, error) {
+func writeCommand(tableName string, key []byte, val []byte, leaderIndex uint64, buffer []byte) ([]byte, error) {
 	cmd := armadapb.CommandFromVTPool()
 	defer cmd.ReturnToVTPool()
 	cmd.Table = []byte(tableName)
 	cmd.Type = armadapb.Command_PUT
+	cmd.LeaderIndex = &leaderIndex
 	cmd.Kv = &armadapb.KeyValue{
 		Key:   key,
 		Value: val,
