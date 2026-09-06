@@ -43,6 +43,10 @@ func (t MockTableService) Restore(name string, reader io.Reader) error {
 	return t.error
 }
 
+func (t MockTableService) RestoreLegacy(name string, reader io.Reader) error {
+	return t.error
+}
+
 func newInMemTestEngine(t *testing.T, tables ...string) *storage.Engine {
 	testAddr := func() string {
 		l, err := net.Listen("tcp4", "127.0.0.1:0")

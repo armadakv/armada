@@ -575,10 +575,22 @@ func (m *Manager) ApplySnapshot(name string, reader io.Reader) error {
 	if err != nil {
 		return err
 	}
-	return m.readIntoTable(tbl.ClusterID, name, reader)
+	return m.readIntoTable(tbl.ClusterID, name, reader, true)
 }
 
+// Restore installs a replication snapshot. Replication snapshots must contain a
+// validated terminal marker so source progress cannot advance from a truncated stream.
 func (m *Manager) Restore(name string, reader io.Reader) error {
+	return m.restore(name, reader, true)
+}
+
+// RestoreLegacy installs a maintenance backup created before replication snapshots
+// required a terminal source-progress marker.
+func (m *Manager) RestoreLegacy(name string, reader io.Reader) error {
+	return m.restore(name, reader, false)
+}
+
+func (m *Manager) restore(name string, reader io.Reader, requireTerminal bool) error {
 	tbl, version, err := m.getTableVersion(name)
 	if err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
 		return err
@@ -606,7 +618,7 @@ func (m *Manager) Restore(name string, reader io.Reader) error {
 		return err
 	}
 
-	err = m.readIntoTable(tbl.RecoverID, name, reader)
+	err = m.readIntoTable(tbl.RecoverID, name, reader, requireTerminal)
 	if err != nil {
 		return err
 	}
@@ -651,9 +663,9 @@ func (m *Manager) setTableVersion(tbl Table, version uint64) error {
 	return nil
 }
 
-func (m *Manager) readIntoTable(id uint64, name string, reader io.Reader) error {
+func (m *Manager) readIntoTable(id uint64, name string, reader io.Reader, requireTerminal bool) error {
 	session := m.nh.GetNoOPSession(id)
-	return readSnapshot(reader, name, m.cfg.Table.MaxInMemLogSize/2, func(cmd *armadapb.Command) error {
+	return readSnapshotWithTerminal(reader, name, m.cfg.Table.MaxInMemLogSize/2, requireTerminal, func(cmd *armadapb.Command) error {
 		bb, err := cmd.MarshalVT()
 		if err != nil {
 			return err
@@ -678,10 +690,14 @@ func (m *Manager) readIntoTable(id uint64, name string, reader io.Reader) error 
 	})
 }
 
-// readSnapshot validates a command snapshot and proposes its source-indexed data
-// commands in bounded sequences. A final DUMMY command is required to durably
-// advance source progress after every data sequence has been applied.
+// readSnapshot validates a replication command snapshot and proposes its
+// source-indexed data commands in bounded sequences. A final DUMMY command is
+// required to durably advance source progress after every data sequence has applied.
 func readSnapshot(reader io.Reader, tableName string, maxBatchSize uint64, propose func(*armadapb.Command) error) error {
+	return readSnapshotWithTerminal(reader, tableName, maxBatchSize, true, propose)
+}
+
+func readSnapshotWithTerminal(reader io.Reader, tableName string, maxBatchSize uint64, requireTerminal bool, propose func(*armadapb.Command) error) error {
 	const maxSnapshotRecordSize = 4 * 1024 * 1024
 
 	msg := make([]byte, maxSnapshotRecordSize)
@@ -735,9 +751,10 @@ func readSnapshot(reader io.Reader, tableName string, maxBatchSize uint64, propo
 					return fmt.Errorf("snapshot %s command has no key-value", cmd.Type)
 				}
 				if cmd.LeaderIndex == nil {
-					return fmt.Errorf("snapshot %s command has no leader index", cmd.Type)
-				}
-				if *cmd.LeaderIndex > maxDataLeaderIndex {
+					if requireTerminal {
+						return fmt.Errorf("snapshot %s command has no leader index", cmd.Type)
+					}
+				} else if *cmd.LeaderIndex > maxDataLeaderIndex {
 					maxDataLeaderIndex = *cmd.LeaderIndex
 				}
 				batch.Sequence = append(batch.Sequence, cmd)
@@ -756,7 +773,10 @@ func readSnapshot(reader io.Reader, tableName string, maxBatchSize uint64, propo
 				return err
 			}
 			if terminal == nil {
-				return fmt.Errorf("snapshot is missing its terminal marker")
+				if requireTerminal {
+					return fmt.Errorf("snapshot is missing its terminal marker")
+				}
+				return flush()
 			}
 			if err := flush(); err != nil {
 				return err

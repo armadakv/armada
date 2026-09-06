@@ -1,4 +1,4 @@
-// Copyright JAMF Software, LLC
+// Copyright Armada Contributors
 
 package fsm
 

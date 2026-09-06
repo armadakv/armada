@@ -37,6 +37,9 @@ message RestoreMessage {
 message RestoreInfo {
   // table is name of the table in the stream.
   bytes table = 1;
+  // format identifies the backup stream format. An empty value denotes the
+  // historical, unterminated maintenance backup format.
+  string format = 2;
 }
 
 message RestoreResponse {

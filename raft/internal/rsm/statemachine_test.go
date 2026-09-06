@@ -2428,7 +2428,7 @@ func TestIsDummySnapshot(t *testing.T) {
 }
 
 func TestWitnessNodePanicWhenSavingSnapshot(t *testing.T) {
-	sm := &StateMachine{isWitness: true}
+	sm := &StateMachine{isWitness: true, node: newTestNodeProxy()}
 	defer func() {
 		if r := recover(); r == nil {
 			t.Fatalf("failed to trigger panic")
@@ -2456,7 +2456,7 @@ func TestSetLastApplied(t *testing.T) {
 		{100, 5, []pb.Entry{{Index: 101, Term: 5}, {Index: 102, Term: 6}}, false},
 	}
 	for idx, tt := range tests {
-		sm := StateMachine{}
+		sm := StateMachine{node: newTestNodeProxy()}
 		sm.lastApplied.index = tt.index
 		sm.lastApplied.term = tt.term
 		func() {

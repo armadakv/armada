@@ -6,17 +6,24 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftpb"
 	"github.com/armadakv/armada/replication/store"
+	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/objfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestMetadataServer_Get(t *testing.T) {
@@ -225,6 +232,87 @@ func TestSnapshotServer_Stream(t *testing.T) {
 		}
 		require.NotEmpty(t, raw, "snapshot data must not be empty for a table with data")
 	})
+}
+
+type tableServiceStub struct {
+	activeTable table.ActiveTable
+	err         error
+}
+
+func (s tableServiceStub) GetTables() ([]table.Table, error) {
+	return nil, s.err
+}
+
+func (s tableServiceStub) GetTable(string) (table.ActiveTable, error) {
+	return s.activeTable, s.err
+}
+
+func (s tableServiceStub) Restore(string, io.Reader) error {
+	return s.err
+}
+
+func (s tableServiceStub) RestoreLegacy(string, io.Reader) error {
+	return s.err
+}
+
+func (s tableServiceStub) CreateTable(string) (table.Table, error) {
+	return table.Table{}, s.err
+}
+
+func (s tableServiceStub) DeleteTable(string) error {
+	return s.err
+}
+
+func TestReplicationHandlersRequireClusterID(t *testing.T) {
+	tables := tableServiceStub{
+		activeTable: table.ActiveTable{Table: table.Table{ClusterID: 1}},
+	}
+
+	snapshotServer := &SnapshotServer{Tables: tables}
+	err := snapshotServer.Stream(&armadapb.SnapshotRequest{Table: []byte("orders")}, &captureSnapshotStream{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	_, err = snapshotServer.Query(context.Background(), &armadapb.SnapshotQueryRequest{Table: "orders"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	logServer := &LogServer{Tables: tables}
+	err = logServer.Replicate(&armadapb.ReplicateRequest{Table: []byte("orders"), LeaderIndex: 1}, &captureLogStream{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestSnapshotServer_QueryGetTableErrorMapping(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code codes.Code
+	}{
+		{
+			name: "table not found",
+			err:  serrors.ErrTableNotFound,
+			code: codes.NotFound,
+		},
+		{
+			name: "retryable error",
+			err:  raft.ErrTimeout,
+			code: codes.Unavailable,
+		},
+		{
+			name: "other error",
+			err:  stderrors.New("unknown"),
+			code: codes.FailedPrecondition,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &SnapshotServer{Tables: tableServiceStub{err: tt.err}}
+			_, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+				Table:     "orders",
+				ClusterId: 1,
+			})
+			require.Equal(t, tt.code, status.Code(err))
+		})
+	}
 }
 
 func TestSnapshotServer_Query(t *testing.T) {

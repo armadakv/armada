@@ -64,6 +64,10 @@ type SnapshotServer struct {
 }
 
 func (s *SnapshotServer) Stream(req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer) error {
+	if req.GetClusterId() == 0 {
+		return status.Error(codes.InvalidArgument, "cluster_id is required")
+	}
+
 	table, err := s.Tables.GetTable(string(req.Table))
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "unable to stream from table '%s': %v", req.GetTable(), err)
@@ -188,9 +192,19 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 	if req.GetTable() == "" {
 		return nil, status.Error(codes.InvalidArgument, "table is required")
 	}
+	if req.GetClusterId() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "cluster_id is required")
+	}
+
 	table, err := s.Tables.GetTable(req.GetTable())
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, "unable to query snapshot for table %q: %v", req.GetTable(), err)
+		if errors.Is(err, serrors.ErrTableNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		if serrors.IsSafeToRetry(err) {
+			return nil, status.Error(codes.Unavailable, err.Error())
+		}
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
 	if req.GetClusterId() != table.ClusterID {
 		return nil, status.Errorf(codes.Aborted, "table %q incarnation changed: requested shard %d, current shard %d", req.GetTable(), req.GetClusterId(), table.ClusterID)
@@ -285,6 +299,9 @@ var (
 func (l *LogServer) Replicate(req *armadapb.ReplicateRequest, server armadapb.Log_ReplicateServer) error {
 	if req.LeaderIndex == 0 {
 		return status.Error(codes.InvalidArgument, "invalid leaderIndex: leaderIndex must be greater than 0")
+	}
+	if req.GetClusterId() == 0 {
+		return status.Error(codes.InvalidArgument, "cluster_id is required")
 	}
 
 	t, err := l.Tables.GetTable(string(req.GetTable()))
