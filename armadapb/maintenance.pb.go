@@ -9,11 +9,12 @@
 package armadapb
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -156,7 +157,10 @@ func (*RestoreMessage_Chunk) isRestoreMessage_Data() {}
 type RestoreInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// table is name of the table in the stream.
-	Table         []byte `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
+	Table []byte `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
+	// format identifies the backup stream format. An empty value denotes the
+	// historical, unterminated maintenance backup format.
+	Format        string `protobuf:"bytes,2,opt,name=format,proto3" json:"format,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -196,6 +200,13 @@ func (x *RestoreInfo) GetTable() []byte {
 		return x.Table
 	}
 	return nil
+}
+
+func (x *RestoreInfo) GetFormat() string {
+	if x != nil {
+		return x.Format
+	}
+	return ""
 }
 
 type RestoreResponse struct {
@@ -335,9 +346,10 @@ const file_maintenance_proto_rawDesc = "" +
 	"\x0eRestoreMessage\x121\n" +
 	"\x04info\x18\x01 \x01(\v2\x1b.maintenance.v1.RestoreInfoH\x00R\x04info\x125\n" +
 	"\x05chunk\x18\x02 \x01(\v2\x1d.replication.v1.SnapshotChunkH\x00R\x05chunkB\x06\n" +
-	"\x04data\"#\n" +
+	"\x04data\";\n" +
 	"\vRestoreInfo\x12\x14\n" +
-	"\x05table\x18\x01 \x01(\fR\x05table\"\x11\n" +
+	"\x05table\x18\x01 \x01(\fR\x05table\x12\x16\n" +
+	"\x06format\x18\x02 \x01(\tR\x06format\"\x11\n" +
 	"\x0fRestoreResponse\"A\n" +
 	"\fResetRequest\x12\x14\n" +
 	"\x05table\x18\x01 \x01(\fR\x05table\x12\x1b\n" +

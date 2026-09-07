@@ -32,6 +32,8 @@ message Table {
   }
   string name = 1;
   Type type = 2;
+  // cluster_id is the immutable Raft shard ID for this table incarnation.
+  uint64 cluster_id = 3;
 }
 
 service Snapshot {
@@ -51,6 +53,8 @@ message SnapshotRequest {
   // Only meaningful when incremental is true. The server will stream only the
   // changes (puts and deletes) with seqno > leader_index.
   uint64 leader_index = 3;
+  // cluster_id identifies the leader table incarnation being requested.
+  uint64 cluster_id = 4;
 }
 
 message SnapshotChunk {
@@ -66,6 +70,8 @@ message SnapshotQueryRequest {
   string table = 1;
   // follower_index is the current applied index on the follower
   uint64 follower_index = 2;
+  // cluster_id identifies the leader table incarnation being requested.
+  uint64 cluster_id = 3;
 }
 
 message SnapshotQueryResponse {
@@ -96,6 +102,8 @@ message ReplicateRequest {
 
   // leader_index is the index in the leader raft log of the last stored item in the follower
   uint64 leader_index = 2;
+  // cluster_id identifies the leader table incarnation being requested.
+  uint64 cluster_id = 3;
 }
 
 // ReplicateResponse response to the ReplicateRequest

@@ -23,6 +23,7 @@ import (
 const (
 	manifestFileName         = "manifest.json"
 	defaultSnapshotChunkSize = 2 * 1024 * 1024
+	backupFormatV2           = "armada-command-v2"
 )
 
 type Clock interface {
@@ -52,6 +53,7 @@ func (nilLogger) Infof(msg string, args ...any) {
 
 // Manifest a backup manifest containing a backup info.
 type Manifest struct {
+	Format   string          `json:"format,omitempty"`
 	Started  time.Time       `json:"started"`
 	Finished time.Time       `json:"finished"`
 	Tables   []ManifestTable `json:"tables"`
@@ -105,6 +107,7 @@ func (b *Backup) Backup() (Manifest, error) {
 	sc := armadapb.NewMaintenanceClient(b.Conn)
 
 	manifest := Manifest{
+		Format:  backupFormatV2,
 		Started: b.clock.Now(),
 	}
 
@@ -203,6 +206,9 @@ func (b *Backup) Restore() error {
 		return err
 	}
 	b.Log.Info("manifest loaded")
+	if manifest.Format != "" && manifest.Format != backupFormatV2 {
+		return fmt.Errorf("unsupported backup format %q", manifest.Format)
+	}
 
 	b.Log.Infof("going to restore %v", manifest.Tables)
 
@@ -232,7 +238,8 @@ func (b *Backup) Restore() error {
 		err = stream.Send(&armadapb.RestoreMessage{
 			Data: &armadapb.RestoreMessage_Info{
 				Info: &armadapb.RestoreInfo{
-					Table: []byte(table.Name),
+					Table:  []byte(table.Name),
+					Format: manifest.Format,
 				},
 			},
 		})

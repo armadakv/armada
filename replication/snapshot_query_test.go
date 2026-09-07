@@ -32,7 +32,7 @@ func TestGRPCSnapshotQueryResolver_FallbackToLiveHTTP(t *testing.T) {
 		r := NewGRPCSnapshotQueryResolver(&mockGRPCSnapshotClient{
 			err: status.Error(codes.FailedPrecondition, "shared snapshot store is not configured"),
 		})
-		resp, err := r.Query(context.Background(), "orders", 100)
+		resp, err := r.Query(context.Background(), "orders", 42, 100)
 		require.NoError(t, err)
 		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
 		require.Equal(t, "snapshots-live/orders", resp.ObjectKey)
@@ -42,7 +42,7 @@ func TestGRPCSnapshotQueryResolver_FallbackToLiveHTTP(t *testing.T) {
 		r := NewGRPCSnapshotQueryResolver(&mockGRPCSnapshotClient{
 			err: status.Error(codes.Unimplemented, "method not implemented"),
 		})
-		resp, err := r.Query(context.Background(), "orders", 100)
+		resp, err := r.Query(context.Background(), "orders", 42, 100)
 		require.NoError(t, err)
 		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
 		require.Equal(t, "snapshots-live/orders", resp.ObjectKey)
@@ -52,7 +52,7 @@ func TestGRPCSnapshotQueryResolver_FallbackToLiveHTTP(t *testing.T) {
 		r := NewGRPCSnapshotQueryResolver(&mockGRPCSnapshotClient{
 			err: status.Error(codes.Internal, "boom"),
 		})
-		_, err := r.Query(context.Background(), "orders", 100)
+		_, err := r.Query(context.Background(), "orders", 42, 100)
 		require.ErrorContains(t, err, "snapshot query failed")
 		require.ErrorContains(t, err, "boom")
 	})

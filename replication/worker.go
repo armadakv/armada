@@ -149,10 +149,11 @@ func (tql tableQueueLenStore) Get() (uint64, error) {
 	return v, nil
 }
 
-func (f *workerFactory) create(table string) *worker {
-	return &worker{
+func (f *workerFactory) create(table string, source sourceTableState) *worker {
+	w := &worker{
 		workerFactory: f,
 		table:         table,
+		sourceID:      source.ClusterID,
 		closer:        make(chan struct{}),
 		leaseChan:     make(chan bool),
 		log:           f.log.Named(table),
@@ -170,6 +171,8 @@ func (f *workerFactory) create(table string) *worker {
 			replicationLeased:        f.metrics.replicationLeased.WithLabelValues(table),
 		},
 	}
+	w.forceRecovery.Store(source.NeedsFullRestore)
+	return w
 }
 
 type replicationThrottle struct {
@@ -196,15 +199,17 @@ func newThrottle(pollInterval time.Duration) replicationThrottle {
 // worker connects to the log replication service and synchronizes the local state.
 type worker struct {
 	*workerFactory
-	table     string
-	closer    chan struct{}
-	log       *zap.SugaredLogger
-	queue     tableQueue
-	store     tableQueueLenStore
-	throttle  replicationThrottle
-	leased    atomic.Bool
-	leaseChan chan bool
-	metrics   struct {
+	table         string
+	sourceID      uint64
+	forceRecovery atomic.Bool
+	closer        chan struct{}
+	log           *zap.SugaredLogger
+	queue         tableQueue
+	store         tableQueueLenStore
+	throttle      replicationThrottle
+	leased        atomic.Bool
+	leaseChan     chan bool
+	metrics       struct {
 		replicationLeaderIndex   prometheus.Gauge
 		replicationFollowerIndex prometheus.Gauge
 		replicationLeased        prometheus.Gauge
@@ -309,6 +314,18 @@ func (w *worker) Start() {
 				w.log.Debug("skipping replication - table not leased")
 				continue
 			}
+			if w.forceRecovery.Load() {
+				if err := w.recover(); err != nil {
+					w.log.Warnf("error in required full recovery: %v", err)
+					continue
+				}
+				if err := markSourceTableRestored(w.workerFactory.store, w.table, w.sourceID); err != nil {
+					w.log.Warnf("could not persist completed full recovery: %v", err)
+					continue
+				}
+				w.forceRecovery.Store(false)
+				continue
+			}
 			t.Reset(w.throttle.current())
 			if u, _ := w.store.Max(); u > 0 {
 				w.throttle.up()
@@ -391,6 +408,7 @@ func (w *worker) do(leaderIndex uint64, session *client.Session) (replicateResul
 	replicateRequest := &armadapb.ReplicateRequest{
 		LeaderIndex: leaderIndex + 1,
 		Table:       []byte(w.table),
+		ClusterId:   w.sourceID,
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), w.logTimeout)
 	defer cancel()
@@ -530,6 +548,9 @@ func (w *worker) recover() error {
 			ObjectKey: LiveSnapshotObjectKey(w.table),
 		}
 	}
+	if w.forceRecovery.Load() && queryResp.Type != armadapb.SnapshotQueryResponse_FULL {
+		return fmt.Errorf("source table incarnation changed; a full snapshot is required")
+	}
 
 	w.log.Infof("downloading %s snapshot object=%s (base=%d tip=%d)",
 		queryResp.Type, queryResp.ObjectKey, queryResp.BaseIndex, queryResp.TipIndex)
@@ -571,7 +592,7 @@ func (w *worker) querySnapshot(ctx context.Context, followerIndex uint64) (*arma
 	if w.snapshotQuery == nil {
 		return nil, fmt.Errorf("snapshot query resolver is not configured")
 	}
-	queryResp, err := w.snapshotQuery.Query(ctx, w.table, followerIndex)
+	queryResp, err := w.snapshotQuery.Query(ctx, w.table, w.sourceID, followerIndex)
 	if err != nil {
 		return nil, err
 	}

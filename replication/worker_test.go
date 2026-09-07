@@ -79,7 +79,7 @@ func TestWorker_do(t *testing.T) {
 	t.Log("create worker")
 	conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	r.NoError(err)
-	logger, obs := observer.New(zap.DebugLevel)
+	logger, _ := observer.New(zap.DebugLevel)
 	queue := storage.NewNotificationQueue()
 	defer queue.Close()
 	go queue.Run()
@@ -110,7 +110,7 @@ func TestWorker_do(t *testing.T) {
 			),
 		},
 	}
-	w := f.create("test")
+	w := f.create("test", sourceTableState{ClusterID: at.ClusterID})
 	idx, id, err := w.tableState()
 	r.NoError(err)
 	_, err = w.do(idx, f.engine.GetNoOPSession(id))
@@ -155,33 +155,15 @@ func TestWorker_do(t *testing.T) {
 
 	err = leaderEngine.DeleteTable("test")
 	r.NoError(err)
-	t.Log("create empty table test")
+	t.Log("recreate table with a new source identity")
 	_, err = leaderEngine.CreateTable("test")
 	r.NoError(err)
 
-	t.Log("load some data")
-	r.Eventually(func() bool {
-		at, err = leaderEngine.GetTable("test")
-		return err == nil
-	}, 5*time.Second, 500*time.Millisecond, "table not created in time")
-	r.NoError(err)
-
-	keyCount = 90
-	r.NoError(fillData(keyCount, at))
-	w.Start()
 	idx, id, err = w.tableState()
 	r.NoError(err)
-	r.Eventually(func() bool {
-		return obs.FilterMessage("the leader log is behind ... backing off").Len() > 0
-	}, 5*time.Second, 100*time.Millisecond)
-
-	keyCount = 1000
-	r.NoError(fillData(keyCount, at))
-	r.Eventually(func() bool {
-		idx, id, err = w.tableState()
-		r.NoError(err)
-		return idx > uint64(200)
-	}, 5*time.Second, 100*time.Millisecond)
+	result, err := w.do(idx, f.engine.GetNoOPSession(id))
+	r.Equal(resultUnknown, result)
+	r.ErrorContains(err, "incarnation changed")
 }
 
 type mockSnapshotQueryResolver struct {
@@ -189,7 +171,7 @@ type mockSnapshotQueryResolver struct {
 	queryErr  error
 }
 
-func (m *mockSnapshotQueryResolver) Query(_ context.Context, _ string, _ uint64) (*armadapb.SnapshotQueryResponse, error) {
+func (m *mockSnapshotQueryResolver) Query(_ context.Context, _ string, _, _ uint64) (*armadapb.SnapshotQueryResponse, error) {
 	return m.queryResp, m.queryErr
 }
 
@@ -252,6 +234,28 @@ func TestWorker_recover_negotiation(t *testing.T) {
 		}
 		err := w.recover()
 		require.ErrorContains(t, err, "no shared store")
+	})
+
+	t.Run("required recovery rejects an incremental snapshot", func(t *testing.T) {
+		mock := &mockSnapshotQueryResolver{
+			queryResp: &armadapb.SnapshotQueryResponse{Type: armadapb.SnapshotQueryResponse_INCREMENTAL},
+		}
+		_, fe := prepareLeaderAndFollowerEngine(t)
+		require.NoError(t, fe.WaitUntilReady(t.Context()))
+		w := &worker{
+			table: "test",
+			workerFactory: &workerFactory{
+				snapshotTimeout: 5 * time.Second,
+				engine:          fe,
+				queue:           storage.NewNotificationQueue(),
+				snapshotQuery:   mock,
+				snapshotGetter:  mockSnapshotGetter{},
+			},
+			log: zaptest.NewLogger(t).Sugar(),
+		}
+		w.forceRecovery.Store(true)
+		err := w.recover()
+		require.ErrorContains(t, err, "a full snapshot is required")
 	})
 
 	t.Run("transient query error propagates without legacy fallback", func(t *testing.T) {

@@ -175,6 +175,7 @@ func TestActiveTable_Range(t *testing.T) {
 				Table: Table{},
 				nh:    nh,
 			}
+			at.session = nh.GetNoOPSession(0)
 			got, err := at.Range(tt.args.ctx, tt.args.req)
 			if tt.wantErr != nil {
 				r.ErrorIs(err, tt.wantErr)
@@ -307,6 +308,7 @@ func TestActiveTable_Put(t *testing.T) {
 				Table: Table{},
 				nh:    nh,
 			}
+			at.session = nh.GetNoOPSession(0)
 			got, err := at.Put(tt.args.ctx, tt.args.req)
 			if tt.wantErr != nil {
 				r.ErrorIs(err, tt.wantErr)
@@ -452,6 +454,7 @@ func TestActiveTable_Delete(t *testing.T) {
 				Table: Table{},
 				nh:    nh,
 			}
+			at.session = nh.GetNoOPSession(0)
 			got, err := at.Delete(tt.args.ctx, tt.args.req)
 			if tt.wantErr != nil {
 				r.ErrorIs(err, tt.wantErr)

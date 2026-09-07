@@ -13,11 +13,12 @@
 package armadapb
 
 import (
-	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
-	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
+
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 )
 
 const (
@@ -255,9 +256,11 @@ func (x *MetadataResponse) GetTables() []*Table {
 }
 
 type Table struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Type          Table_Type             `protobuf:"varint,2,opt,name=type,proto3,enum=replication.v1.Table_Type" json:"type,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Name  string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Type  Table_Type             `protobuf:"varint,2,opt,name=type,proto3,enum=replication.v1.Table_Type" json:"type,omitempty"`
+	// cluster_id is the immutable Raft shard ID for this table incarnation.
+	ClusterId     uint64 `protobuf:"varint,3,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -306,6 +309,13 @@ func (x *Table) GetType() Table_Type {
 	return Table_REPLICATED
 }
 
+func (x *Table) GetClusterId() uint64 {
+	if x != nil {
+		return x.ClusterId
+	}
+	return 0
+}
+
 type SnapshotRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// table is name of the table to stream
@@ -316,7 +326,9 @@ type SnapshotRequest struct {
 	// leader_index is the last leader index the follower already has applied.
 	// Only meaningful when incremental is true. The server will stream only the
 	// changes (puts and deletes) with seqno > leader_index.
-	LeaderIndex   uint64 `protobuf:"varint,3,opt,name=leader_index,json=leaderIndex,proto3" json:"leader_index,omitempty"`
+	LeaderIndex uint64 `protobuf:"varint,3,opt,name=leader_index,json=leaderIndex,proto3" json:"leader_index,omitempty"`
+	// cluster_id identifies the leader table incarnation being requested.
+	ClusterId     uint64 `protobuf:"varint,4,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -368,6 +380,13 @@ func (x *SnapshotRequest) GetIncremental() bool {
 func (x *SnapshotRequest) GetLeaderIndex() uint64 {
 	if x != nil {
 		return x.LeaderIndex
+	}
+	return 0
+}
+
+func (x *SnapshotRequest) GetClusterId() uint64 {
+	if x != nil {
+		return x.ClusterId
 	}
 	return 0
 }
@@ -440,6 +459,8 @@ type SnapshotQueryRequest struct {
 	Table string                 `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
 	// follower_index is the current applied index on the follower
 	FollowerIndex uint64 `protobuf:"varint,2,opt,name=follower_index,json=followerIndex,proto3" json:"follower_index,omitempty"`
+	// cluster_id identifies the leader table incarnation being requested.
+	ClusterId     uint64 `protobuf:"varint,3,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -484,6 +505,13 @@ func (x *SnapshotQueryRequest) GetTable() string {
 func (x *SnapshotQueryRequest) GetFollowerIndex() uint64 {
 	if x != nil {
 		return x.FollowerIndex
+	}
+	return 0
+}
+
+func (x *SnapshotQueryRequest) GetClusterId() uint64 {
+	if x != nil {
+		return x.ClusterId
 	}
 	return 0
 }
@@ -579,7 +607,9 @@ type ReplicateRequest struct {
 	// table is name of the table to replicate
 	Table []byte `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
 	// leader_index is the index in the leader raft log of the last stored item in the follower
-	LeaderIndex   uint64 `protobuf:"varint,2,opt,name=leader_index,json=leaderIndex,proto3" json:"leader_index,omitempty"`
+	LeaderIndex uint64 `protobuf:"varint,2,opt,name=leader_index,json=leaderIndex,proto3" json:"leader_index,omitempty"`
+	// cluster_id identifies the leader table incarnation being requested.
+	ClusterId     uint64 `protobuf:"varint,3,opt,name=cluster_id,json=clusterId,proto3" json:"cluster_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -624,6 +654,13 @@ func (x *ReplicateRequest) GetTable() []byte {
 func (x *ReplicateRequest) GetLeaderIndex() uint64 {
 	if x != nil {
 		return x.LeaderIndex
+	}
+	return 0
+}
+
+func (x *ReplicateRequest) GetClusterId() uint64 {
+	if x != nil {
+		return x.ClusterId
 	}
 	return 0
 }
@@ -872,25 +909,31 @@ const file_replication_proto_rawDesc = "" +
 	"mvcc.proto\"\x11\n" +
 	"\x0fMetadataRequest\"A\n" +
 	"\x10MetadataResponse\x12-\n" +
-	"\x06tables\x18\x01 \x03(\v2\x15.replication.v1.TableR\x06tables\"n\n" +
+	"\x06tables\x18\x01 \x03(\v2\x15.replication.v1.TableR\x06tables\"\x8d\x01\n" +
 	"\x05Table\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12.\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x1a.replication.v1.Table.TypeR\x04type\"!\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x1a.replication.v1.Table.TypeR\x04type\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x03 \x01(\x04R\tclusterId\"!\n" +
 	"\x04Type\x12\x0e\n" +
 	"\n" +
 	"REPLICATED\x10\x00\x12\t\n" +
-	"\x05LOCAL\x10\x01\"l\n" +
+	"\x05LOCAL\x10\x01\"\x8b\x01\n" +
 	"\x0fSnapshotRequest\x12\x14\n" +
 	"\x05table\x18\x01 \x01(\fR\x05table\x12 \n" +
 	"\vincremental\x18\x02 \x01(\bR\vincremental\x12!\n" +
-	"\fleader_index\x18\x03 \x01(\x04R\vleaderIndex\"K\n" +
+	"\fleader_index\x18\x03 \x01(\x04R\vleaderIndex\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x04 \x01(\x04R\tclusterId\"K\n" +
 	"\rSnapshotChunk\x12\x12\n" +
 	"\x04data\x18\x01 \x01(\fR\x04data\x12\x10\n" +
 	"\x03len\x18\x02 \x01(\x04R\x03len\x12\x14\n" +
-	"\x05index\x18\x03 \x01(\x04R\x05index\"S\n" +
+	"\x05index\x18\x03 \x01(\x04R\x05index\"r\n" +
 	"\x14SnapshotQueryRequest\x12\x14\n" +
 	"\x05table\x18\x01 \x01(\tR\x05table\x12%\n" +
-	"\x0efollower_index\x18\x02 \x01(\x04R\rfollowerIndex\"\xa6\x02\n" +
+	"\x0efollower_index\x18\x02 \x01(\x04R\rfollowerIndex\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x03 \x01(\x04R\tclusterId\"\xa6\x02\n" +
 	"\x15SnapshotQueryResponse\x12F\n" +
 	"\x04type\x18\x01 \x01(\x0e22.replication.v1.SnapshotQueryResponse.SnapshotTypeR\x04type\x12\x1d\n" +
 	"\n" +
@@ -904,10 +947,12 @@ const file_replication_proto_rawDesc = "" +
 	"\fSnapshotType\x12\b\n" +
 	"\x04NONE\x10\x00\x12\b\n" +
 	"\x04FULL\x10\x01\x12\x0f\n" +
-	"\vINCREMENTAL\x10\x02\"K\n" +
+	"\vINCREMENTAL\x10\x02\"j\n" +
 	"\x10ReplicateRequest\x12\x14\n" +
 	"\x05table\x18\x01 \x01(\fR\x05table\x12!\n" +
-	"\fleader_index\x18\x02 \x01(\x04R\vleaderIndex\"\xeb\x01\n" +
+	"\fleader_index\x18\x02 \x01(\x04R\vleaderIndex\x12\x1d\n" +
+	"\n" +
+	"cluster_id\x18\x03 \x01(\x04R\tclusterId\"\xeb\x01\n" +
 	"\x11ReplicateResponse\x12X\n" +
 	"\x11commands_response\x18\x01 \x01(\v2).replication.v1.ReplicateCommandsResponseH\x00R\x10commandsResponse\x12M\n" +
 	"\x0eerror_response\x18\x02 \x01(\v2$.replication.v1.ReplicateErrResponseH\x00R\rerrorResponse\x12!\n" +

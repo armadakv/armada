@@ -17,6 +17,8 @@ import (
 	"github.com/armadakv/armada/raft/raftpb"
 	"github.com/armadakv/armada/replication/snapshot"
 	"github.com/armadakv/armada/storage"
+	"github.com/armadakv/armada/storage/kv"
+	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/armada/vfs"
 	pvfs "github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
@@ -97,10 +99,12 @@ func TestManager_reconcile(t *testing.T) {
 	conn := testServer(t, func(server *grpc.Server) {
 		s := testReplicationServer{metaResp: &armadapb.MetadataResponse{Tables: []*armadapb.Table{
 			{
-				Name: "test",
+				Name:      "test",
+				ClusterId: 1,
 			},
 			{
-				Name: "test2",
+				Name:      "test2",
+				ClusterId: 2,
 			},
 		}}}
 		armadapb.RegisterMetadataServer(server, s)
@@ -141,6 +145,7 @@ func TestManager_reconcileTables(t *testing.T) {
 	r.NoError(err)
 
 	m := NewManager(followerEngine, nil, conn, nil, nil, Config{})
+	m.factory.store = &kv.MapStore{}
 
 	t.Log("create table")
 	_, err = leaderEngine.CreateTable("test")
@@ -168,6 +173,74 @@ func TestManager_reconcileTables(t *testing.T) {
 	r.Len(tabs, 2)
 }
 
+func TestManager_RecreatesFollowerTableWhenLeaderIncarnationChanges(t *testing.T) {
+	const tableName = "test"
+	r := require.New(t)
+	leaderEngine, followerEngine := prepareLeaderAndFollowerEngine(t)
+	srv := startReplicationServer(leaderEngine)
+	defer srv.Shutdown()
+
+	conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	r.NoError(err)
+	defer conn.Close()
+	m := NewManager(followerEngine, nil, conn, nil, nil, Config{})
+	m.factory.store = &kv.MapStore{}
+
+	firstLeaderTable, err := leaderEngine.CreateTable(tableName)
+	r.NoError(err)
+	r.NoError(m.reconcileTables())
+	var firstFollowerTable table.ActiveTable
+	r.Eventually(func() bool {
+		var err error
+		firstFollowerTable, err = followerEngine.GetTable(tableName)
+		if err != nil {
+			return false
+		}
+		_, _, ok, _ := followerEngine.GetLeaderID(firstFollowerTable.ClusterID)
+		return ok
+	}, 5*time.Second, 50*time.Millisecond)
+
+	_, err = followerEngine.Put(context.Background(), &armadapb.PutRequest{
+		Table: []byte(tableName),
+		Key:   []byte("old-only"),
+		Value: []byte("must disappear"),
+	})
+	r.NoError(err)
+
+	r.NoError(leaderEngine.DeleteTable(tableName))
+	secondLeaderTable, err := leaderEngine.CreateTable(tableName)
+	r.NoError(err)
+	r.NotEqual(firstLeaderTable.ClusterID, secondLeaderTable.ClusterID)
+
+	r.NoError(m.reconcileTables())
+	r.Eventually(func() bool {
+		table, err := followerEngine.GetTable(tableName)
+		if err != nil || table.ClusterID == firstFollowerTable.ClusterID {
+			return false
+		}
+		_, _, ok, _ := followerEngine.GetLeaderID(table.ClusterID)
+		return ok
+	}, 5*time.Second, 50*time.Millisecond)
+
+	followerTable, err := followerEngine.GetTable(tableName)
+	r.NoError(err)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	response, err := followerTable.Range(ctx, &armadapb.RangeRequest{
+		Key:          []byte{0},
+		RangeEnd:     []byte{0},
+		Linearizable: true,
+	})
+	r.NoError(err)
+	r.Empty(response.Kvs, "data from the old leader table incarnation must not survive")
+
+	state, found, err := m.loadSourceTableState(tableName)
+	r.NoError(err)
+	r.True(found)
+	r.Equal(secondLeaderTable.ClusterID, state.ClusterID)
+	r.True(state.NeedsFullRestore)
+}
+
 func TestManager_recover(t *testing.T) {
 	r := require.New(t)
 	t.Log("start follower Raft")
@@ -177,7 +250,8 @@ func TestManager_recover(t *testing.T) {
 		s := testReplicationServer{
 			metaResp: &armadapb.MetadataResponse{Tables: []*armadapb.Table{
 				{
-					Name: "test",
+					Name:      "test",
+					ClusterId: 1,
 				},
 			}},
 			repResp: []*armadapb.ReplicateResponse{

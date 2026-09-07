@@ -93,8 +93,19 @@ func (m *BackupServer) Backup(req *armadapb.BackupRequest, srv armadapb.Maintena
 		_ = os.Remove(sf.Path())
 	}()
 
-	_, err = table.Snapshot(ctx, sf)
+	resp, err := table.Snapshot(ctx, sf)
 	if err != nil {
+		return err
+	}
+	final, err := (&armadapb.Command{
+		Table:       req.Table,
+		Type:        armadapb.Command_DUMMY,
+		LeaderIndex: &resp.Index,
+	}).MarshalVT()
+	if err != nil {
+		return err
+	}
+	if _, err := sf.Write(final); err != nil {
 		return err
 	}
 	err = sf.Sync()
@@ -139,7 +150,14 @@ func (m *BackupServer) Restore(srv armadapb.Maintenance_RestoreServer) error {
 	if err != nil {
 		return err
 	}
-	err = m.Tables.Restore(string(info.Table), sf)
+	if info.Format != "" && info.Format != "armada-command-v2" {
+		return fmt.Errorf("unsupported backup format %q", info.Format)
+	}
+	if info.Format == "armada-command-v2" {
+		err = m.Tables.Restore(string(info.Table), sf)
+	} else {
+		err = m.Tables.RestoreLegacy(string(info.Table), sf)
+	}
 	if err != nil {
 		return err
 	}

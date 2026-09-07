@@ -4,6 +4,8 @@ package backup
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"os"
@@ -42,6 +44,7 @@ func TestBackup_Backup(t *testing.T) {
 		{
 			name: "No tables backup",
 			want: Manifest{
+				Format:   backupFormatV2,
 				Started:  time.Unix(0, 0),
 				Finished: time.Unix(0, 0),
 				Tables:   nil,
@@ -53,13 +56,13 @@ func TestBackup_Backup(t *testing.T) {
 				"regatta-test": nil,
 			},
 			want: Manifest{
+				Format:   backupFormatV2,
 				Started:  time.Unix(0, 0),
 				Finished: time.Unix(0, 0),
 				Tables: []ManifestTable{
 					{
 						Name:     "regatta-test",
 						FileName: "regatta-test.bak",
-						MD5:      "d41d8cd98f00b204e9800998ecf8427e",
 					},
 				},
 			},
@@ -71,18 +74,17 @@ func TestBackup_Backup(t *testing.T) {
 				"regatta-test2": nil,
 			},
 			want: Manifest{
+				Format:   backupFormatV2,
 				Started:  time.Unix(0, 0),
 				Finished: time.Unix(0, 0),
 				Tables: []ManifestTable{
 					{
 						Name:     "regatta-test",
 						FileName: "regatta-test.bak",
-						MD5:      "d41d8cd98f00b204e9800998ecf8427e",
 					},
 					{
 						Name:     "regatta-test2",
 						FileName: "regatta-test2.bak",
-						MD5:      "d41d8cd98f00b204e9800998ecf8427e",
 					},
 				},
 			},
@@ -104,18 +106,17 @@ func TestBackup_Backup(t *testing.T) {
 				},
 			},
 			want: Manifest{
+				Format:   backupFormatV2,
 				Started:  time.Unix(0, 0),
 				Finished: time.Unix(0, 0),
 				Tables: []ManifestTable{
 					{
 						Name:     "regatta-test",
 						FileName: "regatta-test.bak",
-						MD5:      "5cc50dc8f85f6ab733c9cff534a398dd",
 					},
 					{
 						Name:     "regatta-test2",
 						FileName: "regatta-test2.bak",
-						MD5:      "df74e3ebc3b31f884245cf0efb3c9b6e",
 					},
 				},
 			},
@@ -183,8 +184,29 @@ func TestBackup_Backup(t *testing.T) {
 				return
 			}
 			r.NoError(err)
-			r.Equal(tt.want, got)
+			assertManifest(t, path, tt.want, got)
 		})
+	}
+}
+
+func assertManifest(t *testing.T, dir string, want, got Manifest) {
+	t.Helper()
+	r := require.New(t)
+
+	r.Equal(want.Format, got.Format)
+	r.Equal(want.Started, got.Started)
+	r.Equal(want.Finished, got.Finished)
+	r.Len(got.Tables, len(want.Tables))
+
+	for i, gotTable := range got.Tables {
+		wantTable := want.Tables[i]
+		r.Equal(wantTable.Name, gotTable.Name)
+		r.Equal(wantTable.FileName, gotTable.FileName)
+
+		contents, err := os.ReadFile(filepath.Join(dir, gotTable.FileName))
+		r.NoError(err)
+		sum := md5.Sum(contents)
+		r.Equal(hex.EncodeToString(sum[:]), gotTable.MD5)
 	}
 }
 

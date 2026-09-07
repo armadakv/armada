@@ -4,10 +4,15 @@ package table
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/replication/snapshot"
@@ -235,7 +240,9 @@ func TestManager_Restore(t *testing.T) {
 	const existingTable = "existingTable"
 	node, m := startRaftNode(t)
 	defer node.Close()
-	tm := NewManager(node, m, &kv.MapStore{}, minimalTestConfig())
+	cfg := minimalTestConfig()
+	cfg.Table.MaxInMemLogSize = 1024
+	tm := NewManager(node, m, &kv.MapStore{}, cfg)
 	tm.Start()
 	defer tm.Close()
 	_, err := tm.CreateTable(existingTable)
@@ -243,15 +250,192 @@ func TestManager_Restore(t *testing.T) {
 
 	tab, err := tm.GetTable(existingTable)
 	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for i := range 4 {
+		_, err := tab.Put(ctx, &armadapb.PutRequest{
+			Table: []byte(existingTable),
+			Key:   snapshotTestKey(i),
+			Value: []byte(strings.Repeat(string(rune('a'+i)), 300)),
+		})
+		require.NoError(t, err)
+	}
 
-	sf, err := snapshot.OpenFile("testdata/snapshot.bin")
+	sf, err := snapshot.NewTemp()
 	require.NoError(t, err)
+	defer func() {
+		require.NoError(t, sf.Close())
+		require.NoError(t, os.Remove(sf.Path()))
+	}()
+	resp, err := tab.Snapshot(ctx, sf)
+	require.NoError(t, err)
+	final, err := (&armadapb.Command{
+		Table:       []byte(existingTable),
+		Type:        armadapb.Command_DUMMY,
+		LeaderIndex: &resp.Index,
+	}).MarshalVT()
+	require.NoError(t, err)
+	_, err = sf.Write(final)
+	require.NoError(t, err)
+	require.NoError(t, sf.Sync())
+	_, err = sf.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+
 	require.NoError(t, tm.Restore(existingTable, sf))
 
 	tab2, err := tm.GetTable(existingTable)
 	require.NoError(t, err)
-
 	require.Greater(t, tab2.ClusterID, tab.ClusterID, "restored table should have higher ID assigned")
+
+	rangeResp, err := tab2.Range(ctx, &armadapb.RangeRequest{
+		Key:          []byte{0},
+		RangeEnd:     []byte{0},
+		Linearizable: true,
+	})
+	require.NoError(t, err)
+	require.Len(t, rangeResp.Kvs, 4)
+	for i, kv := range rangeResp.Kvs {
+		require.Equal(t, snapshotTestKey(i), kv.Key)
+		require.Equal(t, []byte(strings.Repeat(string(rune('a'+i)), 300)), kv.Value)
+	}
+	leaderIndex, err := tab2.LeaderIndex(ctx, true)
+	require.NoError(t, err)
+	require.Equal(t, resp.Index, leaderIndex.Index)
+}
+
+func snapshotTestKey(i int) []byte {
+	return fmt.Appendf(nil, "key-%d", i)
+}
+
+type snapshotCommandReader struct {
+	records [][]byte
+	next    int
+}
+
+func (r *snapshotCommandReader) Read(p []byte) (int, error) {
+	if r.next == len(r.records) {
+		return 0, io.EOF
+	}
+	record := r.records[r.next]
+	r.next++
+	if len(record) > len(p) {
+		return 0, io.ErrShortBuffer
+	}
+	return copy(p, record), nil
+}
+
+func marshalSnapshotCommands(t *testing.T, commands ...*armadapb.Command) [][]byte {
+	t.Helper()
+	records := make([][]byte, len(commands))
+	for i, command := range commands {
+		var err error
+		records[i], err = command.MarshalVT()
+		require.NoError(t, err)
+	}
+	return records
+}
+
+func TestReadSnapshot(t *testing.T) {
+	const tableName = "test"
+	first := uint64(10)
+	second := uint64(20)
+	third := uint64(30)
+
+	t.Run("retains every threshold-crossing record and commits the terminal marker", func(t *testing.T) {
+		commands := marshalSnapshotCommands(t,
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &second, Kv: &armadapb.KeyValue{Key: []byte("b"), Value: []byte("second")}},
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("a"), Value: []byte("first")}},
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DELETE, LeaderIndex: &third, Kv: &armadapb.KeyValue{Key: []byte("c")}},
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &third},
+		)
+
+		var proposed []struct {
+			type_ armadapb.Command_CommandType
+			keys  []string
+			index uint64
+		}
+		err := readSnapshot(&snapshotCommandReader{records: commands}, tableName, 1, func(command *armadapb.Command) error {
+			proposal := struct {
+				type_ armadapb.Command_CommandType
+				keys  []string
+				index uint64
+			}{type_: command.Type}
+			if command.LeaderIndex != nil {
+				proposal.index = *command.LeaderIndex
+			}
+			for _, child := range command.Sequence {
+				proposal.keys = append(proposal.keys, string(child.Kv.Key))
+			}
+			proposed = append(proposed, proposal)
+			return nil
+		})
+		require.NoError(t, err)
+		require.Len(t, proposed, 4)
+		require.Equal(t, []string{"b", "a", "c"}, []string{proposed[0].keys[0], proposed[1].keys[0], proposed[2].keys[0]})
+		require.Equal(t, armadapb.Command_DUMMY, proposed[3].type_)
+		require.Equal(t, third, proposed[3].index)
+	})
+
+	t.Run("accepts an empty snapshot without proposing user data", func(t *testing.T) {
+		commands := marshalSnapshotCommands(t,
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &third},
+		)
+		var proposed []*armadapb.Command
+		err := readSnapshot(&snapshotCommandReader{records: commands}, tableName, 1024, func(command *armadapb.Command) error {
+			proposed = append(proposed, command)
+			return nil
+		})
+		require.NoError(t, err)
+		require.Len(t, proposed, 1)
+		require.Equal(t, armadapb.Command_DUMMY, proposed[0].Type)
+		require.Empty(t, proposed[0].Sequence)
+		require.Nil(t, proposed[0].Kv)
+	})
+
+	for _, tt := range []struct {
+		name     string
+		commands []*armadapb.Command
+		wantErr  string
+	}{
+		{
+			name:     "missing terminal marker",
+			commands: []*armadapb.Command{{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("key")}}},
+			wantErr:  "missing its terminal marker",
+		},
+		{
+			name: "duplicate terminal marker",
+			commands: []*armadapb.Command{
+				{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &first},
+				{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &first},
+			},
+			wantErr: "after its terminal marker",
+		},
+		{
+			name:     "terminal marker without source index",
+			commands: []*armadapb.Command{{Table: []byte(tableName), Type: armadapb.Command_DUMMY}},
+			wantErr:  "terminal marker has no leader index",
+		},
+		{
+			name:     "command for another table",
+			commands: []*armadapb.Command{{Table: []byte("other"), Type: armadapb.Command_DUMMY, LeaderIndex: &first}},
+			wantErr:  "expected \"test\"",
+		},
+		{
+			name: "record after terminal marker",
+			commands: []*armadapb.Command{
+				{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &first},
+				{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("key")}},
+			},
+			wantErr: "after its terminal marker",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := readSnapshot(&snapshotCommandReader{records: marshalSnapshotCommands(t, tt.commands...)}, tableName, 1024, func(*armadapb.Command) error {
+				return nil
+			})
+			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
 }
 
 func TestManagerWaitUntilReadyStartsExistingTables(t *testing.T) {

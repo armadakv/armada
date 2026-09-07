@@ -12,6 +12,58 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestCommandSnapshotPreservesSourceIndexes(t *testing.T) {
+	r := require.New(t)
+	p := emptySM()
+	defer func() { r.NoError(p.Close()) }()
+
+	first := uint64(10)
+	second := uint64(20)
+	_, err := p.Update([]statemachine.Entry{
+		{
+			Index: 1,
+			Cmd: mustMarshallProto(&armadapb.Command{
+				Table:       []byte(testTable),
+				Type:        armadapb.Command_PUT,
+				LeaderIndex: &first,
+				Kv:          &armadapb.KeyValue{Key: []byte("a"), Value: []byte("first")},
+			}),
+		},
+		{
+			Index: 2,
+			Cmd: mustMarshallProto(&armadapb.Command{
+				Table:       []byte(testTable),
+				Type:        armadapb.Command_PUT,
+				LeaderIndex: &second,
+				Kv:          &armadapb.KeyValue{Key: []byte("b"), Value: []byte("second")},
+			}),
+		},
+	})
+	r.NoError(err)
+
+	writer := &commandSnapshotWriter{}
+	index, err := commandSnapshot(p.pebble.Load(), testTable, writer, nil)
+	r.NoError(err)
+	r.Equal(uint64(2), index)
+	r.Len(writer.records, 2)
+
+	for i, want := range []uint64{first, second} {
+		cmd := &armadapb.Command{}
+		r.NoError(cmd.UnmarshalVT(writer.records[i]))
+		r.NotNil(cmd.LeaderIndex)
+		r.Equal(want, *cmd.LeaderIndex)
+	}
+}
+
+type commandSnapshotWriter struct {
+	records [][]byte
+}
+
+func (w *commandSnapshotWriter) Write(p []byte) (int, error) {
+	w.records = append(w.records, append([]byte(nil), p...))
+	return len(p), nil
+}
+
 func TestFSM_Lookup(t *testing.T) {
 	type fields struct {
 		smFactory func() *FSM

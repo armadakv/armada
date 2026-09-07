@@ -9,7 +9,9 @@ package replication
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"sync"
 	"time"
@@ -45,6 +47,16 @@ type replicationManagerStore interface {
 	GetAllValues(key string) ([]string, error)
 	Get(key string) (kv.Pair, error)
 	Set(key string, sprintf string, ver uint64) (kv.Pair, error)
+	Delete(key string, ver uint64) error
+}
+
+type sourceTableState struct {
+	ClusterID        uint64 `json:"cluster_id"`
+	NeedsFullRestore bool   `json:"needs_full_restore"`
+}
+
+func sourceTableStateKey(name string) string {
+	return fmt.Sprintf("source-tables/%s", name)
 }
 
 // NewManager constructs a new replication Manager out of tables.Manager, dragonboat.NodeHost and replication API grpc.ClientConn.
@@ -106,8 +118,9 @@ func NewManager(
 		}{
 			registry: make(map[string]*worker),
 		},
-		log:    replicationLog.Named("manager"),
-		closer: make(chan struct{}),
+		sources: make(map[string]sourceTableState),
+		log:     replicationLog.Named("manager"),
+		closer:  make(chan struct{}),
 	}
 }
 
@@ -121,8 +134,9 @@ type Manager struct {
 		registry map[string]*worker
 		wg       sync.WaitGroup
 	}
-	log    *zap.SugaredLogger
-	closer chan struct{}
+	sources map[string]sourceTableState
+	log     *zap.SugaredLogger
+	closer  chan struct{}
 }
 
 func (m *Manager) Describe(descs chan<- *prometheus.Desc) {
@@ -181,41 +195,131 @@ func (m *Manager) reconcileTables() error {
 	if err != nil {
 		return err
 	}
-	leaderTables := response.GetTables()
 	followerTables, err := m.engine.GetTables()
 	if err != nil {
 		return err
 	}
-	var toCreate, toDelete []string
 
-	for _, ft := range followerTables {
-		if !slices.ContainsFunc(leaderTables, func(lt *armadapb.Table) bool {
-			return ft.Name == lt.Name
-		}) {
-			toDelete = append(toDelete, ft.Name)
+	leaderTables := make(map[string]uint64, len(response.GetTables()))
+	for _, leaderTable := range response.GetTables() {
+		if leaderTable.GetClusterId() == 0 {
+			return fmt.Errorf("leader metadata for table %q has no source shard identity", leaderTable.GetName())
 		}
+		leaderTables[leaderTable.GetName()] = leaderTable.GetClusterId()
+	}
+	followerByName := make(map[string]table.Table, len(followerTables))
+	for _, followerTable := range followerTables {
+		followerByName[followerTable.Name] = followerTable
 	}
 
-	for _, ft := range leaderTables {
-		if !slices.ContainsFunc(followerTables, func(lt table.Table) bool {
-			return ft.Name == lt.Name
-		}) {
-			toCreate = append(toCreate, ft.Name)
+	sources := make(map[string]sourceTableState, len(leaderTables))
+	for name, sourceID := range leaderTables {
+		state, found, err := m.loadSourceTableState(name)
+		if err != nil {
+			return err
 		}
+		_, existsLocally := followerByName[name]
+		if !existsLocally || !found || state.ClusterID != sourceID {
+			state = sourceTableState{ClusterID: sourceID, NeedsFullRestore: true}
+			if err := m.recreateFollowerTable(name, state, existsLocally); err != nil {
+				return err
+			}
+		}
+		sources[name] = state
 	}
 
-	for _, name := range toDelete {
+	for name := range followerByName {
+		if _, existsOnLeader := leaderTables[name]; existsOnLeader {
+			continue
+		}
+		if m.hasWorker(name) {
+			m.stopWorker(m.workers.registry[name])
+		}
+		if err := m.engine.DeleteTable(name); err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
+			return err
+		}
+		if err := m.deleteSourceTableState(name); err != nil {
+			return err
+		}
+	}
+	m.sources = sources
+	return nil
+}
+
+func (m *Manager) recreateFollowerTable(name string, state sourceTableState, existsLocally bool) error {
+	if m.hasWorker(name) {
+		m.stopWorker(m.workers.registry[name])
+	}
+	if existsLocally {
 		if err := m.engine.DeleteTable(name); err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
 			return err
 		}
 	}
-
-	for _, name := range toCreate {
-		if _, err := m.engine.CreateTable(name); err != nil && !errors.Is(err, serrors.ErrTableExists) {
-			return err
-		}
+	if _, err := m.engine.CreateTable(name); err != nil && !errors.Is(err, serrors.ErrTableExists) {
+		return err
 	}
-	return nil
+	return m.saveSourceTableState(name, state)
+}
+
+func (m *Manager) loadSourceTableState(name string) (sourceTableState, bool, error) {
+	pair, err := m.factory.store.Get(sourceTableStateKey(name))
+	if errors.Is(err, kv.ErrNotExist) {
+		return sourceTableState{}, false, nil
+	}
+	if err != nil {
+		return sourceTableState{}, false, err
+	}
+	state := sourceTableState{}
+	if err := json.Unmarshal([]byte(pair.Value), &state); err != nil {
+		return sourceTableState{}, false, fmt.Errorf("decode source state for table %q: %w", name, err)
+	}
+	return state, true, nil
+}
+
+func (m *Manager) saveSourceTableState(name string, state sourceTableState) error {
+	pair, err := m.factory.store.Get(sourceTableStateKey(name))
+	if err != nil && !errors.Is(err, kv.ErrNotExist) {
+		return err
+	}
+	value, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	_, err = m.factory.store.Set(sourceTableStateKey(name), string(value), pair.Ver)
+	return err
+}
+
+func (m *Manager) deleteSourceTableState(name string) error {
+	pair, err := m.factory.store.Get(sourceTableStateKey(name))
+	if errors.Is(err, kv.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return m.factory.store.Delete(sourceTableStateKey(name), pair.Ver)
+}
+
+func markSourceTableRestored(store replicationManagerStore, name string, sourceID uint64) error {
+	key := sourceTableStateKey(name)
+	pair, err := store.Get(key)
+	if err != nil {
+		return err
+	}
+	state := sourceTableState{}
+	if err := json.Unmarshal([]byte(pair.Value), &state); err != nil {
+		return fmt.Errorf("decode source state for table %q: %w", name, err)
+	}
+	if state.ClusterID != sourceID {
+		return fmt.Errorf("source identity changed for table %q", name)
+	}
+	state.NeedsFullRestore = false
+	value, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	_, err = store.Set(key, string(value), pair.Ver)
+	return err
 }
 
 func (m *Manager) reconcileWorkers() error {
@@ -225,8 +329,16 @@ func (m *Manager) reconcileWorkers() error {
 	}
 
 	for _, tbl := range tbs {
+		source, ok := m.sources[tbl.Name]
+		if !ok {
+			m.log.Warnf("skipping table %q without a persisted source identity", tbl.Name)
+			continue
+		}
+		if existing, ok := m.workers.registry[tbl.Name]; ok && (existing.sourceID != source.ClusterID || existing.forceRecovery.Load() != source.NeedsFullRestore) {
+			m.stopWorker(existing)
+		}
 		if !m.hasWorker(tbl.Name) {
-			m.startWorker(m.factory.create(tbl.Name))
+			m.startWorker(m.factory.create(tbl.Name, source))
 		}
 	}
 

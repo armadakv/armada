@@ -45,8 +45,9 @@ func (m *MetadataServer) Get(context.Context, *armadapb.MetadataRequest) (*armad
 	resp := &armadapb.MetadataResponse{}
 	for _, tab := range tabs {
 		resp.Tables = append(resp.Tables, &armadapb.Table{
-			Type: armadapb.Table_REPLICATED,
-			Name: tab.Name,
+			Type:      armadapb.Table_REPLICATED,
+			Name:      tab.Name,
+			ClusterId: tab.ClusterID,
 		})
 		slices.SortFunc(resp.Tables, func(a, b *armadapb.Table) int {
 			return cmp.Compare(a.Name, b.Name)
@@ -63,9 +64,16 @@ type SnapshotServer struct {
 }
 
 func (s *SnapshotServer) Stream(req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer) error {
+	if req.GetClusterId() == 0 {
+		return status.Error(codes.InvalidArgument, "cluster_id is required")
+	}
+
 	table, err := s.Tables.GetTable(string(req.Table))
 	if err != nil {
 		return status.Errorf(codes.Unavailable, "unable to stream from table '%s': %v", req.GetTable(), err)
+	}
+	if req.GetClusterId() != table.ClusterID {
+		return status.Errorf(codes.Aborted, "table %q incarnation changed: requested shard %d, current shard %d", req.GetTable(), req.GetClusterId(), table.ClusterID)
 	}
 
 	ctx := srv.Context()
@@ -184,6 +192,23 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 	if req.GetTable() == "" {
 		return nil, status.Error(codes.InvalidArgument, "table is required")
 	}
+	if req.GetClusterId() == 0 {
+		return nil, status.Error(codes.InvalidArgument, "cluster_id is required")
+	}
+
+	table, err := s.Tables.GetTable(req.GetTable())
+	if err != nil {
+		if errors.Is(err, serrors.ErrTableNotFound) {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		if serrors.IsSafeToRetry(err) {
+			return nil, status.Error(codes.Unavailable, err.Error())
+		}
+		return nil, status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if req.GetClusterId() != table.ClusterID {
+		return nil, status.Errorf(codes.Aborted, "table %q incarnation changed: requested shard %d, current shard %d", req.GetTable(), req.GetClusterId(), table.ClusterID)
+	}
 	if s.SnapshotStore == nil {
 		return nil, status.Error(codes.FailedPrecondition, "shared snapshot store is not configured")
 	}
@@ -275,6 +300,9 @@ func (l *LogServer) Replicate(req *armadapb.ReplicateRequest, server armadapb.Lo
 	if req.LeaderIndex == 0 {
 		return status.Error(codes.InvalidArgument, "invalid leaderIndex: leaderIndex must be greater than 0")
 	}
+	if req.GetClusterId() == 0 {
+		return status.Error(codes.InvalidArgument, "cluster_id is required")
+	}
 
 	t, err := l.Tables.GetTable(string(req.GetTable()))
 	if err != nil {
@@ -285,6 +313,9 @@ func (l *LogServer) Replicate(req *armadapb.ReplicateRequest, server armadapb.Lo
 			return status.Error(codes.Unavailable, err.Error())
 		}
 		return status.Error(codes.FailedPrecondition, err.Error())
+	}
+	if req.GetClusterId() != t.ClusterID {
+		return status.Errorf(codes.Aborted, "table %q incarnation changed: requested shard %d, current shard %d", req.GetTable(), req.GetClusterId(), t.ClusterID)
 	}
 
 	ctx := server.Context()

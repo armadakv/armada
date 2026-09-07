@@ -6,17 +6,24 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftpb"
 	"github.com/armadakv/armada/replication/store"
+	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/objfs"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestMetadataServer_Get(t *testing.T) {
@@ -72,6 +79,10 @@ func TestMetadataServer_Get(t *testing.T) {
 			if tt.wantErr != nil {
 				r.ErrorIs(err, tt.wantErr)
 				return
+			}
+			for _, table := range got.Tables {
+				r.NotZero(table.ClusterId)
+				table.ClusterId = 0
 			}
 			r.Equal(tt.want, got)
 		})
@@ -178,6 +189,11 @@ func TestSnapshotServer_Stream(t *testing.T) {
 			s := &SnapshotServer{
 				Tables: newInMemTestEngine(t, tt.fields.Tables...),
 			}
+			if len(tt.fields.Tables) > 0 {
+				table, err := s.Tables.GetTable(string(tt.args.req.Table))
+				require.NoError(t, err)
+				tt.args.req.ClusterId = table.ClusterID
+			}
 			capture := &captureSnapshotStream{}
 			tt.wantErr(t, s.Stream(tt.args.req, capture), fmt.Sprintf("Stream(%v)", tt.args.req))
 			require.Len(t, capture.chunks, tt.wantChunksCount)
@@ -201,8 +217,10 @@ func TestSnapshotServer_Stream(t *testing.T) {
 		require.NoError(t, err)
 
 		s := &SnapshotServer{Tables: engine}
+		table, err := engine.GetTable(string(table1Name))
+		require.NoError(t, err)
 		capture := &captureSnapshotStream{}
-		require.NoError(t, s.Stream(&armadapb.SnapshotRequest{Table: table1Name}, capture))
+		require.NoError(t, s.Stream(&armadapb.SnapshotRequest{Table: table1Name, ClusterId: table.ClusterID}, capture))
 		// At least 1 chunk must be present regardless of size.
 		require.NotEmpty(t, capture.chunks)
 
@@ -214,6 +232,87 @@ func TestSnapshotServer_Stream(t *testing.T) {
 		}
 		require.NotEmpty(t, raw, "snapshot data must not be empty for a table with data")
 	})
+}
+
+type tableServiceStub struct {
+	activeTable table.ActiveTable
+	err         error
+}
+
+func (s tableServiceStub) GetTables() ([]table.Table, error) {
+	return nil, s.err
+}
+
+func (s tableServiceStub) GetTable(string) (table.ActiveTable, error) {
+	return s.activeTable, s.err
+}
+
+func (s tableServiceStub) Restore(string, io.Reader) error {
+	return s.err
+}
+
+func (s tableServiceStub) RestoreLegacy(string, io.Reader) error {
+	return s.err
+}
+
+func (s tableServiceStub) CreateTable(string) (table.Table, error) {
+	return table.Table{}, s.err
+}
+
+func (s tableServiceStub) DeleteTable(string) error {
+	return s.err
+}
+
+func TestReplicationHandlersRequireClusterID(t *testing.T) {
+	tables := tableServiceStub{
+		activeTable: table.ActiveTable{Table: table.Table{ClusterID: 1}},
+	}
+
+	snapshotServer := &SnapshotServer{Tables: tables}
+	err := snapshotServer.Stream(&armadapb.SnapshotRequest{Table: []byte("orders")}, &captureSnapshotStream{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	_, err = snapshotServer.Query(context.Background(), &armadapb.SnapshotQueryRequest{Table: "orders"})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+
+	logServer := &LogServer{Tables: tables}
+	err = logServer.Replicate(&armadapb.ReplicateRequest{Table: []byte("orders"), LeaderIndex: 1}, &captureLogStream{})
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+}
+
+func TestSnapshotServer_QueryGetTableErrorMapping(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		code codes.Code
+	}{
+		{
+			name: "table not found",
+			err:  serrors.ErrTableNotFound,
+			code: codes.NotFound,
+		},
+		{
+			name: "retryable error",
+			err:  raft.ErrTimeout,
+			code: codes.Unavailable,
+		},
+		{
+			name: "other error",
+			err:  stderrors.New("unknown"),
+			code: codes.FailedPrecondition,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &SnapshotServer{Tables: tableServiceStub{err: tt.err}}
+			_, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+				Table:     "orders",
+				ClusterId: 1,
+			})
+			require.Equal(t, tt.code, status.Code(err))
+		})
+	}
 }
 
 func TestSnapshotServer_Query(t *testing.T) {
@@ -232,13 +331,17 @@ func TestSnapshotServer_Query(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, bucket.Upload(context.Background(), store.IncrMetaKey("orders", 100, 150), bytes.NewReader(raw)))
 
+		engine := newInMemTestEngine(t, "orders")
 		s := &SnapshotServer{
-			Tables:        newInMemTestEngine(t, "orders"),
+			Tables:        engine,
 			SnapshotStore: bucket,
 		}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
 		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
 			Table:         "orders",
 			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
 		})
 		require.NoError(t, err)
 		// No full snapshot available — incremental restore is not yet supported.
@@ -260,13 +363,17 @@ func TestSnapshotServer_Query(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, bucket.Upload(context.Background(), store.FullMetaKey("orders", 150), bytes.NewReader(raw)))
 
+		engine := newInMemTestEngine(t, "orders")
 		s := &SnapshotServer{
-			Tables:        newInMemTestEngine(t, "orders"),
+			Tables:        engine,
 			SnapshotStore: bucket,
 		}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
 		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
 			Table:         "orders",
 			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
 		})
 		require.NoError(t, err)
 		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
@@ -334,6 +441,11 @@ func TestLogServer_Replicate(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
 			defer cancel()
+			if len(tt.fields.Tables) > 0 {
+				table, err := te.GetTable(string(tt.args.req.Table))
+				require.NoError(t, err)
+				tt.args.req.ClusterId = table.ClusterID
+			}
 			stream := &captureLogStream{ctx: ctx}
 			tt.wantErr(t, l.Replicate(tt.args.req, stream), fmt.Sprintf("Replicate(%v)", tt.args.req))
 		})
