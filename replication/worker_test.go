@@ -54,6 +54,85 @@ func TestTableQueueLenStore(t *testing.T) {
 	r.Equal(uint64(2000), v)
 }
 
+func TestWorkerLeaseLossCancelsWork(t *testing.T) {
+	w := &worker{workerCtx: context.Background()}
+	w.acquireLease()
+
+	leaseCtx, leased := w.leaseWork()
+	require.True(t, leased)
+	require.NoError(t, leaseCtx.Err())
+
+	w.loseLease()
+	require.ErrorIs(t, leaseCtx.Err(), context.Canceled)
+	_, leased = w.leaseWork()
+	require.False(t, leased)
+
+	w.acquireLease()
+	nextLeaseCtx, leased := w.leaseWork()
+	require.True(t, leased)
+	require.NotSame(t, leaseCtx, nextLeaseCtx)
+	require.NoError(t, nextLeaseCtx.Err())
+}
+
+func TestWorkerLeaseExpiryCancelsWork(t *testing.T) {
+	w := &worker{
+		workerFactory: &workerFactory{leaseInterval: time.Millisecond},
+		workerCtx:     context.Background(),
+	}
+	w.acquireLease()
+
+	leaseCtx, leased := w.leaseWork()
+	require.True(t, leased)
+	select {
+	case <-leaseCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("lease work was not canceled when the lease expired")
+	}
+	_, leased = w.leaseWork()
+	require.False(t, leased)
+}
+
+type blockingLogClient struct{}
+
+func (blockingLogClient) Replicate(ctx context.Context, _ *armadapb.ReplicateRequest, _ ...grpc.CallOption) (armadapb.Log_ReplicateClient, error) {
+	return &blockingReplicateStream{ctx: ctx}, nil
+}
+
+type blockingReplicateStream struct {
+	grpc.ClientStream
+	ctx context.Context
+}
+
+func (s *blockingReplicateStream) Recv() (*armadapb.ReplicateResponse, error) {
+	<-s.ctx.Done()
+	return nil, s.ctx.Err()
+}
+
+func TestWorkerLeaseLossCancelsLogReplay(t *testing.T) {
+	w := &worker{
+		table:    "table",
+		sourceID: 1,
+		workerFactory: &workerFactory{
+			logTimeout: time.Minute,
+			logClient:  blockingLogClient{},
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() {
+		_, err := w.do(ctx, 0, nil)
+		result <- err
+	}()
+
+	cancel()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("log replay did not stop when its lease context was canceled")
+	}
+}
+
 func TestWorker_do(t *testing.T) {
 	r := require.New(t)
 	leaderEngine, followerEngine := prepareLeaderAndFollowerEngine(t)
@@ -111,9 +190,9 @@ func TestWorker_do(t *testing.T) {
 		},
 	}
 	w := f.create("test", sourceTableState{ClusterID: at.ClusterID})
-	idx, id, err := w.tableState()
+	idx, id, err := w.tableState(context.Background())
 	r.NoError(err)
-	_, err = w.do(idx, f.engine.GetNoOPSession(id))
+	_, err = w.do(context.Background(), idx, f.engine.GetNoOPSession(id))
 	r.NoError(err)
 	table, err := followerEngine.GetTable("test")
 	r.NoError(err)
@@ -132,7 +211,7 @@ func TestWorker_do(t *testing.T) {
 		r.Equal(int64(keyCount), response.Count)
 	}()
 
-	idxBefore, _, err := w.tableState()
+	idxBefore, _, err := w.tableState(context.Background())
 	r.NoError(err)
 
 	t.Log("reset table")
@@ -141,15 +220,15 @@ func TestWorker_do(t *testing.T) {
 		defer cancel()
 		r.NoError(table.Reset(ctx))
 	}()
-	idx, id, err = w.tableState()
+	idx, id, err = w.tableState(context.Background())
 	r.NoError(err)
 	r.Equal(uint64(0), idx)
 
 	t.Log("do after reset")
-	_, err = w.do(idx, f.engine.GetNoOPSession(id))
+	_, err = w.do(context.Background(), idx, f.engine.GetNoOPSession(id))
 	r.NoError(err)
 
-	idxAfter, _, err := w.tableState()
+	idxAfter, _, err := w.tableState(context.Background())
 	r.NoError(err)
 	r.Equal(idxBefore, idxAfter)
 
@@ -159,9 +238,9 @@ func TestWorker_do(t *testing.T) {
 	_, err = leaderEngine.CreateTable("test")
 	r.NoError(err)
 
-	idx, id, err = w.tableState()
+	idx, id, err = w.tableState(context.Background())
 	r.NoError(err)
-	result, err := w.do(idx, f.engine.GetNoOPSession(id))
+	result, err := w.do(context.Background(), idx, f.engine.GetNoOPSession(id))
 	r.Equal(resultUnknown, result)
 	r.ErrorContains(err, "incarnation changed")
 }
@@ -211,7 +290,7 @@ func TestWorker_recover_negotiation(t *testing.T) {
 			},
 			log: zaptest.NewLogger(t).Sugar(),
 		}
-		err := w.recover()
+		err := w.recover(context.Background())
 		require.ErrorContains(t, err, "no shared store")
 	})
 
@@ -232,7 +311,7 @@ func TestWorker_recover_negotiation(t *testing.T) {
 			},
 			log: zaptest.NewLogger(t).Sugar(),
 		}
-		err := w.recover()
+		err := w.recover(context.Background())
 		require.ErrorContains(t, err, "no shared store")
 	})
 
@@ -254,7 +333,7 @@ func TestWorker_recover_negotiation(t *testing.T) {
 			log: zaptest.NewLogger(t).Sugar(),
 		}
 		w.forceRecovery.Store(true)
-		err := w.recover()
+		err := w.recover(context.Background())
 		require.ErrorContains(t, err, "a full snapshot is required")
 	})
 
@@ -275,7 +354,7 @@ func TestWorker_recover_negotiation(t *testing.T) {
 			},
 			log: zaptest.NewLogger(t).Sugar(),
 		}
-		err := w.recover()
+		err := w.recover(context.Background())
 		require.ErrorContains(t, err, "internal server error")
 	})
 }
@@ -373,7 +452,7 @@ func TestWorker_recover(t *testing.T) {
 		TipIndex:  snapshotTips["test"],
 		ObjectKey: fmt.Sprintf("snapshots/test/full/%d.snap", snapshotTips["test"]),
 	}
-	r.NoError(w.recover())
+	r.NoError(w.recover(context.Background()))
 	tab, err := followerEngine.GetTable("test")
 	r.NoError(err)
 	r.Equal("test", tab.Name)
@@ -399,7 +478,7 @@ func TestWorker_recover(t *testing.T) {
 		ObjectKey: fmt.Sprintf("snapshots/test2/full/%d.snap", snapshotTips["test2"]),
 	}
 	t.Log("recover second table from leader")
-	r.NoError(w.recover())
+	r.NoError(w.recover(context.Background()))
 	tab, err = followerEngine.GetTable("test2")
 	r.NoError(err)
 	r.Equal("test2", tab.Name)

@@ -150,12 +150,14 @@ func (tql tableQueueLenStore) Get() (uint64, error) {
 }
 
 func (f *workerFactory) create(table string, source sourceTableState) *worker {
+	workerCtx, workerCancel := context.WithCancel(context.Background())
 	w := &worker{
 		workerFactory: f,
 		table:         table,
 		sourceID:      source.ClusterID,
 		closer:        make(chan struct{}),
-		leaseChan:     make(chan bool),
+		workerCtx:     workerCtx,
+		workerCancel:  workerCancel,
 		log:           f.log.Named(table),
 		queue:         tableQueue{table: table, queue: f.queue},
 		store:         tableQueueLenStore{table: table, store: f.store, id: f.engine.Config().NodeID, clock: clock.New()},
@@ -199,23 +201,114 @@ func newThrottle(pollInterval time.Duration) replicationThrottle {
 // worker connects to the log replication service and synchronizes the local state.
 type worker struct {
 	*workerFactory
-	table         string
-	sourceID      uint64
-	forceRecovery atomic.Bool
-	closer        chan struct{}
-	log           *zap.SugaredLogger
-	queue         tableQueue
-	store         tableQueueLenStore
-	throttle      replicationThrottle
-	leased        atomic.Bool
-	leaseChan     chan bool
-	metrics       struct {
+	table           string
+	sourceID        uint64
+	forceRecovery   atomic.Bool
+	closer          chan struct{}
+	log             *zap.SugaredLogger
+	queue           tableQueue
+	store           tableQueueLenStore
+	throttle        replicationThrottle
+	leased          atomic.Bool
+	leaseMu         sync.Mutex
+	leaseCtx        context.Context
+	leaseCancel     context.CancelFunc
+	leaseTimer      *time.Timer
+	leaseGeneration uint64
+	workerCtx       context.Context
+	workerCancel    context.CancelFunc
+	metrics         struct {
 		replicationLeaderIndex   prometheus.Gauge
 		replicationFollowerIndex prometheus.Gauge
 		replicationLeased        prometheus.Gauge
 	}
 	wg        sync.WaitGroup
 	immediate chan time.Time
+}
+
+func (w *worker) acquireLease() {
+	w.leaseMu.Lock()
+	if w.workerCtx != nil && w.workerCtx.Err() != nil {
+		w.leaseMu.Unlock()
+		return
+	}
+	if w.leaseCtx == nil {
+		parent := w.workerCtx
+		if parent == nil {
+			parent = context.Background()
+		}
+		w.leaseGeneration++
+		w.leaseCtx, w.leaseCancel = context.WithCancel(parent)
+	}
+	if w.leaseTimer != nil {
+		w.leaseTimer.Stop()
+	}
+	leaseDuration := time.Duration(0)
+	if w.workerFactory != nil {
+		leaseDuration = w.leaseInterval * 4
+	}
+	if leaseDuration > 0 {
+		generation := w.leaseGeneration
+		w.leaseTimer = time.AfterFunc(leaseDuration, func() {
+			w.expireLease(generation)
+		})
+	}
+	wasLeased := w.leased.Swap(true)
+	w.leaseMu.Unlock()
+
+	if !wasLeased && w.metrics.replicationLeased != nil {
+		w.metrics.replicationLeased.Set(1)
+	}
+}
+
+func (w *worker) expireLease(generation uint64) {
+	w.leaseMu.Lock()
+	if w.leaseCtx == nil || w.leaseGeneration != generation {
+		w.leaseMu.Unlock()
+		return
+	}
+	cancel := w.leaseCancel
+	w.leaseCtx = nil
+	w.leaseCancel = nil
+	w.leaseTimer = nil
+	wasLeased := w.leased.Swap(false)
+	w.leaseMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if wasLeased && w.metrics.replicationLeased != nil {
+		w.metrics.replicationLeased.Set(0)
+	}
+}
+
+func (w *worker) loseLease() {
+	w.leaseMu.Lock()
+	if w.leaseTimer != nil {
+		w.leaseTimer.Stop()
+		w.leaseTimer = nil
+	}
+	cancel := w.leaseCancel
+	w.leaseCtx = nil
+	w.leaseCancel = nil
+	wasLeased := w.leased.Swap(false)
+	w.leaseMu.Unlock()
+
+	if cancel != nil {
+		cancel()
+	}
+	if wasLeased && w.metrics.replicationLeased != nil {
+		w.metrics.replicationLeased.Set(0)
+	}
+}
+
+func (w *worker) leaseWork() (context.Context, bool) {
+	w.leaseMu.Lock()
+	defer w.leaseMu.Unlock()
+	if !w.leased.Load() || w.leaseCtx == nil || w.leaseCtx.Err() != nil {
+		return nil, false
+	}
+	return w.leaseCtx, true
 }
 
 // Start launches the replication goroutine. To stop it, call worker.Close.
@@ -237,17 +330,10 @@ func (w *worker) Start() {
 		for {
 			select {
 			case <-t.C:
-				err := w.engine.LeaseTable(w.table, w.leaseInterval*4)
-				if err == nil {
-					prev := w.leased.Swap(true)
-					if !prev {
-						w.metrics.replicationLeased.Set(1)
-					}
+				if err := w.engine.LeaseTable(w.table, w.leaseInterval*4); err != nil {
+					w.loseLease()
 				} else {
-					prev := w.leased.Swap(false)
-					if prev {
-						w.metrics.replicationLeased.Set(0)
-					}
+					w.acquireLease()
 				}
 			case <-w.closer:
 				return
@@ -270,7 +356,7 @@ func (w *worker) Start() {
 		for {
 			select {
 			case <-tidx.C:
-				if idx, _, err := w.tableState(); err == nil {
+				if idx, _, err := w.tableState(context.Background()); err == nil {
 					w.metrics.replicationFollowerIndex.Set(float64(idx))
 				}
 			case <-tq.C:
@@ -310,13 +396,17 @@ func (w *worker) Start() {
 				return
 			}
 
-			if !w.leased.Load() {
+			leaseCtx, leased := w.leaseWork()
+			if !leased {
 				w.log.Debug("skipping replication - table not leased")
 				continue
 			}
 			if w.forceRecovery.Load() {
-				if err := w.recover(); err != nil {
+				if err := w.recover(leaseCtx); err != nil {
 					w.log.Warnf("error in required full recovery: %v", err)
+					continue
+				}
+				if err := leaseCtx.Err(); err != nil {
 					continue
 				}
 				if err := markSourceTableRestored(w.workerFactory.store, w.table, w.sourceID); err != nil {
@@ -332,7 +422,7 @@ func (w *worker) Start() {
 			} else {
 				w.throttle.down()
 			}
-			idx, id, err := w.tableState()
+			idx, id, err := w.tableState(leaseCtx)
 			if err != nil {
 				if errors.Is(err, serrors.ErrTableNotFound) {
 					w.log.Debugf("table not found: %v", err)
@@ -341,7 +431,7 @@ func (w *worker) Start() {
 				w.log.Errorf("cannot query leader index: %v", err)
 				continue
 			}
-			result, err := w.do(idx, w.engine.GetNoOPSession(id))
+			result, err := w.do(leaseCtx, idx, w.engine.GetNoOPSession(id))
 			switch result {
 			case resultTableNotExists:
 				w.log.Infof("the leader table disappeared ... backing off")
@@ -362,12 +452,13 @@ func (w *worker) Start() {
 				if w.recoverySemaphore.TryAcquire(1) {
 					func() {
 						defer w.recoverySemaphore.Release(1)
-						if err := w.recover(); err != nil {
+						if err := w.recover(leaseCtx); err != nil {
 							w.log.Warnf("error in recovering table: %v", err)
 						}
 					}()
 				} else {
 					w.log.Info("maximum number of recoveries already running")
+					w.loseLease()
 					if _, err := w.engine.ReturnTable(w.table); err != nil {
 						w.log.Warnf("error returning table: %v", err)
 					}
@@ -378,6 +469,9 @@ func (w *worker) Start() {
 			case resultFollowerTailing:
 			case resultUnknown:
 				if err != nil {
+					if errors.Is(err, context.Canceled) {
+						continue
+					}
 					if errors.Is(err, context.DeadlineExceeded) {
 						w.log.Warnf("unable to read leader log in time: %v", err)
 					} else {
@@ -392,6 +486,10 @@ func (w *worker) Start() {
 // Close stops the replication.
 func (w *worker) Close() {
 	w.log.Info("worker stopped")
+	if w.workerCancel != nil {
+		w.workerCancel()
+	}
+	w.loseLease()
 	close(w.closer)
 	w.wg.Wait()
 
@@ -404,13 +502,13 @@ func (w *worker) Close() {
 	}
 }
 
-func (w *worker) do(leaderIndex uint64, session *client.Session) (replicateResult, error) {
+func (w *worker) do(parent context.Context, leaderIndex uint64, session *client.Session) (replicateResult, error) {
 	replicateRequest := &armadapb.ReplicateRequest{
 		LeaderIndex: leaderIndex + 1,
 		Table:       []byte(w.table),
 		ClusterId:   w.sourceID,
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), w.logTimeout)
+	ctx, cancel := context.WithTimeout(parent, w.logTimeout)
 	defer cancel()
 	stream, err := w.logClient.Replicate(ctx, replicateRequest, grpc.WaitForReady(true))
 	if err != nil {
@@ -420,6 +518,7 @@ func (w *worker) do(leaderIndex uint64, session *client.Session) (replicateResul
 		return resultUnknown, fmt.Errorf("could not open log stream: %w", err)
 	}
 	var applied uint64
+	nextLeaderIndex := leaderIndex + 1
 	for {
 		replicateRes, err := stream.Recv()
 		if err == io.EOF {
@@ -441,10 +540,11 @@ func (w *worker) do(leaderIndex uint64, session *client.Session) (replicateResul
 
 		switch res := replicateRes.Response.(type) {
 		case *armadapb.ReplicateResponse_CommandsResponse:
-			applied, err = w.proposeBatch(ctx, res.CommandsResponse.GetCommands(), session)
+			applied, err = w.proposeBatch(ctx, res.CommandsResponse.GetCommands(), nextLeaderIndex, session)
 			if err != nil {
 				return resultUnknown, fmt.Errorf("could not propose: %w", err)
 			}
+			nextLeaderIndex = applied + 1
 		case *armadapb.ReplicateResponse_ErrorResponse:
 			switch res.ErrorResponse.Error {
 			case armadapb.ReplicateError_LEADER_BEHIND:
@@ -467,26 +567,33 @@ func (w *worker) do(leaderIndex uint64, session *client.Session) (replicateResul
 	}
 }
 
-func (w *worker) tableState() (uint64, uint64, error) {
+func (w *worker) tableState(parent context.Context) (uint64, uint64, error) {
 	t, err := w.engine.GetTable(w.table)
 	if err != nil {
 		return 0, 0, err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), w.logTimeout)
+	ctx, cancel := context.WithTimeout(parent, w.logTimeout)
 	defer cancel()
-	idxRes, err := t.LeaderIndex(ctx, false)
+	idxRes, err := t.LeaderIndex(ctx, true)
 	if err != nil {
 		return 0, 0, fmt.Errorf("could not get leader index key: %w", err)
 	}
 	return idxRes.Index, t.ClusterID, nil
 }
 
-func (w *worker) proposeBatch(ctx context.Context, commands []*armadapb.ReplicateCommand, session *client.Session) (uint64, error) {
+func (w *worker) proposeBatch(ctx context.Context, commands []*armadapb.ReplicateCommand, expectedLeaderIndex uint64, session *client.Session) (uint64, error) {
+	if len(commands) == 0 {
+		return 0, fmt.Errorf("leader returned an empty replication command batch")
+	}
+
 	seq := armadapb.CommandFromVTPool()
 	defer seq.ReturnToVTPool()
 	var buff []byte
 	propose := func() error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		defer func() {
 			seq.Sequence = seq.Sequence[:0]
 			seq.LeaderIndex = nil
@@ -510,8 +617,25 @@ func (w *worker) proposeBatch(ctx context.Context, commands []*armadapb.Replicat
 	var lastApplied uint64
 	seq.Type = armadapb.Command_SEQUENCE
 	for i, c := range commands {
+		if err := ctx.Err(); err != nil {
+			return lastApplied, err
+		}
+		if c == nil || c.Command == nil {
+			return lastApplied, fmt.Errorf("leader returned an empty replication command")
+		}
+		if c.LeaderIndex == 0 || c.LeaderIndex != expectedLeaderIndex {
+			return lastApplied, fmt.Errorf("leader returned source index %d, expected %d", c.LeaderIndex, expectedLeaderIndex)
+		}
+
+		if c.Command.LeaderIndex != nil && *c.Command.LeaderIndex != c.LeaderIndex {
+			return lastApplied, fmt.Errorf("leader returned mismatched source indexes %d and %d", c.LeaderIndex, *c.Command.LeaderIndex)
+		}
+
+		leaderIndex := c.LeaderIndex
+		c.Command.LeaderIndex = &leaderIndex
 		seq.Sequence = append(seq.Sequence, c.Command)
-		seq.LeaderIndex = &c.LeaderIndex
+		seq.LeaderIndex = &leaderIndex
+		expectedLeaderIndex++
 		if seq.SizeVT() >= desiredProposalSize || i == len(commands)-1 {
 			if err := propose(); err != nil {
 				return lastApplied, err
@@ -523,12 +647,12 @@ func (w *worker) proposeBatch(ctx context.Context, commands []*armadapb.Replicat
 	return lastApplied, nil
 }
 
-func (w *worker) recover() error {
+func (w *worker) recover(parent context.Context) error {
 	w.log.Info("recovering from snapshot")
-	ctx, cancel := context.WithTimeout(context.Background(), w.snapshotTimeout)
+	ctx, cancel := context.WithTimeout(parent, w.snapshotTimeout)
 	defer cancel()
 
-	followerIndex, _, err := w.tableState()
+	followerIndex, _, err := w.tableState(ctx)
 	if err != nil {
 		if !errors.Is(err, serrors.ErrTableNotFound) {
 			return fmt.Errorf("failed to get table state: %w", err)
@@ -575,12 +699,15 @@ func (w *worker) recover() error {
 		return err
 	}
 	w.log.Info("snapshot downloaded, loading table")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if queryResp.Type == armadapb.SnapshotQueryResponse_INCREMENTAL {
-		if err = w.engine.ApplySnapshot(w.table, sf); err != nil {
+		if err = w.engine.ApplySnapshot(ctx, w.table, sf); err != nil {
 			return err
 		}
 	} else {
-		if err = w.engine.Restore(w.table, sf); err != nil {
+		if err = w.engine.Restore(ctx, w.table, sf); err != nil {
 			return err
 		}
 	}

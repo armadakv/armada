@@ -154,9 +154,9 @@ func (m *BackupServer) Restore(srv armadapb.Maintenance_RestoreServer) error {
 		return fmt.Errorf("unsupported backup format %q", info.Format)
 	}
 	if info.Format == "armada-command-v2" {
-		err = m.Tables.Restore(string(info.Table), sf)
+		err = m.Tables.Restore(srv.Context(), string(info.Table), sf)
 	} else {
-		err = m.Tables.RestoreLegacy(string(info.Table), sf)
+		err = m.Tables.RestoreLegacy(srv.Context(), string(info.Table), sf)
 	}
 	if err != nil {
 		return err
