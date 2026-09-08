@@ -247,11 +247,11 @@ func (s tableServiceStub) GetTable(string) (table.ActiveTable, error) {
 	return s.activeTable, s.err
 }
 
-func (s tableServiceStub) Restore(string, io.Reader) error {
+func (s tableServiceStub) Restore(context.Context, string, io.Reader) error {
 	return s.err
 }
 
-func (s tableServiceStub) RestoreLegacy(string, io.Reader) error {
+func (s tableServiceStub) RestoreLegacy(context.Context, string, io.Reader) error {
 	return s.err
 }
 

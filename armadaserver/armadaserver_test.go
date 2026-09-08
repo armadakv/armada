@@ -39,11 +39,11 @@ func (t MockTableService) GetTable(name string) (table.ActiveTable, error) {
 	return t.tables[0].AsActive(nil), t.error
 }
 
-func (t MockTableService) Restore(name string, reader io.Reader) error {
+func (t MockTableService) Restore(ctx context.Context, name string, reader io.Reader) error {
 	return t.error
 }
 
-func (t MockTableService) RestoreLegacy(name string, reader io.Reader) error {
+func (t MockTableService) RestoreLegacy(ctx context.Context, name string, reader io.Reader) error {
 	return t.error
 }
 

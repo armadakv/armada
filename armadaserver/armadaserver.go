@@ -32,8 +32,8 @@ type SnapshotService interface {
 type TableService interface {
 	GetTables() ([]table.Table, error)
 	GetTable(name string) (table.ActiveTable, error)
-	Restore(name string, reader io.Reader) error
-	RestoreLegacy(name string, reader io.Reader) error
+	Restore(ctx context.Context, name string, reader io.Reader) error
+	RestoreLegacy(ctx context.Context, name string, reader io.Reader) error
 	CreateTable(name string) (table.Table, error)
 	DeleteTable(name string) error
 }

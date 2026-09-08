@@ -281,7 +281,7 @@ func TestManager_Restore(t *testing.T) {
 	_, err = sf.Seek(0, io.SeekStart)
 	require.NoError(t, err)
 
-	require.NoError(t, tm.Restore(existingTable, sf))
+	require.NoError(t, tm.Restore(ctx, existingTable, sf))
 
 	tab2, err := tm.GetTable(existingTable)
 	require.NoError(t, err)
@@ -466,6 +466,15 @@ func TestManagerWaitUntilReadyHonorsContext(t *testing.T) {
 	cancel()
 	require.ErrorIs(t, tm.WaitUntilReady(ctx), context.Canceled)
 	tm.Close()
+}
+
+func TestManagerSnapshotContextHonorsCancellation(t *testing.T) {
+	tm := &Manager{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	require.ErrorIs(t, tm.ApplySnapshot(ctx, "table", nil), context.Canceled)
+	require.ErrorIs(t, tm.Restore(ctx, "table", nil), context.Canceled)
 }
 
 func TestManager_reconcile(t *testing.T) {

@@ -570,27 +570,36 @@ func (m *Manager) stopTable(clusterID uint64) error {
 	return nil
 }
 
-func (m *Manager) ApplySnapshot(name string, reader io.Reader) error {
+// ApplySnapshot applies an incremental snapshot until ctx is canceled.
+func (m *Manager) ApplySnapshot(ctx context.Context, name string, reader io.Reader) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	tbl, _, err := m.getTableVersion(name)
 	if err != nil {
 		return err
 	}
-	return m.readIntoTable(tbl.ClusterID, name, reader, true)
+	return m.readIntoTable(ctx, tbl.ClusterID, name, reader, true)
 }
 
 // Restore installs a replication snapshot. Replication snapshots must contain a
 // validated terminal marker so source progress cannot advance from a truncated stream.
-func (m *Manager) Restore(name string, reader io.Reader) error {
-	return m.restore(name, reader, true)
+func (m *Manager) Restore(ctx context.Context, name string, reader io.Reader) error {
+	return m.restore(ctx, name, reader, true)
 }
 
 // RestoreLegacy installs a maintenance backup created before replication snapshots
 // required a terminal source-progress marker.
-func (m *Manager) RestoreLegacy(name string, reader io.Reader) error {
-	return m.restore(name, reader, false)
+func (m *Manager) RestoreLegacy(ctx context.Context, name string, reader io.Reader) error {
+	return m.restore(ctx, name, reader, false)
 }
 
-func (m *Manager) restore(name string, reader io.Reader, requireTerminal bool) error {
+func (m *Manager) restore(ctx context.Context, name string, reader io.Reader, requireTerminal bool) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	tbl, version, err := m.getTableVersion(name)
 	if err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
 		return err
@@ -613,13 +622,17 @@ func (m *Manager) restore(name string, reader io.Reader, requireTerminal bool) e
 		return err
 	}
 
-	err = m.waitForLeader(tbl.RecoverID)
+	err = m.waitForLeader(ctx, tbl.RecoverID)
 	if err != nil {
 		return err
 	}
 
-	err = m.readIntoTable(tbl.RecoverID, name, reader, requireTerminal)
+	err = m.readIntoTable(ctx, tbl.RecoverID, name, reader, requireTerminal)
 	if err != nil {
+		return err
+	}
+
+	if err := ctx.Err(); err != nil {
 		return err
 	}
 
@@ -663,7 +676,7 @@ func (m *Manager) setTableVersion(tbl Table, version uint64) error {
 	return nil
 }
 
-func (m *Manager) readIntoTable(id uint64, name string, reader io.Reader, requireTerminal bool) error {
+func (m *Manager) readIntoTable(ctx context.Context, id uint64, name string, reader io.Reader, requireTerminal bool) error {
 	session := m.nh.GetNoOPSession(id)
 	return readSnapshotWithTerminal(reader, name, m.cfg.Table.MaxInMemLogSize/2, requireTerminal, func(cmd *armadapb.Command) error {
 		bb, err := cmd.MarshalVT()
@@ -674,9 +687,12 @@ func (m *Manager) readIntoTable(id uint64, name string, reader io.Reader, requir
 		backOff := backoff.NewExponentialBackOff()
 		backOff.MaxElapsedTime = 0
 		return backoff.Retry(func() error {
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			if err := ctx.Err(); err != nil {
+				return backoff.Permanent(err)
+			}
+			proposalCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 			defer cancel()
-			_, err := m.nh.SyncPropose(ctx, session, bb)
+			_, err := m.nh.SyncPropose(proposalCtx, session, bb)
 			if err != nil {
 				if errors.Is(err, raft.ErrShardNotFound) {
 					m.log.Warn("cluster not found recovery probably started on a different node")
@@ -686,7 +702,7 @@ func (m *Manager) readIntoTable(id uint64, name string, reader io.Reader, requir
 				return err
 			}
 			return nil
-		}, backOff)
+		}, backoff.WithContext(backOff, ctx))
 	})
 }
 
@@ -789,17 +805,17 @@ func readSnapshotWithTerminal(reader io.Reader, tableName string, maxBatchSize u
 	}
 }
 
-func (m *Manager) waitForLeader(clusterID uint64) error {
+func (m *Manager) waitForLeader(ctx context.Context, clusterID uint64) error {
 	t := time.NewTicker(500 * time.Millisecond)
 	defer t.Stop()
 
 	// TODO make configurable
-	ctx, cancel := context.WithTimeout(context.Background(), m.reconcileInterval*2)
+	waitCtx, cancel := context.WithTimeout(ctx, m.reconcileInterval*2)
 	defer cancel()
 	for {
 		select {
-		case <-ctx.Done():
-			return ctx.Err()
+		case <-waitCtx.Done():
+			return waitCtx.Err()
 		case <-t.C:
 			_, _, ok, _ := m.nh.GetLeaderID(clusterID)
 			if ok {
