@@ -15,6 +15,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	replicationSnapshot "github.com/armadakv/armada/replication/snapshot"
+	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/armadakv/objfs"
 	"go.uber.org/zap"
 )
@@ -24,7 +25,8 @@ import (
 // supplied io.Writer so that callers do not need to hold a concrete
 // table.ActiveTable and the service can be mocked in tests.
 //
-// storage.EngineTableService (below) adapts storage.Engine to this interface.
+// storage.EngineTableService adapts storage.Engine to this interface.
+
 type TableSnapshotService interface {
 	// GetTableNames returns the names of all currently known tables.
 	GetTableNames() ([]string, error)
@@ -32,8 +34,14 @@ type TableSnapshotService interface {
 	// applied leader index at which the snapshot was taken.
 	Snapshot(ctx context.Context, tableName string, w io.Writer) (uint64, error)
 	// IncrementalSnapshot writes a delta snapshot for tableName (changes since
-	// sinceIndex) to w and returns the current leader index.
-	IncrementalSnapshot(ctx context.Context, tableName string, w io.Writer, sinceIndex uint64) (uint64, error)
+	// sinceIndex) to w and returns its base, horizon, and tip from one atomic
+	// storage view.
+	IncrementalSnapshot(ctx context.Context, tableName string, w io.Writer, sinceIndex uint64) (*fsm.SnapshotResponse, error)
+	// GCHorizon returns the table's MVCC garbage-collection horizon. A delta
+	// taken from at or below this index is silently incomplete.
+	GCHorizon(ctx context.Context, tableName string) (uint64, error)
+	// IsLeader reports whether this node is the Raft leader for tableName.
+	IsLeader(tableName string) (bool, error)
 }
 
 // ExporterConfig holds the operational parameters for a SnapshotExporter.
@@ -45,6 +53,14 @@ type ExporterConfig struct {
 	// SnapshotTimeout is the maximum time allowed for a single incremental
 	// snapshot triggered by log compaction. Defaults to 10 minutes when zero.
 	SnapshotTimeout time.Duration
+	// FullInterval is how often a full snapshot is exported for every table.
+	// Without it a bucket only ever accumulates incrementals and a follower
+	// that needs a base has nothing to start from. Defaults to 6 hours.
+	FullInterval time.Duration
+	// IncrMaxChain caps how many incrementals may hang off the newest full
+	// snapshot before the next export is forced to be a full one, bounding both
+	// recovery time and the blast radius of a lost link. Defaults to 8.
+	IncrMaxChain int
 }
 
 // SnapshotExporter exports table snapshots to shared object storage.
@@ -60,6 +76,11 @@ type ExporterConfig struct {
 // GC treats the most recent full snapshot as the active anchor: it is always
 // retained, and only incremental artefacts whose base index falls at or after
 // the latest full tip are preserved as part of the active chain.
+type snapshotArtifact interface {
+	io.Writer
+	Sync() error
+}
+
 type SnapshotExporter struct {
 	cfg    ExporterConfig
 	tables TableSnapshotService
@@ -75,6 +96,12 @@ type SnapshotExporter struct {
 func NewSnapshotExporter(tables TableSnapshotService, cfg ExporterConfig, log *zap.SugaredLogger) *SnapshotExporter {
 	if cfg.SnapshotTimeout <= 0 {
 		cfg.SnapshotTimeout = 10 * time.Minute
+	}
+	if cfg.FullInterval <= 0 {
+		cfg.FullInterval = 6 * time.Hour
+	}
+	if cfg.IncrMaxChain <= 0 {
+		cfg.IncrMaxChain = 8
 	}
 	return &SnapshotExporter{
 		cfg:    cfg,
@@ -105,6 +132,9 @@ func (e *SnapshotExporter) Run(ctx context.Context) {
 	e.log.Info("snapshot exporter started")
 	defer e.log.Info("snapshot exporter stopped")
 
+	full := time.NewTicker(e.cfg.FullInterval)
+	defer full.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -116,6 +146,38 @@ func (e *SnapshotExporter) Run(ctx context.Context) {
 			if err != nil {
 				e.log.Errorf("incremental export: table %s: %v", tableName, err)
 			}
+		case <-full.C:
+			e.exportFullAll(ctx)
+		}
+	}
+}
+
+// exportFullAll writes a fresh full snapshot for every table this node leads.
+// Unlike the compaction path, which the Raft event listener has already gated
+// on leadership, the interval has no gate of its own.
+func (e *SnapshotExporter) exportFullAll(ctx context.Context) {
+	names, err := e.tables.GetTableNames()
+	if err != nil {
+		e.log.Errorf("periodic full export: cannot list tables: %v", err)
+		return
+	}
+	for _, name := range names {
+		if ctx.Err() != nil {
+			return
+		}
+		leader, err := e.tables.IsLeader(name)
+		if err != nil {
+			e.log.Debugf("periodic full export: leadership of table %s unknown: %v", name, err)
+			continue
+		}
+		if !leader {
+			continue
+		}
+		sctx, cancel := context.WithTimeout(ctx, e.cfg.SnapshotTimeout)
+		err = e.ExportFull(sctx, name)
+		cancel()
+		if err != nil {
+			e.log.Errorf("periodic full export: table %s: %v", name, err)
 		}
 	}
 }
@@ -133,78 +195,27 @@ func (e *SnapshotExporter) ExportFull(ctx context.Context, tableName string) err
 		_ = os.Remove(sf.Path())
 	}()
 
-	// Write snapshot in armada-command-v1 format (snappy-compressed, length-prefixed).
 	tipIndex, err := e.tables.Snapshot(ctx, tableName, sf)
 	if err != nil {
 		return fmt.Errorf("snapshot: %w", err)
 	}
-
-	// Append DUMMY command carrying the leader index — required so followers
-	// can advance sysLeaderIndex even when the delta was empty.
-	final, err := (&armadapb.Command{
-		Table:       []byte(tableName),
-		Type:        armadapb.Command_DUMMY,
-		LeaderIndex: &tipIndex,
-	}).MarshalVT()
+	gcHorizon, err := e.tables.GCHorizon(ctx, tableName)
 	if err != nil {
-		return fmt.Errorf("marshal dummy command: %w", err)
-	}
-	if _, err := sf.Write(final); err != nil {
-		return fmt.Errorf("write dummy command: %w", err)
-	}
-	if err := sf.Sync(); err != nil {
-		return fmt.Errorf("sync temp file: %w", err)
-	}
-
-	fi, err := sf.Stat()
-	if err != nil {
-		return fmt.Errorf("stat temp file: %w", err)
-	}
-	size := fi.Size()
-
-	metaKey := FullMetaKey(tableName, tipIndex)
-
-	// Idempotency: skip if already committed.
-	exists, err := e.cfg.Bucket.Exists(ctx, metaKey)
-	if err != nil {
-		return fmt.Errorf("check existing full snapshot: %w", err)
-	}
-	if exists {
-		e.log.Debugf("full snapshot for table %s at index %d already committed, skipping", tableName, tipIndex)
-		return nil
-	}
-
-	checksum, err := fileSHA256(sf.File)
-	if err != nil {
-		return fmt.Errorf("sha256: %w", err)
-	}
-
-	snapKey := FullSnapKey(tableName, tipIndex)
-	if _, err := sf.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {
-		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !errors.Is(cleanErr, objfs.ErrNotExist) {
-			e.log.Warnf("upload failed and cleanup of partial artefact %s also failed: %v", snapKey, cleanErr)
-		}
-		return fmt.Errorf("upload snapshot: %w", err)
+		return fmt.Errorf("read gc horizon: %w", err)
 	}
 
 	meta := Meta{
 		Table:     tableName,
 		Type:      SnapshotTypeFull,
-		BaseIndex: 0,
 		TipIndex:  tipIndex,
-		SizeBytes: size,
-		SHA256:    checksum,
-		CreatedAt: time.Now().UTC(),
 		NodeID:    e.cfg.NodeID,
 		Format:    SnapshotFormat,
+		GCHorizon: gcHorizon,
 	}
-	if err := e.uploadMeta(ctx, metaKey, meta); err != nil {
+	if err := e.publishArtifact(ctx, meta, sf, sf.File); err != nil {
 		return err
 	}
-	e.log.Infof("exported full snapshot for table %s at index %d (%d bytes)", tableName, tipIndex, size)
+	e.log.Infof("exported full snapshot for table %s at index %d", tableName, tipIndex)
 	return nil
 }
 
@@ -212,10 +223,22 @@ func (e *SnapshotExporter) ExportFull(ctx context.Context, tableName string) err
 // changes since the latest committed tip (full or incremental) and uploads it
 // to the bucket. If no prior artefact exists the incremental is taken from
 // the beginning (base index 0).
+//
+// When that tip has already fallen to or below the GC horizon the base is
+// raised to just above the horizon rather than the export being abandoned for
+// a full — see the reasoning inline.
 func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName string) error {
-	baseIndex, err := e.latestTip(ctx, tableName)
+	baseIndex, chain, err := e.chainState(ctx, tableName)
 	if err != nil {
 		return fmt.Errorf("find latest tip: %w", err)
+	}
+	return e.exportIncremental(ctx, tableName, baseIndex, chain)
+}
+
+func (e *SnapshotExporter) exportIncremental(ctx context.Context, tableName string, requestedBase uint64, chain int) error {
+	if chain >= e.cfg.IncrMaxChain {
+		e.log.Infof("incremental chain for table %s reached %d links; exporting a full snapshot instead", tableName, chain)
+		return e.ExportFull(ctx, tableName)
 	}
 
 	sf, err := replicationSnapshot.NewTemp()
@@ -227,94 +250,124 @@ func (e *SnapshotExporter) ExportIncremental(ctx context.Context, tableName stri
 		_ = os.Remove(sf.Path())
 	}()
 
-	tipIndex, err := e.tables.IncrementalSnapshot(ctx, tableName, sf, baseIndex)
+	resp, err := e.tables.IncrementalSnapshot(ctx, tableName, sf, requestedBase)
 	if err != nil {
 		return fmt.Errorf("incremental snapshot: %w", err)
 	}
-
-	if tipIndex == baseIndex {
-		e.log.Debugf("incremental export: no new data for table %s since index %d", tableName, baseIndex)
+	if resp.TipIndex <= resp.BaseIndex {
+		e.log.Debugf("incremental export: no new data for table %s since index %d (applied index %d)", tableName, resp.BaseIndex, resp.TipIndex)
 		return nil
-	}
-
-	// Append DUMMY command.
-	final, err := (&armadapb.Command{
-		Table:       []byte(tableName),
-		Type:        armadapb.Command_DUMMY,
-		LeaderIndex: &tipIndex,
-	}).MarshalVT()
-	if err != nil {
-		return fmt.Errorf("marshal dummy command: %w", err)
-	}
-	if _, err := sf.Write(final); err != nil {
-		return fmt.Errorf("write dummy command: %w", err)
-	}
-	if err := sf.Sync(); err != nil {
-		return fmt.Errorf("sync temp file: %w", err)
-	}
-
-	fi, err := sf.Stat()
-	if err != nil {
-		return fmt.Errorf("stat temp file: %w", err)
-	}
-	size := fi.Size()
-
-	metaKey := IncrMetaKey(tableName, baseIndex, tipIndex)
-	exists, err := e.cfg.Bucket.Exists(ctx, metaKey)
-	if err != nil {
-		return fmt.Errorf("check existing incremental snapshot: %w", err)
-	}
-	if exists {
-		e.log.Debugf("incremental snapshot for table %s (%d→%d) already committed, skipping", tableName, baseIndex, tipIndex)
-		return nil
-	}
-
-	checksum, err := fileSHA256(sf.File)
-	if err != nil {
-		return fmt.Errorf("sha256: %w", err)
-	}
-
-	snapKey := IncrSnapKey(tableName, baseIndex, tipIndex)
-	if _, err := sf.Seek(0, io.SeekStart); err != nil {
-		return err
-	}
-	if err := e.cfg.Bucket.Upload(ctx, snapKey, sf.File); err != nil {
-		if cleanErr := e.cfg.Bucket.Delete(ctx, snapKey); cleanErr != nil && !errors.Is(cleanErr, objfs.ErrNotExist) {
-			e.log.Warnf("upload failed and cleanup of partial artefact %s also failed: %v", snapKey, cleanErr)
-		}
-		return fmt.Errorf("upload snapshot: %w", err)
 	}
 
 	meta := Meta{
 		Table:     tableName,
 		Type:      SnapshotTypeIncremental,
-		BaseIndex: baseIndex,
-		TipIndex:  tipIndex,
-		SizeBytes: size,
-		SHA256:    checksum,
-		CreatedAt: time.Now().UTC(),
+		BaseIndex: resp.BaseIndex,
+		TipIndex:  resp.TipIndex,
 		NodeID:    e.cfg.NodeID,
 		Format:    SnapshotFormat,
+		GCHorizon: resp.GCHorizon,
 	}
-	if err := e.uploadMeta(ctx, metaKey, meta); err != nil {
+	if err := e.publishArtifact(ctx, meta, sf, sf.File); err != nil {
 		return err
 	}
-	e.log.Infof("exported incremental snapshot for table %s (%d→%d, %d bytes)", tableName, baseIndex, tipIndex, size)
+	e.log.Infof("exported incremental snapshot for table %s (%d→%d)", tableName, resp.BaseIndex, resp.TipIndex)
 	return nil
 }
 
-// latestTip returns the highest committed tip index across all artefacts
-// (full and incremental) for tableName. Returns 0 if no artefacts exist yet.
-func (e *SnapshotExporter) latestTip(ctx context.Context, tableName string) (uint64, error) {
+// publishArtifact makes a generated artifact durable and visible. Metadata is
+// the commit marker and is always published last. If any later step fails after
+// an artifact object was uploaded, the object is removed so it cannot evade
+// metadata-driven GC.
+func (e *SnapshotExporter) publishArtifact(ctx context.Context, meta Meta, source snapshotArtifact, raw *os.File) (err error) {
+	final, err := (&armadapb.Command{
+		Table:       []byte(meta.Table),
+		Type:        armadapb.Command_DUMMY,
+		LeaderIndex: &meta.TipIndex,
+	}).MarshalVT()
+	if err != nil {
+		return fmt.Errorf("marshal dummy command: %w", err)
+	}
+	if _, err := source.Write(final); err != nil {
+		return fmt.Errorf("write dummy command: %w", err)
+	}
+	if err := source.Sync(); err != nil {
+		return fmt.Errorf("sync temp file: %w", err)
+	}
+	fi, err := raw.Stat()
+	if err != nil {
+		return fmt.Errorf("stat temp file: %w", err)
+	}
+	meta.SizeBytes = fi.Size()
+	meta.SHA256, err = fileSHA256(raw)
+	if err != nil {
+		return fmt.Errorf("sha256: %w", err)
+	}
+	meta.CreatedAt = time.Now().UTC()
+
+	var snapKey, metaKey string
+	switch meta.Type {
+	case SnapshotTypeFull:
+		snapKey = FullSnapKey(meta.Table, meta.TipIndex)
+		metaKey = FullMetaKey(meta.Table, meta.TipIndex)
+	case SnapshotTypeIncremental:
+		snapKey = IncrSnapKey(meta.Table, meta.BaseIndex, meta.TipIndex)
+		metaKey = IncrMetaKey(meta.Table, meta.BaseIndex, meta.TipIndex)
+	default:
+		return fmt.Errorf("unknown snapshot type %q", meta.Type)
+	}
+
+	exists, err := e.cfg.Bucket.Exists(ctx, metaKey)
+	if err != nil {
+		return fmt.Errorf("check existing snapshot: %w", err)
+	}
+	if exists {
+		e.log.Debugf("snapshot for table %s at index %d already committed, skipping", meta.Table, meta.TipIndex)
+		return nil
+	}
+	if _, err := raw.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if err := e.cfg.Bucket.Upload(ctx, snapKey, raw); err != nil {
+		e.cleanupArtifact(ctx, snapKey)
+		return fmt.Errorf("upload snapshot: %w", err)
+	}
+	if err := e.uploadMeta(ctx, metaKey, meta); err != nil {
+		e.cleanupArtifact(ctx, snapKey)
+		return err
+	}
+	return nil
+}
+
+func (e *SnapshotExporter) cleanupArtifact(ctx context.Context, snapKey string) {
+	if err := e.cfg.Bucket.Delete(ctx, snapKey); err != nil && !errors.Is(err, objfs.ErrNotExist) {
+		e.log.Warnf("cleanup of artifact %s failed: %v", snapKey, err)
+	}
+}
+
+// chainState returns the highest committed tip index across all artefacts for
+// tableName, and how many incremental links currently hang off the newest full
+// snapshot. Both are zero when no artefacts exist yet.
+func (e *SnapshotExporter) chainState(ctx context.Context, tableName string) (tip uint64, chain int, err error) {
 	metas, err := e.ListMeta(ctx, tableName)
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 	if len(metas) == 0 {
-		return 0, nil
+		return 0, 0, nil
 	}
-	last := metas[len(metas)-1]
-	return last.TipIndex, nil
+	var latestFullTip uint64
+	for _, m := range metas {
+		if m.Type == SnapshotTypeFull && m.TipIndex > latestFullTip {
+			latestFullTip = m.TipIndex
+		}
+	}
+	for _, m := range metas {
+		if m.Type == SnapshotTypeIncremental && m.BaseIndex >= latestFullTip {
+			chain++
+		}
+	}
+	return metas[len(metas)-1].TipIndex, chain, nil
 }
 
 // ListMeta lists all committed Meta artefacts for tableName, sorted by TipIndex ascending.
@@ -337,7 +390,7 @@ func (e *SnapshotExporter) uploadMeta(ctx context.Context, key string, m Meta) e
 // fileSHA256 computes the hex-encoded SHA-256 of the raw file content,
 // seeking to the start before reading. The file is left positioned at EOF
 // after the call; callers that need to re-read must seek themselves.
-func fileSHA256(f *os.File) (string, error) {
+func fileSHA256(f io.ReadSeeker) (string, error) {
 	if _, err := f.Seek(0, io.SeekStart); err != nil {
 		return "", err
 	}

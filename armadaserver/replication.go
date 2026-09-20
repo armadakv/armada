@@ -23,6 +23,7 @@ import (
 	"github.com/armadakv/objfs"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
 
@@ -61,6 +62,7 @@ type SnapshotServer struct {
 	armadapb.UnimplementedSnapshotServer
 	Tables        TableService
 	SnapshotStore objfs.Bucket
+	Log           *zap.SugaredLogger
 }
 
 func (s *SnapshotServer) Stream(req *armadapb.SnapshotRequest, srv armadapb.Snapshot_StreamServer) error {
@@ -217,20 +219,30 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 		return nil, status.Errorf(codes.Unavailable, "failed to read snapshot metadata: %v", err)
 	}
 
-	// TODO: once incremental restore is implemented in engine.Restore, remove
-	// the filter below and pass all metas to SelectBestSnapshot directly.
-	var fullMetas []store.Meta
-	for _, m := range metas {
-		if m.Type == store.SnapshotTypeFull {
-			fullMetas = append(fullMetas, m)
-		}
+	// Read the live horizon once. It is needed both to avoid stale artefacts and
+	// to determine whether Log.Replicate can resume directly.
+	gcHorizon, err := table.GCHorizon(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "failed to read gc horizon for table %q: %v", req.GetTable(), err)
 	}
-
-	meta, ok := store.SelectBestSnapshot(fullMetas, req.GetFollowerIndex())
+	horizon := gcHorizon.Index
+	meta, ok := store.SelectRecoverableSnapshot(metas, store.SnapshotSelectionOptions{
+		FollowerIndex:   req.GetFollowerIndex(),
+		LiveGCHorizon:   horizon,
+		FollowerCanTail: true,
+	})
 	if !ok {
+		if s.Log != nil {
+			s.Log.Debugf("snapshot query for table %s at index %d: nothing applies (gc horizon %d, %d resumable artefact(s)); follower will use a live snapshot",
+				req.GetTable(), req.GetFollowerIndex(), horizon, len(metas))
+		}
 		return &armadapb.SnapshotQueryResponse{
 			Type: armadapb.SnapshotQueryResponse_NONE,
 		}, nil
+	}
+	if s.Log != nil {
+		s.Log.Debugf("snapshot query for table %s at index %d: offering %s base=%d tip=%d (gc horizon %d)",
+			req.GetTable(), req.GetFollowerIndex(), meta.Type, meta.BaseIndex, meta.TipIndex, horizon)
 	}
 
 	var snapType armadapb.SnapshotQueryResponse_SnapshotType
@@ -240,8 +252,6 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 		snapType = armadapb.SnapshotQueryResponse_FULL
 		key = store.FullSnapKey(meta.Table, meta.TipIndex)
 	case store.SnapshotTypeIncremental:
-		// TODO: incremental restore is not yet implemented; this branch is
-		// unreachable until the full-only filter above is removed.
 		snapType = armadapb.SnapshotQueryResponse_INCREMENTAL
 		key = store.IncrSnapKey(meta.Table, meta.BaseIndex, meta.TipIndex)
 	default:
@@ -256,6 +266,17 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 		}
 	}
 
+	// Claim a short-lived bridge lease while the follower receives this response
+	// and starts its transfer. SnapshotQueryRequest has no follower identity, so
+	// this lease is keyed by the gRPC peer and cannot be explicitly released.
+	// Proxy-mode transfers additionally acquire the HTTP lease lifecycle, keyed
+	// by the follower's raft address, which owns renewal and release for the full
+	// download. Keep this independent bridge for compatibility and to cover the
+	// handoff; it expires after store.LeaseTTL if the follower never reaches HTTP.
+	if err := store.WriteLease(ctx, s.SnapshotStore, meta.Table, requesterID(ctx)); err != nil && s.Log != nil {
+		s.Log.Warnf("could not claim download lease for table %s: %v", meta.Table, err)
+	}
+
 	return &armadapb.SnapshotQueryResponse{
 		Type:      snapType,
 		BaseIndex: meta.BaseIndex,
@@ -264,6 +285,15 @@ func (s *SnapshotServer) Query(ctx context.Context, req *armadapb.SnapshotQueryR
 		Sha256:    sha,
 		SizeBytes: meta.SizeBytes,
 	}, nil
+}
+
+// requesterID identifies the caller for lease bookkeeping. The query carries no
+// node identity of its own, so the transport peer is the best available handle.
+func requesterID(ctx context.Context) string {
+	if p, ok := peer.FromContext(ctx); ok && p.Addr != nil {
+		return p.Addr.String()
+	}
+	return "unknown"
 }
 
 // LogServer implements Log service from proto/replication.proto.
@@ -336,6 +366,11 @@ func (l *LogServer) Replicate(req *armadapb.ReplicateRequest, server armadapb.Lo
 	// follower to recover from a snapshot instead of replaying an incomplete
 	// history.
 	if gcHorizon, err := t.GCHorizon(ctx); err == nil && gcHorizon.Index > 0 && req.LeaderIndex <= gcHorizon.Index {
+		// This is what sends a follower back into recovery, so say so: a
+		// follower that has just recovered and lands here again means the
+		// artefact it used was already below the horizon.
+		l.Log.Debugf("table %s: follower asked for index %d, at or below gc horizon %d (applied %d); answering USE_SNAPSHOT",
+			req.GetTable(), req.LeaderIndex, gcHorizon.Index, appliedIndex.Index)
 		return server.Send(repErrUseSnapshot)
 	}
 

@@ -16,6 +16,7 @@ import (
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/raftpb"
 	"github.com/armadakv/armada/replication/store"
+	"github.com/armadakv/armada/storage"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table"
 	"github.com/armadakv/objfs"
@@ -316,26 +317,18 @@ func TestSnapshotServer_QueryGetTableErrorMapping(t *testing.T) {
 }
 
 func TestSnapshotServer_Query(t *testing.T) {
-	t.Run("incremental only returns NONE (incremental restore not yet supported)", func(t *testing.T) {
-		bucket, err := objfs.NewLocal(t.TempDir())
-		require.NoError(t, err)
-		meta := store.Meta{
+	t.Run("incremental is selected for a follower inside the delta range", func(t *testing.T) {
+		bucket := bucketWithMetas(t, store.Meta{
 			Table:     "orders",
 			Type:      store.SnapshotTypeIncremental,
 			BaseIndex: 100,
 			TipIndex:  150,
 			SizeBytes: 1024,
 			SHA256:    "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
-		}
-		raw, err := json.Marshal(meta)
-		require.NoError(t, err)
-		require.NoError(t, bucket.Upload(context.Background(), store.IncrMetaKey("orders", 100, 150), bytes.NewReader(raw)))
+		})
 
 		engine := newInMemTestEngine(t, "orders")
-		s := &SnapshotServer{
-			Tables:        engine,
-			SnapshotStore: bucket,
-		}
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
 		table, err := engine.GetTable("orders")
 		require.NoError(t, err)
 		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
@@ -344,8 +337,282 @@ func TestSnapshotServer_Query(t *testing.T) {
 			ClusterId:     table.ClusterID,
 		})
 		require.NoError(t, err)
-		// No full snapshot available — incremental restore is not yet supported.
+		require.Equal(t, armadapb.SnapshotQueryResponse_INCREMENTAL, resp.Type)
+		require.Equal(t, uint64(100), resp.BaseIndex)
+		require.Equal(t, uint64(150), resp.TipIndex)
+		require.Equal(t, store.IncrSnapKey("orders", 100, 150), resp.ObjectKey)
+	})
+
+	t.Run("a follower at or above the GC horizon is told it needs nothing", func(t *testing.T) {
+		// The chain-then-full regression. Once a chain has lifted the follower
+		// above the horizon it can tail the log, and offering it the best
+		// remaining artefact hands it a full — no delta is based that high —
+		// throwing away everything the chain achieved.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 400},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		advanceGCHorizon(t, engine, table.ClusterID, 150)
+
+		for _, followerIndex := range []uint64{150, 151, 399} {
+			resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+				Table:         "orders",
+				FollowerIndex: followerIndex,
+				ClusterId:     table.ClusterID,
+			})
+			require.NoError(t, err)
+			require.Equalf(t, armadapb.SnapshotQueryResponse_NONE, resp.Type,
+				"follower at %d is at or above the horizon and can tail", followerIndex)
+		}
+	})
+
+	t.Run("an uncompacted leader still offers a snapshot", func(t *testing.T) {
+		// A zero horizon means the leader has never compacted, so it says
+		// nothing about what the follower needs. Answering NONE there would
+		// make a fresh follower replay the whole log through raft, which is
+		// precisely what snapshot recovery exists to avoid.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 400},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 0,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
+		require.Equal(t, uint64(400), resp.TipIndex)
+	})
+
+	t.Run("one artefact always lands the follower at or above the horizon", func(t *testing.T) {
+		// The shared selector drops artefacts whose tip is below the horizon, so
+		// any selection lands the follower where normal log replication can
+		// resume. A chain can only be needed if the horizon advances during
+		// replay.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 400},
+			store.Meta{Table: "orders", Type: store.SnapshotTypeIncremental, BaseIndex: 110, TipIndex: 130, GCHorizon: 100},
+			store.Meta{Table: "orders", Type: store.SnapshotTypeIncremental, BaseIndex: 130, TipIndex: 200, GCHorizon: 120},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		// Horizon at 160 puts the 110-130 delta below it, so it is dropped as
+		// stale and the 130-200 delta does not reach back to this follower.
+		advanceGCHorizon(t, engine, table.ClusterID, 160)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
+		require.Equal(t, uint64(400), resp.TipIndex)
+		require.GreaterOrEqual(t, resp.TipIndex, uint64(160),
+			"whatever is offered must leave the follower at or above the horizon")
+	})
+
+	t.Run("a delta whose tip clears the horizon is offered, not a full", func(t *testing.T) {
+		// The counterpart: the delta reaches this follower and its tip clears
+		// the horizon, so one link finishes the job and the full is not needed.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 400},
+			store.Meta{Table: "orders", Type: store.SnapshotTypeIncremental, BaseIndex: 110, TipIndex: 200, GCHorizon: 100},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		advanceGCHorizon(t, engine, table.ClusterID, 160)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_INCREMENTAL, resp.Type)
+		require.Equal(t, uint64(110), resp.BaseIndex)
+		require.Equal(t, uint64(200), resp.TipIndex)
+	})
+
+	t.Run("incremental only returns NONE when no full snapshot can replace it", func(t *testing.T) {
+		bucket := bucketWithMetas(t, store.Meta{
+			Table:     "orders",
+			Type:      store.SnapshotTypeIncremental,
+			BaseIndex: 100,
+			TipIndex:  150,
+		})
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		// Advancing the GC horizon past the follower makes the delta unsafe:
+		// the MVCC versions it would need have been compacted away.
+		advanceGCHorizon(t, engine, table.ClusterID, 130)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
 		require.Equal(t, armadapb.SnapshotQueryResponse_NONE, resp.Type)
+	})
+
+	t.Run("a follower below the GC horizon gets a full snapshot", func(t *testing.T) {
+		// The incremental is the better fit on index alone, so this only passes
+		// if the GC-horizon guard rejects it in favour of the full.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 160},
+			store.Meta{Table: "orders", Type: store.SnapshotTypeIncremental, BaseIndex: 110, TipIndex: 150},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		advanceGCHorizon(t, engine, table.ClusterID, 130)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
+		require.Equal(t, uint64(160), resp.TipIndex)
+	})
+
+	t.Run("a delta that recorded its export horizon is served below the live horizon", func(t *testing.T) {
+		// The regression this guards: a follower only ever negotiates a snapshot
+		// because Replicate answered USE_SNAPSHOT, which happens exactly when it
+		// is at or below the GC horizon. Rejecting deltas on that basis made the
+		// incremental path unreachable in every configuration. An artefact whose
+		// recorded export-time horizon is below its own base index is complete
+		// for good, however far the live horizon has since moved.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 160},
+			store.Meta{
+				Table:     "orders",
+				Type:      store.SnapshotTypeIncremental,
+				BaseIndex: 110,
+				TipIndex:  150,
+				GCHorizon: 100,
+			},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		// Live horizon well past the follower, which is the normal state for
+		// anything that needs a snapshot at all.
+		advanceGCHorizon(t, engine, table.ClusterID, 130)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_INCREMENTAL, resp.Type)
+		require.Equal(t, uint64(110), resp.BaseIndex)
+		require.Equal(t, uint64(150), resp.TipIndex)
+	})
+
+	t.Run("a delta exported at or below its own base is rejected", func(t *testing.T) {
+		// Provenance recorded and bad: the exporter would have skipped compacted
+		// versions, so the delta is silently short and must not be served.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 160},
+			store.Meta{
+				Table:     "orders",
+				Type:      store.SnapshotTypeIncremental,
+				BaseIndex: 110,
+				TipIndex:  150,
+				GCHorizon: 115,
+			},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 120,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
+		require.Equal(t, uint64(160), resp.TipIndex)
+	})
+
+	t.Run("an artefact below the GC horizon is not offered", func(t *testing.T) {
+		// Observed in the e2e harness as two recoveries back to back:
+		//   serving shard is now 10009 at source index 2762 (artefact full tip 2762)
+		//   serving shard is now 10010 at source index 3465 (artefact live tip 0)
+		// The first landed exactly on its artefact's tip, but that tip was
+		// already below the leader's GC horizon, so Replicate answered
+		// USE_SNAPSHOT for tip+1 and the whole recovery ran again. Offering
+		// nothing is better: the follower goes straight to a live snapshot,
+		// which is current by construction.
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 2762},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		advanceGCHorizon(t, engine, table.ClusterID, 2800)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 2062,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_NONE, resp.Type,
+			"an artefact the follower could not resume from must not be offered")
+	})
+
+	t.Run("an artefact at or above the GC horizon is still offered", func(t *testing.T) {
+		bucket := bucketWithMetas(t,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 2900},
+		)
+
+		engine := newInMemTestEngine(t, "orders")
+		s := &SnapshotServer{Tables: engine, SnapshotStore: bucket}
+		table, err := engine.GetTable("orders")
+		require.NoError(t, err)
+		advanceGCHorizon(t, engine, table.ClusterID, 2800)
+
+		resp, err := s.Query(context.Background(), &armadapb.SnapshotQueryRequest{
+			Table:         "orders",
+			FollowerIndex: 2062,
+			ClusterId:     table.ClusterID,
+		})
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
+		require.Equal(t, uint64(2900), resp.TipIndex)
 	})
 
 	t.Run("full snapshot is selected and returned", func(t *testing.T) {
@@ -450,4 +717,36 @@ func TestLogServer_Replicate(t *testing.T) {
 			tt.wantErr(t, l.Replicate(tt.args.req, stream), fmt.Sprintf("Replicate(%v)", tt.args.req))
 		})
 	}
+}
+
+// bucketWithMetas builds a local bucket pre-populated with committed metadata.
+func bucketWithMetas(t *testing.T, metas ...store.Meta) objfs.Bucket {
+	t.Helper()
+	bucket, err := objfs.NewLocal(t.TempDir())
+	require.NoError(t, err)
+	for _, m := range metas {
+		raw, err := json.Marshal(m)
+		require.NoError(t, err)
+		key := store.FullMetaKey(m.Table, m.TipIndex)
+		if m.Type == store.SnapshotTypeIncremental {
+			key = store.IncrMetaKey(m.Table, m.BaseIndex, m.TipIndex)
+		}
+		require.NoError(t, bucket.Upload(context.Background(), key, bytes.NewReader(raw)))
+	}
+	return bucket
+}
+
+// advanceGCHorizon proposes a GC command so the orders table reports a horizon at index.
+func advanceGCHorizon(t *testing.T, engine *storage.Engine, shardID, index uint64) {
+	t.Helper()
+	bts, err := (&armadapb.Command{
+		Table:       []byte("orders"),
+		Type:        armadapb.Command_GC,
+		LeaderIndex: &index,
+	}).MarshalVT()
+	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	_, err = engine.SyncPropose(ctx, engine.GetNoOPSession(shardID), bts)
+	require.NoError(t, err)
 }

@@ -3,11 +3,15 @@
 package replication
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/replication/store"
+	"github.com/armadakv/objfs"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -55,5 +59,69 @@ func TestGRPCSnapshotQueryResolver_FallbackToLiveHTTP(t *testing.T) {
 		_, err := r.Query(context.Background(), "orders", 42, 100)
 		require.ErrorContains(t, err, "snapshot query failed")
 		require.ErrorContains(t, err, "boom")
+	})
+}
+
+// TestBucketSnapshotQueryResolver covers the follower-side resolver, which
+// reads the shared store directly and so has no leader table to ask for a GC
+// horizon — it relies on the horizon the exporter recorded in the artefact.
+func TestBucketSnapshotQueryResolver(t *testing.T) {
+	ctx := context.Background()
+
+	upload := func(t *testing.T, bucket objfs.Bucket, metas ...store.Meta) {
+		t.Helper()
+		for _, m := range metas {
+			raw, err := json.Marshal(m)
+			require.NoError(t, err)
+			key := store.FullMetaKey(m.Table, m.TipIndex)
+			if m.Type == store.SnapshotTypeIncremental {
+				key = store.IncrMetaKey(m.Table, m.BaseIndex, m.TipIndex)
+			}
+			require.NoError(t, bucket.Upload(ctx, key, bytes.NewReader(raw)))
+		}
+	}
+
+	t.Run("an applicable incremental is returned", func(t *testing.T) {
+		bucket, err := objfs.NewLocal(t.TempDir())
+		require.NoError(t, err)
+		upload(t, bucket, store.Meta{
+			Table: "orders", Type: store.SnapshotTypeIncremental,
+			BaseIndex: 100, TipIndex: 150, GCHorizon: 40,
+		})
+
+		resp, err := NewBucketSnapshotQueryResolver(bucket).Query(ctx, "orders", 1, 120)
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_INCREMENTAL, resp.Type)
+		require.Equal(t, store.IncrSnapKey("orders", 100, 150), resp.ObjectKey)
+	})
+
+	t.Run("a follower at or below the recorded horizon gets the full snapshot", func(t *testing.T) {
+		bucket, err := objfs.NewLocal(t.TempDir())
+		require.NoError(t, err)
+		upload(t, bucket,
+			store.Meta{Table: "orders", Type: store.SnapshotTypeFull, TipIndex: 160},
+			store.Meta{
+				Table: "orders", Type: store.SnapshotTypeIncremental,
+				BaseIndex: 100, TipIndex: 150, GCHorizon: 130,
+			},
+		)
+
+		resp, err := NewBucketSnapshotQueryResolver(bucket).Query(ctx, "orders", 1, 120)
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_FULL, resp.Type)
+		require.Equal(t, uint64(160), resp.TipIndex)
+	})
+
+	t.Run("nothing applicable returns NONE", func(t *testing.T) {
+		bucket, err := objfs.NewLocal(t.TempDir())
+		require.NoError(t, err)
+		upload(t, bucket, store.Meta{
+			Table: "orders", Type: store.SnapshotTypeIncremental,
+			BaseIndex: 100, TipIndex: 150, GCHorizon: 130,
+		})
+
+		resp, err := NewBucketSnapshotQueryResolver(bucket).Query(ctx, "orders", 1, 120)
+		require.NoError(t, err)
+		require.Equal(t, armadapb.SnapshotQueryResponse_NONE, resp.Type)
 	})
 }

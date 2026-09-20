@@ -122,5 +122,7 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 		&cli.DurationFlag{Name: "shared-store.retention", Value: 48 * time.Hour, Usage: "Maximum age of artefacts in the shared store. Older artefacts are eligible for GC."},
 		&cli.DurationFlag{Name: "shared-store.gc-interval", Value: time.Hour, Usage: "How often the GC worker runs to delete expired artefacts from the shared store."},
 		&cli.DurationFlag{Name: "replication.snapshot-timeout", Value: 10 * time.Minute, Usage: "Timeout for a single incremental snapshot export triggered by log compaction."},
+		&cli.DurationFlag{Name: "shared-store.full-interval", Value: 6 * time.Hour, Usage: "How often a full snapshot of every led table is exported to the shared store. Followers need a full snapshot as the base of any incremental chain."},
+		&cli.IntFlag{Name: "shared-store.incr-max-chain", Value: 8, Usage: "Maximum number of incremental snapshots chained off the newest full snapshot before the next export is forced to be a full one."},
 	}
 )
