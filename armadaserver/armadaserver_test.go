@@ -6,6 +6,7 @@ import (
 	"context"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,54 +48,71 @@ func (t MockTableService) RestoreLegacy(ctx context.Context, name string, reader
 	return t.error
 }
 
-func newInMemTestEngine(t *testing.T, tables ...string) *storage.Engine {
-	testAddr := func() string {
-		l, err := net.Listen("tcp4", "127.0.0.1:0")
-		if err != nil {
-			panic(err)
-		}
-		defer l.Close()
-		return l.Addr().String()
-	}
-
-	raftAddr := testAddr()
-
-	e, err := storage.New(storage.Config{
-		ClientAddress:     raftAddr,
-		NodeID:            1,
-		InitialMembers:    map[uint64]string{1: raftAddr},
-		NodeHostDir:       "/nh",
-		RTTMillisecond:    10,
-		RaftAddress:       raftAddr,
-		EnableMetrics:     false,
-		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
-		Gossip: storage.GossipConfig{
-			ClusterName:    uuid.New().String(),
-			InitialMembers: []string{raftAddr},
-		},
-		Table: storage.TableConfig{
-			ElectionRTT:        10,
-			HeartbeatRTT:       1,
-			SnapshotEntries:    10,
-			CompactionOverhead: 5,
-			MaxInMemLogSize:    1024,
-			FS:                 pvfs.NewMem(),
-			DataDir:            "/data",
-			BlockCacheSize:     1024,
-			TableCacheSize:     64,
-			RecoveryType:       table.RecoveryTypeCheckpoint,
-		},
-		Meta: storage.MetaConfig{
-			ElectionRTT:        10,
-			HeartbeatRTT:       1,
-			SnapshotEntries:    10,
-			CompactionOverhead: 5,
-			MaxInMemLogSize:    1024,
-		},
-		FS:  vfs.NewMem(),
-		Log: zaptest.NewLogger(t).Sugar(),
-	})
+// testAddr reserves a loopback address for the engine's shared QUIC socket.
+//
+// The probe has to be UDP. The engine binds its transport with ListenPacket, so
+// a port being free for TCP says nothing about the same port being free for
+// UDP, and the old tcp4 probe happily handed back ports that were already taken
+// for UDP.
+func testAddr(t *testing.T) string {
+	t.Helper()
+	c, err := net.ListenPacket("udp4", "127.0.0.1:0")
 	require.NoError(t, err)
+	defer c.Close()
+	return c.LocalAddr().String()
+}
+
+func newInMemTestEngine(t *testing.T, tables ...string) *storage.Engine {
+	// Closing the probe socket before the engine binds leaves a window in which
+	// another test can take the port, so retry with a fresh one instead of
+	// failing. Only bind conflicts are retried; anything else fails outright.
+	var e *storage.Engine
+	for attempt := 1; ; attempt++ {
+		raftAddr := testAddr(t)
+		var err error
+		e, err = storage.New(storage.Config{
+			ClientAddress:     raftAddr,
+			NodeID:            1,
+			InitialMembers:    map[uint64]string{1: raftAddr},
+			NodeHostDir:       "/nh",
+			RTTMillisecond:    10,
+			RaftAddress:       raftAddr,
+			EnableMetrics:     false,
+			QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
+			Gossip: storage.GossipConfig{
+				ClusterName:    uuid.New().String(),
+				InitialMembers: []string{raftAddr},
+			},
+			Table: storage.TableConfig{
+				ElectionRTT:        10,
+				HeartbeatRTT:       1,
+				SnapshotEntries:    10,
+				CompactionOverhead: 5,
+				MaxInMemLogSize:    1024,
+				FS:                 pvfs.NewMem(),
+				DataDir:            "/data",
+				BlockCacheSize:     1024,
+				TableCacheSize:     64,
+				RecoveryType:       table.RecoveryTypeCheckpoint,
+			},
+			Meta: storage.MetaConfig{
+				ElectionRTT:        10,
+				HeartbeatRTT:       1,
+				SnapshotEntries:    10,
+				CompactionOverhead: 5,
+				MaxInMemLogSize:    1024,
+			},
+			FS:  vfs.NewMem(),
+			Log: zaptest.NewLogger(t).Sugar(),
+		})
+		if err == nil {
+			break
+		}
+		if attempt == 5 || !strings.Contains(err.Error(), "address already in use") {
+			require.NoError(t, err)
+		}
+		t.Logf("engine bind on %s raced another listener, retrying: %v", raftAddr, err)
+	}
 	require.NoError(t, e.Start())
 	require.NoError(t, e.WaitUntilReady(context.Background()))
 	for _, tableName := range tables {

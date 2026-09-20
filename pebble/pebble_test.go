@@ -8,7 +8,7 @@ import (
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest"
 )
 
 func Test_split(t *testing.T) {
@@ -93,7 +93,7 @@ func TestOpenDB(t *testing.T) {
 			name: "logger",
 			args: args{
 				dbdir:   "/tmp",
-				options: []Option{WithFS(vfs.NewMem()), WithLogger(zap.NewNop().Sugar())},
+				options: []Option{WithFS(vfs.NewMem()), WithLogger(zaptest.NewLogger(t).Sugar())},
 			},
 			wantErr: require.NoError,
 		},

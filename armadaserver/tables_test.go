@@ -28,12 +28,18 @@ func TestTablesServer_Create(t *testing.T) {
 		args    args
 		want    *armadapb.CreateTableResponse
 		wantErr require.ErrorAssertionFunc
+		// wantCode is the gRPC code callers branch on. Asserting only that
+		// "an error happened" let Create report a state conflict as
+		// InvalidArgument for a long time, which is indistinguishable from a
+		// malformed request to anyone creating a table idempotently.
+		wantCode codes.Code
 	}{
 		{
-			name:    "allow all - missing table name",
-			fields:  fields{AuthFunc: allowAll},
-			args:    args{req: &armadapb.CreateTableRequest{}},
-			wantErr: require.Error,
+			name:     "allow all - missing table name",
+			fields:   fields{AuthFunc: allowAll},
+			args:     args{req: &armadapb.CreateTableRequest{}},
+			wantErr:  require.Error,
+			wantCode: codes.InvalidArgument,
 		},
 		{
 			name:    "allow all - not existing table",
@@ -43,16 +49,18 @@ func TestTablesServer_Create(t *testing.T) {
 			want:    &armadapb.CreateTableResponse{Id: "10001"},
 		},
 		{
-			name:    "allow all - existing table",
-			fields:  fields{AuthFunc: allowAll, Tables: []string{"exists"}},
-			args:    args{req: &armadapb.CreateTableRequest{Name: "exists"}},
-			wantErr: require.Error,
+			name:     "allow all - existing table",
+			fields:   fields{AuthFunc: allowAll, Tables: []string{"exists"}},
+			args:     args{req: &armadapb.CreateTableRequest{Name: "exists"}},
+			wantErr:  require.Error,
+			wantCode: codes.AlreadyExists,
 		},
 		{
-			name:    "deny all",
-			fields:  fields{AuthFunc: denyAll},
-			args:    args{req: &armadapb.CreateTableRequest{}},
-			wantErr: require.Error,
+			name:     "deny all",
+			fields:   fields{AuthFunc: denyAll},
+			args:     args{req: &armadapb.CreateTableRequest{}},
+			wantErr:  require.Error,
+			wantCode: codes.InvalidArgument,
 		},
 	}
 	for _, tt := range tests {
@@ -63,6 +71,9 @@ func TestTablesServer_Create(t *testing.T) {
 			}
 			got, err := ts.Create(context.TODO(), tt.args.req)
 			tt.wantErr(t, err, fmt.Sprintf("Create(%v, %v)", context.TODO(), tt.args.req))
+			if tt.wantCode != codes.OK {
+				require.Equalf(t, tt.wantCode, status.Code(err), "Create(%v, %v) status code", context.TODO(), tt.args.req)
+			}
 			require.Equalf(t, tt.want, got, "Create(%v, %v)", context.TODO(), tt.args.req)
 		})
 	}
@@ -77,23 +88,26 @@ func TestTablesServer_Delete(t *testing.T) {
 		req *armadapb.DeleteTableRequest
 	}
 	tests := []struct {
-		name    string
-		fields  fields
-		args    args
-		want    *armadapb.DeleteTableResponse
-		wantErr require.ErrorAssertionFunc
+		name     string
+		fields   fields
+		args     args
+		want     *armadapb.DeleteTableResponse
+		wantErr  require.ErrorAssertionFunc
+		wantCode codes.Code
 	}{
 		{
-			name:    "allow all - missing table name",
-			fields:  fields{AuthFunc: allowAll},
-			args:    args{req: &armadapb.DeleteTableRequest{}},
-			wantErr: require.Error,
+			name:     "allow all - missing table name",
+			fields:   fields{AuthFunc: allowAll},
+			args:     args{req: &armadapb.DeleteTableRequest{}},
+			wantErr:  require.Error,
+			wantCode: codes.InvalidArgument,
 		},
 		{
-			name:    "allow all - not existing table",
-			fields:  fields{AuthFunc: allowAll},
-			args:    args{req: &armadapb.DeleteTableRequest{Name: "nonexistent"}},
-			wantErr: require.Error,
+			name:     "allow all - not existing table",
+			fields:   fields{AuthFunc: allowAll},
+			args:     args{req: &armadapb.DeleteTableRequest{Name: "nonexistent"}},
+			wantErr:  require.Error,
+			wantCode: codes.NotFound,
 		},
 		{
 			name:    "allow all - existing table",
@@ -103,10 +117,11 @@ func TestTablesServer_Delete(t *testing.T) {
 			want:    &armadapb.DeleteTableResponse{},
 		},
 		{
-			name:    "deny all",
-			fields:  fields{AuthFunc: denyAll},
-			args:    args{req: &armadapb.DeleteTableRequest{}},
-			wantErr: require.Error,
+			name:     "deny all",
+			fields:   fields{AuthFunc: denyAll},
+			args:     args{req: &armadapb.DeleteTableRequest{}},
+			wantErr:  require.Error,
+			wantCode: codes.InvalidArgument,
 		},
 	}
 	for _, tt := range tests {
@@ -117,6 +132,9 @@ func TestTablesServer_Delete(t *testing.T) {
 			}
 			got, err := ts.Delete(context.TODO(), tt.args.req)
 			tt.wantErr(t, err, fmt.Sprintf("Delete(%v, %v)", context.TODO(), tt.args.req))
+			if tt.wantCode != codes.OK {
+				require.Equalf(t, tt.wantCode, status.Code(err), "Delete(%v, %v) status code", context.TODO(), tt.args.req)
+			}
 			require.Equalf(t, tt.want, got, "Delete(%v, %v)", context.TODO(), tt.args.req)
 		})
 	}
