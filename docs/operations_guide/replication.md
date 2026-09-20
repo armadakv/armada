@@ -66,18 +66,88 @@ compacted or the GC horizon has advanced), the leader signals the follower to pe
 
 Snapshot recovery utilizes a robust pipeline built on object storage concepts, completely replacing legacy, non-resumable gRPC streaming. Depending on your configuration, it operates in one of two modes:
 
-* **HTTP Live Fallback (Default):** The follower queries the leader via gRPC to find the best snapshot, then securely downloads the payload over a resumable HTTP endpoint exposed by the leader. This enables reliable transfers of massive snapshots without dropped gRPC streams.
-* **Shared Object Storage (S3/GCS/NFS):** If the leader is configured to export snapshots to a shared object store using the built-in `objfs` module, the follower directly accesses the object store (or gets pre-signed URLs) to download the snapshot. This completely removes heavy I/O and network loads from the leader nodes and parallelizes recoveries.
+* **Proxy through the leader (`--replication.snapshot-source=proxy`):** the follower
+  queries the leader over gRPC for the best snapshot, then downloads the payload
+  from the leader's HTTP endpoint. The endpoint honours `Range`, so a dropped
+  transfer resumes where it left off. Where the blob backend can mint a
+  time-limited URL, the leader answers with a `307` redirect to it instead of
+  streaming the bytes; the follower follows the redirect and keeps its `Range`
+  header, so the transfer moves off the leader without any loss of resumability.
+* **Direct shared-store access (`--replication.snapshot-source=direct`):** the
+  follower reads the object store itself, removing the leader from the data path
+  entirely. It still reaches the leader over HTTP for the on-demand live
+  snapshot fallback, which is an endpoint rather than a stored object.
 
-Additionally, Armada supports **Incremental Snapshots**. Instead of downloading the full multi-gigabyte state, the follower checks if an incremental snapshot exists between its current state and the leader's state. If available, only the delta is downloaded, drastically cutting down recovery times and network bandwidth.
+`auto` (the default) picks `direct` when a `--shared-store.backend` is
+configured and `proxy` otherwise.
+
+Armada also supports **incremental snapshots**. Rather than downloading the full
+multi-gigabyte state, the follower can apply a delta when its current source
+index lies in the artefact's `[base, tip)` range. A delta is valid only when its
+base is strictly above the MVCC garbage-collection horizon captured from the
+same storage view that produced it; below that horizon, compacted versions and
+tombstones may be absent. Candidate eligibility is checked before ranking, so
+an invalid delta cannot hide another valid delta or full snapshot.
+
+A recovery applies one selected artefact, then resumes normal log replication.
+If the leader no longer has the required log history, it requests another
+recovery; it is not inferred from snapshot-query metadata alone.
+
+The leader exports a full snapshot for every table it leads on
+`--shared-store.full-interval`, and forces one early when the incremental chain
+reaches `--shared-store.incr-max-chain`. The table FSM safely rebases an
+incremental base that falls at or below its captured GC horizon. Without the
+periodic full export a bucket only ever accumulates incrementals, and a
+recovering follower has no base to start from.
+
+An artefact is only offered if its tip index is at or above the table's GC
+horizon. After loading an artefact the follower sits at its tip and asks to
+replicate from tip+1, which the leader refuses at or below the horizon — so
+recovering onto an artefact below the horizon leaves the follower unable to
+resume, and the recovery is wasted. When nothing qualifies the leader offers
+nothing and the follower falls back to an on-demand live snapshot, which is
+current by construction.
+
+This check is deliberately the bare minimum. Adding headroom on top of the
+horizon looks appealing — the horizon advances asynchronously while a recovery
+runs — but it backfires: artefacts are published on log compaction, and
+compaction is exactly what advances the horizon, so a freshly published
+artefact's tip sits only about `raft.compaction-overhead` above it. Any
+meaningful headroom rejects the newest artefact, which is the only useful one,
+and every follower silently degrades to a live snapshot — the per-follower
+leader load the shared store exists to avoid.
 
 #### Recovery Lifecycle
 
-The full follower recovery process is as follows:
-1. Queries the leader for the optimal snapshot artefact (Incremental or Full, from Shared Storage or Direct).
-2. Downloads the snapshot using either resumable HTTP or directly via signed S3/GCS URLs.
-3. Replays the snapshot into a temporary recovery shard using a learner-first promotion strategy.
-4. Atomically swaps the recovered shard for the live table, minimizing downtime while continuing to serve stale-but-consistent reads during the transfer.
+Recovery is driven by a durable journal in the Raft-replicated metadata store,
+so it survives a power loss at any point and resumes rather than restarting:
+
+1. **Negotiate.** Query the leader for the best artefact and pin its identity in
+   the journal, so a GC or a newly published snapshot cannot switch the artefact
+   mid-flight.
+2. **Download.** Fetch into `{raft.state-machine-dir}/snapshots-staging/`,
+   resuming from periodically fsynced byte checkpoints, and verify the advertised
+   sha256 and size. Both direct and proxy downloads acquire, renew, and release a
+   GC lease for the transfer duration; proxy-mode lease requests remain directed
+   at the leader even when the artifact GET is redirected to object storage.
+3. **Load.** An incremental replays straight into the live shard. A full
+   snapshot is loaded into a new single-member *recovery shard* on one node
+   only.
+4. **Seed.** The other members join the recovery shard as **non-voting
+   learners** and receive the state through Raft's own snapshot path — they
+   never replay the command stream themselves.
+5. **Promote.** Once a learner reports that it has caught up it is promoted to
+   voter, one at a time. A learner that has not caught up is never promoted: the
+   coordinator starts as the only voter, so an uncaught-up second voter would
+   stall the shard.
+6. **Swap.** The recovery shard atomically becomes the table's serving shard and
+   the old one is retired through the normal cleanup path.
+
+Throughout steps 3–6 the old shard keeps serving stale-but-consistent reads; the
+table only starts routing to the new shard at the swap.
+
+The operator-facing `Restore` maintenance RPC uses the same coordinator, so a
+restored table is also loaded once and seeded to peers by snapshot.
 
 Snapshot recovery is also used when a brand-new follower cluster is bootstrapped for the first
 time (before it has any local state to resume from).
@@ -146,9 +216,9 @@ follower. The reconcile interval is controlled by `--replication.reconcile-inter
 | `--replication.snapshot-rpc-timeout` | `1h` | Timeout for a full snapshot recovery RPC |
 | `--replication.max-recovery-in-flight` | `1` | Maximum number of concurrent snapshot recovery goroutines |
 | `--replication.max-recv-message-size-bytes` | `8388608` (8 MiB) | Maximum size of a single replication message the follower will accept |
-| `--replication.max-snapshot-recv-bytes-per-second` | `0` (unlimited) | Rate limit for snapshot reception in bytes per second |
 | `--replication.lease-interval` | `15s` | How often workers renew their table leases |
 | `--replication.reconcile-interval` | `30s` | How often the follower reconciles its worker set against the current table list |
+| `--replication.snapshot-source` | `auto` | Where snapshot artefacts are fetched from: `auto`, `direct` (follower reads the shared store) or `proxy` (through the leader's HTTP endpoint) |
 | `--replication.keepalive-time` | `1m` | How often to send keepalive pings on the replication connection |
 | `--replication.keepalive-timeout` | `10s` | How long to wait for a keepalive response before closing the connection |
 
@@ -174,8 +244,11 @@ follower. The reconcile interval is controlled by `--replication.reconcile-inter
 
 ### Improving Snapshot Throughput
 
-* Leave `--replication.max-snapshot-recv-bytes-per-second` at `0` for maximum speed, or set
-  a byte-per-second value to cap bandwidth consumption during recovery.
+* Configure `--shared-store.backend` on both clusters and run followers with
+  `--replication.snapshot-source=direct`. That takes the leader out of the data
+  path entirely and lets concurrent recoveries proceed in parallel.
+* Lower `--shared-store.incr-max-chain` if recoveries spend too long applying a
+  long delta chain; raise it to reduce the leader's full-export I/O.
 * Increase `--replication.max-recovery-in-flight` only if you have many tables to recover
   simultaneously and sufficient I/O capacity. The default of `1` is safe for most deployments.
 
@@ -189,6 +262,58 @@ follower. The reconcile interval is controlled by `--replication.reconcile-inter
   recovery, consider reducing the leader's compaction / GC frequency.
 
 ---
+
+## Verifying Recovery Locally
+
+`hack/recovery-e2e.sh` exercises the whole recovery pipeline against real
+clusters on `127.0.0.1`: a three-node leader cluster exporting snapshots to a
+filesystem shared store, and a three-node follower cluster recovering from it.
+Load is driven with [`ghz`](https://ghz.sh) against the gRPC API when it is
+installed (`go install github.com/bojand/ghz/cmd/ghz@latest`), falling back to
+`arq` otherwise. Prefer ghz: `arq` spawns a process per transaction, and since
+one transaction is one Raft entry, generating the few hundred entries needed to
+trigger log compaction costs minutes rather than seconds.
+
+```bash
+make test-recovery                  # run every scenario
+./hack/recovery-e2e.sh full         # run one scenario
+./hack/recovery-e2e.sh list         # list scenario names
+./hack/recovery-e2e.sh up           # bring the clusters up and leave them
+./hack/recovery-e2e.sh down         # tear down
+```
+
+| Scenario | What it asserts |
+|---|---|
+| `baseline` | tail replication converges the follower onto the leader |
+| `full` | full recovery is learner-first: exactly one node loads the artefact, the peers join as non-voting learners, get promoted, and the shard is swapped in |
+| `incremental` | a follower inside the delta window applies an `incr` artefact into its **live** shard, leaving its shard id unchanged |
+| `powerloss` | `SIGKILL` of the recovery coordinator mid-recovery; it resumes from the journal instead of restarting or abandoning |
+| `direct` | `--replication.snapshot-source=direct` reads the bucket itself and never falls back to the HTTP-only live key |
+
+Knobs: `KEYS` (total keys written), `GHZ_CONCURRENCY` (ghz workers),
+`INCR_GAP` (entries the follower is pushed behind in the incremental scenario),
+`BATCH` (puts per transaction, arq fallback only), `ROOT` (state directory,
+default `/tmp/armada-recovery`).
+
+Both procfiles (`hack/Procfile.recovery-{leader,follower}`) deliberately run
+with small `raft.snapshot-entries` / `raft.compaction-overhead` and a short
+`shared-store.full-interval`, so log compaction and snapshot export happen in
+seconds rather than hours. They also run at `--log-level=DEBUG`, because the
+recovery phase machine reports seeding progress and skipped exports at debug
+level. Logs land in `$ROOT/logs/{leader,follower}.log`.
+
+Two things worth knowing when reading a run:
+
+* A follower can reach the correct key count purely by tailing the leader's log
+  when the leader has not compacted yet. That says nothing about recovery having
+  worked, so the `full` scenario waits for the shard swap rather than the key
+  count.
+* `INCREMENTAL` only engages when a delta exists whose base index is at or below
+  the follower's index. A base-0 artefact (`incr/0_N`) covers the whole key space
+  and is rejected as unsound for a non-empty follower, and a chained artefact
+  (`incr/N_M`) only applies to a follower at or past `N`. Without a full snapshot
+  anchoring the chain near the follower's index, the follower correctly falls
+  back to a full recovery.
 
 ## Troubleshooting
 
