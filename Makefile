@@ -44,6 +44,10 @@ run-cluster-follower-dev: build
 clean-cluster-dev:
 	rm -rf /tmp/armada-cluster
 
+.PHONY: test-integration
+test-integration:
+	cd integration && go test -timeout=60m -v ./...
+
 # Run golangci-lint linters
 .PHONY: lint
 lint: proto

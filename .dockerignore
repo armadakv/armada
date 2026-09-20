@@ -5,6 +5,7 @@
 docs/
 helm
 hack/
+integration/
 report
 .dockerignore
 .gitignore
