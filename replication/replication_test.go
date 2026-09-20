@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,7 +71,12 @@ type testSnapshotGetter struct {
 	path string
 }
 
-func (t testSnapshotGetter) Get(_ context.Context, _ string) (io.ReadCloser, error) {
+func (t testSnapshotGetter) GetFrom(_ context.Context, _ string, _ int64) (io.ReadCloser, bool, error) {
+	f, err := os.Open(t.path)
+	return f, false, err
+}
+
+func (t testSnapshotGetter) GetLive(_ context.Context, _ string) (io.ReadCloser, error) {
 	return os.Open(t.path)
 }
 
@@ -113,7 +119,7 @@ func TestManager_reconcile(t *testing.T) {
 
 	queue := storage.NewNotificationQueue()
 	go queue.Run()
-	m := NewManager(followerEngine, queue, conn, nil, nil, Config{
+	m := NewManager(followerEngine, queue, conn, SnapshotAccess{}, Config{
 		ReconcileInterval: 250 * time.Millisecond,
 		Workers: WorkerConfig{
 			PollInterval:        10 * time.Millisecond,
@@ -131,7 +137,7 @@ func TestManager_reconcile(t *testing.T) {
 		return m.hasWorker("test2")
 	}, 10*time.Second, 250*time.Millisecond, "replication worker not found in registry")
 	m.Close()
-	r.Empty(m.workers.registry)
+	r.Empty(m.workerSnapshot())
 }
 
 func TestManager_reconcileTables(t *testing.T) {
@@ -144,7 +150,7 @@ func TestManager_reconcileTables(t *testing.T) {
 	conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	r.NoError(err)
 
-	m := NewManager(followerEngine, nil, conn, nil, nil, Config{})
+	m := NewManager(followerEngine, nil, conn, SnapshotAccess{}, Config{})
 	m.factory.store = &kv.MapStore{}
 
 	t.Log("create table")
@@ -183,7 +189,7 @@ func TestManager_RecreatesFollowerTableWhenLeaderIncarnationChanges(t *testing.T
 	conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 	r.NoError(err)
 	defer conn.Close()
-	m := NewManager(followerEngine, nil, conn, nil, nil, Config{})
+	m := NewManager(followerEngine, nil, conn, SnapshotAccess{}, Config{})
 	m.factory.store = &kv.MapStore{}
 
 	firstLeaderTable, err := leaderEngine.CreateTable(tableName)
@@ -275,7 +281,10 @@ func TestManager_recover(t *testing.T) {
 
 	queue := storage.NewNotificationQueue()
 	go queue.Run()
-	m := NewManager(followerEngine, queue, conn, testSnapshotGetter{path: "snapshot/testdata/snapshot.bin"}, nil, Config{
+	m := NewManager(followerEngine, queue, conn, SnapshotAccess{
+		Objects: testSnapshotGetter{path: "snapshot/testdata/snapshot.bin"},
+		Live:    testSnapshotGetter{path: "snapshot/testdata/snapshot.bin"},
+	}, Config{
 		ReconcileInterval: 250 * time.Millisecond,
 		Workers: WorkerConfig{
 			PollInterval:        10 * time.Millisecond,
@@ -298,52 +307,68 @@ func getTestPort() int {
 	return l.Addr().(*net.TCPAddr).Port
 }
 
+// getTestUDPPort returns a probably-free UDP port. The engine's transport is
+// QUIC, so probing a TCP port says nothing about whether the engine can bind:
+// two engines can be handed the same free TCP port and then collide on UDP.
+func getTestUDPPort() int {
+	c, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		return getTestPort()
+	}
+	defer c.Close()
+	return c.LocalAddr().(*net.UDPAddr).Port
+}
+
 func prepareLeaderAndFollowerEngine(t *testing.T) (leaderTM *storage.Engine, followerTM *storage.Engine) {
 	t.Helper()
-	r := require.New(t)
 	t.Log("start leader Raft")
-	leaderAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
-	leaderTM, err := storage.New(storage.Config{
-		FS:                vfs.NewMem(),
-		Log:               zaptest.NewLogger(t).Sugar(),
-		InitialMembers:    map[uint64]string{1: leaderAddress},
-		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
-		Gossip: storage.GossipConfig{
-			ClusterName: "leader",
-		},
-		NodeID:         1,
-		RTTMillisecond: 5,
-		RaftAddress:    leaderAddress,
-		Table:          storage.TableConfig{HeartbeatRTT: 1, ElectionRTT: 5, FS: pvfs.NewMem(), MaxInMemLogSize: 1024 * 1024, BlockCacheSize: 1024, TableCacheSize: 1024},
-		Meta:           storage.MetaConfig{HeartbeatRTT: 1, ElectionRTT: 5},
-	})
-	r.NoError(err)
-	r.NoError(leaderTM.Start())
-
+	leaderTM = prepareEngine(t, "leader")
 	t.Log("start follower Raft")
-	followerAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
-	followerTM, err = storage.New(storage.Config{
-		FS:                vfs.NewMem(),
-		Log:               zaptest.NewLogger(t).Sugar(),
-		InitialMembers:    map[uint64]string{1: followerAddress},
-		QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
-		Gossip: storage.GossipConfig{
-			ClusterName: "follower",
-		},
-		NodeID:         1,
-		RTTMillisecond: 5,
-		RaftAddress:    followerAddress,
-		Table:          storage.TableConfig{HeartbeatRTT: 1, ElectionRTT: 5, FS: pvfs.NewMem(), MaxInMemLogSize: 1024 * 1024, BlockCacheSize: 1024, TableCacheSize: 1024},
-		Meta:           storage.MetaConfig{HeartbeatRTT: 1, ElectionRTT: 5},
-	})
-	r.NoError(err)
-	r.NoError(followerTM.Start())
-
-	t.Cleanup(func() {
-		_ = leaderTM.Close()
-		_ = followerTM.Close()
-	})
+	followerTM = prepareEngine(t, "follower")
 	return
+}
+
+// prepareEngine starts one single-node engine. Tests that only need a follower
+// should call this directly: every extra engine claims another ephemeral port,
+// and getTestPort hands out a port it has already released.
+func prepareEngine(t *testing.T, clusterName string) *storage.Engine {
+	t.Helper()
+	r := require.New(t)
+
+	// Picking a port and binding it are separate steps, so another engine can
+	// take it in between. Retry rather than failing the test on a collision.
+	var (
+		e   *storage.Engine
+		err error
+	)
+	for attempt := range 5 {
+		address := fmt.Sprintf("127.0.0.1:%d", getTestUDPPort())
+		e, err = storage.New(storage.Config{
+			FS:                vfs.NewMem(),
+			Log:               zaptest.NewLogger(t).Sugar(),
+			InitialMembers:    map[uint64]string{1: address},
+			QUICUDPBufferSize: 4 * 1024 * 1024, // 4 MiB — fits within most CI kernel limits
+			Gossip: storage.GossipConfig{
+				ClusterName: clusterName,
+			},
+			NodeID:         1,
+			RTTMillisecond: 5,
+			RaftAddress:    address,
+			Table:          storage.TableConfig{HeartbeatRTT: 1, ElectionRTT: 5, FS: pvfs.NewMem(), MaxInMemLogSize: 1024 * 1024, BlockCacheSize: 1024, TableCacheSize: 1024, DataDir: t.TempDir()},
+			Meta:           storage.MetaConfig{HeartbeatRTT: 1, ElectionRTT: 5},
+		})
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "address already in use") {
+			break
+		}
+		t.Logf("port collision on attempt %d, retrying: %v", attempt+1, err)
+	}
+	r.NoError(err)
+	r.NoError(e.Start())
+	t.Cleanup(func() { _ = e.Close() })
+	return e
 }
 
 func startReplicationServer(engine *storage.Engine) *armadaserver.Server {

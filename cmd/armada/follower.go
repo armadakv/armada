@@ -104,11 +104,11 @@ func follower() error {
 		_ = conn.Close()
 	}()
 	{
-		snapshotGetter, snapshotQuery, err := createSnapshotAccess(logger)
+		snapshotAccess, err := createSnapshotAccess(logger)
 		if err != nil {
 			return err
 		}
-		d := replication.NewManager(engine, nQueue, conn, snapshotGetter, snapshotQuery, replication.Config{
+		d := replication.NewManager(engine, nQueue, conn, snapshotAccess, replication.Config{
 			ReconcileInterval: k.Duration("replication.reconcile-interval"),
 			Workers: replication.WorkerConfig{
 				PollInterval:        k.Duration("replication.poll-interval"),
@@ -212,9 +212,26 @@ func createReplicationConn(log *zap.Logger) (*grpc.ClientConn, error) {
 	return replConn, nil
 }
 
-func createSnapshotAccess(logger *zap.Logger) (replication.SnapshotObjectGetter, replication.SnapshotQueryResolver, error) {
+// createSnapshotAccess builds the follower's snapshot transport.
+//
+// In direct mode the follower reads committed artefacts straight from the
+// shared store, but a live on-demand snapshot is not an object in that store —
+// it only exists as an endpoint on the leader. Both are therefore wired up, and
+// the recovery path picks between them explicitly rather than by sniffing the
+// object key.
+func createSnapshotAccess(logger *zap.Logger) (replication.SnapshotAccess, error) {
 	source := k.String("replication.snapshot-source")
 	backend := k.String("shared-store.backend")
+	if source != "auto" && source != "direct" && source != "proxy" {
+		return replication.SnapshotAccess{}, fmt.Errorf("invalid replication.snapshot-source %q: must be one of auto,direct,proxy", source)
+	}
+
+	leaderHTTP, err := createLeaderSnapshotHTTPGetter(logger)
+	if err != nil {
+		return replication.SnapshotAccess{}, err
+	}
+	access := replication.SnapshotAccess{Objects: leaderHTTP, Live: leaderHTTP}
+
 	if source == "direct" || (source == "auto" && backend != "" && backend != "none") {
 		bkt, err := newBucketFromConfig(context.Background(), BucketConfig{
 			Backend:        backend,
@@ -226,29 +243,46 @@ func createSnapshotAccess(logger *zap.Logger) (replication.SnapshotObjectGetter,
 			AzureKey:       k.String("shared-store.azure.key"),
 		})
 		if err != nil {
-			return nil, nil, fmt.Errorf("cannot create shared-store bucket for direct snapshot mode: %w", err)
+			return replication.SnapshotAccess{}, fmt.Errorf("cannot create shared-store bucket for direct snapshot mode: %w", err)
 		}
 		if bkt == nil {
-			return nil, nil, fmt.Errorf("snapshot source %q requires shared-store backend configuration", source)
+			return replication.SnapshotAccess{}, fmt.Errorf("snapshot source %q requires shared-store backend configuration", source)
 		}
-		return replication.NewBucketSnapshotObjectGetter(bkt), replication.NewBucketSnapshotQueryResolver(bkt), nil
+		access.Objects = replication.NewBucketSnapshotObjectGetter(bkt)
+		access.Query = replication.NewBucketSnapshotQueryResolver(bkt)
+		// With its own bucket handle the follower can hold the GC lease itself.
+		access.Leases = replication.NewBucketLeaseKeeper(bkt, k.String("raft.address"))
+	} else {
+		// Proxy-mode snapshot GETs can redirect to a presigned object-store URL.
+		// Keep their lease lifecycle on the leader's stable HTTP endpoint so the
+		// worker can renew it for the whole redirected transfer.
+		access.Leases = leaderHTTP.LeaseKeeper(k.String("raft.address"))
 	}
-	if source != "proxy" && source != "auto" {
-		return nil, nil, fmt.Errorf("invalid replication.snapshot-source %q: must be one of auto,direct,proxy", source)
-	}
+	return access, nil
+}
 
+func createLeaderSnapshotHTTPGetter(logger *zap.Logger) (*replication.HTTPSnapshotGetter, error) {
 	addr, secure, net := resolveURL(k.String("replication.leader-address"))
+	var cert, key, ca, serverName string
+	insecureSkipVerify := false
+	if secure {
+		cert = k.String("replication.cert-filename")
+		key = k.String("replication.key-filename")
+		ca = k.String("replication.ca-filename")
+		insecureSkipVerify = k.Bool("replication.insecure-skip-verify")
+		serverName = k.String("replication.server-name")
+	}
 	httpClient, err := replication.NewHTTPClient(
 		logger.Named("replication.http").Sugar(),
 		addr,
-		k.String("replication.cert-filename"),
-		k.String("replication.key-filename"),
-		k.String("replication.ca-filename"),
-		k.Bool("replication.insecure-skip-verify"),
-		k.String("replication.server-name"),
+		cert,
+		key,
+		ca,
+		insecureSkipVerify,
+		serverName,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("cannot create replication http client: %w", err)
+		return nil, fmt.Errorf("cannot create replication http client: %w", err)
 	}
 
 	scheme := "http"
@@ -258,6 +292,5 @@ func createSnapshotAccess(logger *zap.Logger) (replication.SnapshotObjectGetter,
 	if net == "unix" || net == "unixs" {
 		scheme = "http"
 	}
-	baseURL := fmt.Sprintf("%s://%s", scheme, addr)
-	return replication.NewHTTPSnapshotObjectGetter(httpClient, baseURL), nil, nil
+	return replication.NewHTTPSnapshotObjectGetter(httpClient, fmt.Sprintf("%s://%s", scheme, addr)), nil
 }
