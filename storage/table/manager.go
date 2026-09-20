@@ -8,6 +8,8 @@ package table
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +22,7 @@ import (
 	ap "github.com/armadakv/armada/pebble"
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/raft/config"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table/fsm"
@@ -50,20 +53,30 @@ const (
 func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg Config) *Manager {
 	blockCache := pebble.NewCache(cfg.Table.BlockCacheSize)
 	scheduler := ap.NewConcurrencyLimitScheduler()
+	lifeCtx, lifeCancel := context.WithCancel(context.Background())
 	return &Manager{
-		nh:                 nh,
-		reconcileInterval:  30 * time.Second,
-		cleanupInterval:    30 * time.Second,
-		cleanupGracePeriod: 5 * time.Minute,
-		cleanupTimeout:     5 * time.Minute,
-		readyChan:          make(chan struct{}),
-		members:            members,
-		cfg:                cfg,
-		store:              store,
-		closed:             make(chan struct{}),
-		log:                zap.S().Named("manager"),
-		blockCache:         blockCache,
-		scheduler:          scheduler,
+		lifeCtx:             lifeCtx,
+		lifeCancel:          lifeCancel,
+		nh:                  nh,
+		reconcileInterval:   30 * time.Second,
+		cleanupInterval:     30 * time.Second,
+		cleanupGracePeriod:  5 * time.Minute,
+		cleanupTimeout:      5 * time.Minute,
+		smCloseTimeout:      30 * time.Second,
+		recoveryInterval:    time.Second,
+		recoveryStepTimeout: 30 * time.Second,
+		recoverySeedTimeout: 10 * time.Minute,
+		recoveryNudge:       make(chan struct{}, 1),
+		recoveryInflight:    make(map[string]struct{}),
+		readyChan:           make(chan struct{}),
+		members:             members,
+		cfg:                 cfg,
+		store:               store,
+		closed:              make(chan struct{}),
+		log:                 zap.S().Named("manager"),
+		blockCache:          blockCache,
+		incarnation:         newIncarnation(),
+		scheduler:           scheduler,
 	}
 }
 
@@ -82,9 +95,46 @@ type Manager struct {
 	cleanupInterval    time.Duration
 	cleanupGracePeriod time.Duration
 	cleanupTimeout     time.Duration
+	smCloseTimeout     time.Duration
 	log                *zap.SugaredLogger
 	blockCache         *pebble.Cache
 	scheduler          *ap.ConcurrencyLimitScheduler
+	// incarnation identifies this process run. Recovery records carry the
+	// incarnation that created them, so artifacts that cannot outlive their
+	// process — a live on-demand snapshot has no stable identity — are
+	// discarded on restart instead of being replayed stale.
+	incarnation string
+
+	// Recovery coordination (see recovery.go).
+	bus                 RecoveryBus
+	recoveryInterval    time.Duration
+	recoveryStepTimeout time.Duration
+	recoverySeedTimeout time.Duration
+	recoveryNudge       chan struct{}
+	recoveryMu          sync.Mutex
+	recoveryInflight    map[string]struct{}
+	progress            sync.Map
+	// lifeCtx is cancelled by Close. Recovery work can block for minutes on a
+	// large load, so it needs a cancellation channel of its own rather than
+	// relying on the loop noticing m.closed between steps.
+	lifeCtx    context.Context
+	lifeCancel context.CancelFunc
+
+	// smClosed tracks, per shard, when the state machine started by this
+	// manager has finished closing. See tableFSM.
+	smMu     sync.Mutex
+	smClosed map[uint64]chan struct{}
+}
+
+// newIncarnation returns an identifier unique to this process run.
+func newIncarnation() string {
+	var b [12]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		// The value only ever needs to differ from the previous run's, so the
+		// clock is a sufficient fallback.
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b[:])
 }
 
 type Lease struct {
@@ -257,6 +307,7 @@ func (m *Manager) GetTables() ([]Table, error) {
 func (m *Manager) Start() {
 	m.wg.Go(m.reconcileLoop)
 	m.wg.Go(m.cleanupLoop)
+	m.wg.Go(m.recoveryLoop)
 }
 
 func (m *Manager) WaitUntilReady(ctx context.Context) error {
@@ -272,6 +323,9 @@ func (m *Manager) WaitUntilReady(ctx context.Context) error {
 
 func (m *Manager) Close() {
 	close(m.closed)
+	if m.lifeCancel != nil {
+		m.lifeCancel()
+	}
 	m.wg.Wait()
 }
 
@@ -306,6 +360,7 @@ func (m *Manager) reconcileOnce() bool {
 		m.log.Errorf("reconcile failed: %v", err)
 		return false
 	}
+	m.reconcileServingMembership()
 	return m.tablesReady()
 }
 
@@ -326,15 +381,17 @@ func (m *Manager) tablesReady() bool {
 	for _, shard := range nhi.ShardInfoList {
 		shards[shard.ShardID] = shard
 	}
+	// Readiness reflects only the serving shards. A recovery shard is managed
+	// by the recovery loop and may legitimately be absent on this node (it only
+	// exists on the coordinator and the learners it has admitted), so requiring
+	// it here would wedge engine readiness for the whole recovery.
 	for _, table := range tables {
-		for _, shardID := range []uint64{table.ClusterID, table.RecoverID} {
-			if shardID <= tableIDsRangeStart {
-				continue
-			}
-			shard, ok := shards[shardID]
-			if !ok || shard.Pending {
-				return false
-			}
+		if table.ClusterID <= tableIDsRangeStart {
+			continue
+		}
+		shard, ok := shards[table.ClusterID]
+		if !ok || shard.Pending {
+			return false
 		}
 	}
 	return true
@@ -423,8 +480,26 @@ func (m *Manager) cleanup() error {
 			if err := m.nh.SyncRemoveData(ctx, c.ClusterID, m.cfg.NodeID); err != nil {
 				return err
 			}
+			// SyncRemoveData returning is not by itself proof that the state
+			// machine has finished closing, and pulling the directory out from
+			// under a live Pebble DB makes it report a fatal error — which
+			// takes the whole process down. Leave the tombstone in place for
+			// the next cycle rather than risk that.
+			waitCtx, cancelWait := context.WithTimeout(ctx, m.smCloseTimeout)
+			err := m.waitForStateMachineClosed(waitCtx, c.ClusterID)
+			cancelWait()
+			if err != nil {
+				m.log.Warnf("[%d:%d] cluster data cleanup deferred: %v", c.ClusterID, m.cfg.NodeID, err)
+				continue
+			}
 			if err := m.cfg.Table.FS.RemoveAll(c.SMDataPath); err != nil {
 				return err
+			}
+			// The Raft data is gone, so this marker can no longer be needed to
+			// select a restart role. Keep it until this point: membership state
+			// alone cannot prove that the original AddNonVoting entry was compacted.
+			if err := m.clearNonVotingMarker(c.ClusterID); err != nil {
+				return fmt.Errorf("remove recovery role marker for shard %d: %w", c.ClusterID, err)
 			}
 			if err := m.store.Delete(l.Key, l.Ver); err != nil {
 				return err
@@ -476,14 +551,23 @@ func (m *Manager) getTables() (map[string]Table, error) {
 	return tables, nil
 }
 
+// diffTables decides which shards this node should start and stop.
+//
+// Recovery shards are deliberately *known but never auto-started*: the recovery
+// loop is the only thing allowed to start them, because the role a replica must
+// take (single-voter coordinator vs. non-voting learner) is not derivable from
+// the table entry, and starting a learner as a voter panics the Raft layer
+// rather than returning an error.
 func diffTables(tables map[string]Table, raftInfo []raft.ShardInfo) (toStart map[uint64]Table, toStop []uint64) {
 	tableIDs := make(map[uint64]Table)
+	knownIDs := make(map[uint64]struct{})
 	for _, t := range tables {
 		if t.ClusterID != 0 {
 			tableIDs[t.ClusterID] = t
+			knownIDs[t.ClusterID] = struct{}{}
 		}
 		if t.RecoverID != 0 {
-			tableIDs[t.RecoverID] = t
+			knownIDs[t.RecoverID] = struct{}{}
 		}
 	}
 	raftTableIDs := make(map[uint64]struct{})
@@ -502,7 +586,7 @@ func diffTables(tables map[string]Table, raftInfo []raft.ShardInfo) (toStart map
 	}
 
 	for rID := range raftTableIDs {
-		_, found := tableIDs[rID]
+		_, found := knownIDs[rID]
 		if !found && rID > tableIDsRangeStart {
 			toStop = append(toStop, rID)
 		}
@@ -510,35 +594,173 @@ func diffTables(tables map[string]Table, raftInfo []raft.ShardInfo) (toStart map
 	return
 }
 
+// tableFSM builds the on-disk state machine factory for a table shard.
+//
+// The created state machine is wrapped so the manager learns when its Pebble
+// DB has actually been closed. cleanup() needs that signal: removing the state
+// machine's directory while the DB is still open makes Pebble report a fatal
+// error, and a fatal error from Pebble terminates the process.
+func (m *Manager) tableFSM(name string) sm.CreateOnDiskStateMachineFunc {
+	create := fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.scheduler, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
+		if m.cfg.Table.AppliedIndexListener != nil {
+			m.cfg.Table.AppliedIndexListener(name, applied)
+		}
+	})
+	return func(shardID, replicaID uint64) sm.IOnDiskStateMachine {
+		return &trackedStateMachine{
+			IOnDiskStateMachine: create(shardID, replicaID),
+			closed:              m.trackStateMachine(shardID),
+		}
+	}
+}
+
+// trackedStateMachine reports the moment the underlying state machine — and so
+// its Pebble DB — is fully closed.
+type trackedStateMachine struct {
+	sm.IOnDiskStateMachine
+	closed   chan struct{}
+	closeOne sync.Once
+}
+
+func (t *trackedStateMachine) Close() error {
+	defer t.closeOne.Do(func() { close(t.closed) })
+	return t.IOnDiskStateMachine.Close()
+}
+
+// trackStateMachine registers a fresh completion channel for shardID and
+// returns it. Restarting a shard replaces the previous channel.
+func (m *Manager) trackStateMachine(shardID uint64) chan struct{} {
+	ch := make(chan struct{})
+	m.smMu.Lock()
+	defer m.smMu.Unlock()
+	if m.smClosed == nil {
+		m.smClosed = make(map[uint64]chan struct{})
+	}
+	m.smClosed[shardID] = ch
+	return ch
+}
+
+// waitForStateMachineClosed blocks until shardID's state machine has finished
+// closing. A shard this process never started has nothing open, so it returns
+// immediately.
+func (m *Manager) waitForStateMachineClosed(ctx context.Context, shardID uint64) error {
+	m.smMu.Lock()
+	ch, tracked := m.smClosed[shardID]
+	m.smMu.Unlock()
+	if !tracked {
+		return nil
+	}
+	select {
+	case <-ch:
+		m.smMu.Lock()
+		if cur, ok := m.smClosed[shardID]; ok && cur == ch {
+			delete(m.smClosed, shardID)
+		}
+		m.smMu.Unlock()
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("state machine of shard %d is still open: %w", shardID, ctx.Err())
+	}
+}
+
+type replicaStartMode uint8
+
+const (
+	replicaBootstrap replicaStartMode = iota
+	replicaRestart
+	replicaJoin
+)
+
+type replicaStartOptions struct {
+	Mode        replicaStartMode
+	IsNonVoting bool
+	Members     map[uint64]raft.Target
+}
+
+// startReplica is the one policy boundary for on-disk table replicas. In
+// particular, an absent local log is not sufficient evidence that bootstrapping
+// is safe: recovered serving shards must be joined.
+func (m *Manager) startReplica(name string, id uint64, options replicaStartOptions) error {
+	cfg := tableRaftConfig(m.cfg.NodeID, id, m.cfg.Table)
+	cfg.IsNonVoting = options.IsNonVoting
+
+	var (
+		members map[uint64]raft.Target
+		join    bool
+	)
+	switch options.Mode {
+	case replicaBootstrap:
+		members = options.Members
+	case replicaRestart:
+		members = map[uint64]raft.Target{}
+	case replicaJoin:
+		join = true
+	default:
+		return fmt.Errorf("unknown replica start mode %d", options.Mode)
+	}
+	if err := m.nh.StartOnDiskReplica(members, join, m.tableFSM(name), cfg); err != nil {
+		if errors.Is(err, raft.ErrShardAlreadyExist) {
+			return nil
+		}
+		return err
+	}
+	return nil
+}
+
 func (m *Manager) startTable(name string, id uint64) error {
 	if m.nh.HasNodeInfo(id, m.cfg.NodeID) {
-		return m.nh.StartOnDiskReplica(
-			map[uint64]raft.Target{},
-			false,
-			fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.scheduler, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
-				if m.cfg.Table.AppliedIndexListener != nil {
-					m.cfg.Table.AppliedIndexListener(name, applied)
-				}
-			}),
-			tableRaftConfig(m.cfg.NodeID, id, m.cfg.Table),
-		)
+		// A shard swapped in by a learner-first recovery may still carry this
+		// node's learner marker. Its local log can hold an AddNonVoting entry
+		// naming this replica that has not been applied yet; re-applying that
+		// entry against a voting replica panics rather than erroring, so start
+		// non-voting.
+		nonVoting, err := m.readNonVotingMarker(id)
+		if err != nil {
+			return fmt.Errorf("read recovery role marker for shard %d: %w", id, err)
+		}
+		return m.startReplica(name, id, replicaStartOptions{Mode: replicaRestart, IsNonVoting: nonVoting})
 	}
-	return m.nh.StartOnDiskReplica(
-		m.members,
-		false,
-		fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.scheduler, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
-			if m.cfg.Table.AppliedIndexListener != nil {
-				m.cfg.Table.AppliedIndexListener(name, applied)
-			}
-		}),
-		tableRaftConfig(m.cfg.NodeID, id, m.cfg.Table),
-	)
+
+	tbl, _, err := m.getTableVersion(name)
+	if err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
+		return err
+	}
+	if err == nil && tbl.ClusterID == id && tbl.Recovered {
+		// The recovered shard was originally bootstrapped by its coordinator.
+		// A late member must join the existing configuration as a learner, never
+		// recreate the configured voter set as a conflicting fresh bootstrap.
+		//
+		// Recovery may have already persisted AddNonVoting for this offline node
+		// before the journal was deleted. Record the role before starting: replaying
+		// that entry against a voting replica panics, while a learner safely
+		// self-promotes once it receives the persisted promotion or a snapshot.
+		if err := m.writeNonVotingMarker(id); err != nil {
+			return fmt.Errorf("write recovery role marker for shard %d: %w", id, err)
+		}
+		return m.startReplica(name, id, replicaStartOptions{Mode: replicaJoin, IsNonVoting: true})
+	}
+	return m.startReplica(name, id, replicaStartOptions{Mode: replicaBootstrap, Members: m.members})
 }
 
 type Cleanup struct {
 	Created    time.Time `json:"created"`
 	ClusterID  uint64    `json:"cluster_id"`
 	SMDataPath string    `json:"sm_data_path"`
+}
+
+// ApplySnapshot replays an incremental replication snapshot into the serving
+// shard. It remains a narrow compatibility entry point while callers migrate to
+// the recovery journal; journalled incremental recovery uses the same replay
+// primitive after recording the artifact identity.
+func (m *Manager) ApplySnapshot(ctx context.Context, name string, reader io.Reader) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	tbl, _, err := m.getTableVersion(name)
+	if err != nil {
+		return err
+	}
+	return m.readIntoTable(ctx, tbl.ClusterID, name, reader, true)
 }
 
 func (m *Manager) stopTable(clusterID uint64) error {
@@ -570,84 +792,108 @@ func (m *Manager) stopTable(clusterID uint64) error {
 	return nil
 }
 
-// ApplySnapshot applies an incremental snapshot until ctx is canceled.
-func (m *Manager) ApplySnapshot(ctx context.Context, name string, reader io.Reader) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	tbl, _, err := m.getTableVersion(name)
-	if err != nil {
-		return err
-	}
-	return m.readIntoTable(ctx, tbl.ClusterID, name, reader, true)
-}
-
 // Restore installs a replication snapshot. Replication snapshots must contain a
 // validated terminal marker so source progress cannot advance from a truncated stream.
 func (m *Manager) Restore(ctx context.Context, name string, reader io.Reader) error {
-	return m.restore(ctx, name, reader, true)
+	return m.restore(ctx, name, reader, false)
 }
 
 // RestoreLegacy installs a maintenance backup created before replication snapshots
 // required a terminal source-progress marker.
 func (m *Manager) RestoreLegacy(ctx context.Context, name string, reader io.Reader) error {
-	return m.restore(ctx, name, reader, false)
+	return m.restore(ctx, name, reader, true)
 }
 
-func (m *Manager) restore(ctx context.Context, name string, reader io.Reader, requireTerminal bool) error {
+// restore loads a locally supplied stream through the learner-first recovery
+// coordinator: the snapshot is loaded once, on this node, and the other members
+// receive it through Dragonboat's snapshot path instead of replaying every
+// command through their own Raft log.
+func (m *Manager) restore(ctx context.Context, name string, reader io.Reader, legacy bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	tbl, version, err := m.getTableVersion(name)
-	if err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
-		return err
-	}
 	recoveryID, err := m.incAndGetIDSeq()
 	if err != nil {
 		return err
 	}
+	rec := RecoveryRecord{
+		Table:       name,
+		Phase:       PhaseLoading,
+		RecoveryID:  recoveryID,
+		Coordinator: m.cfg.NodeID,
+		Members:     sortedMemberIDs(m.members),
+		Artifact: RecoveryArtifact{
+			Type:      ArtifactLocal,
+			StagePath: readerPath(reader),
+			Legacy:    legacy,
+		},
+	}
+	return m.coordinateRecovery(ctx, name, rec, reader)
+}
 
-	tbl.Name = name
-	tbl.RecoverID = recoveryID
+// coordinateRecovery writes the journal entry that authorises the load and then
+// runs the phase machine to completion. Writing the record before any shard is
+// started is what keeps a crash from leaking a shard-ID sequence number.
+func (m *Manager) coordinateRecovery(ctx context.Context, name string, rec RecoveryRecord, reader io.Reader) error {
+	// Claim the table before writing the journal entry: otherwise the recovery
+	// loop could pick the record up in the gap and this call would fail with
+	// ErrRecoveryPending while the recovery actually proceeds.
+	if !m.beginRecoveryWork(name) {
+		return ErrRecoveryPending
+	}
+	defer m.endRecoveryWork(name)
 
-	err = m.startTable(tbl.Name, tbl.RecoverID)
-	if err != nil {
+	existing, ver, err := m.getRecovery(name)
+	switch {
+	case errors.Is(err, errNoRecovery):
+		ver = 0
+	case err != nil:
+		return err
+	case existing.Coordinator != m.cfg.NodeID:
+		return ErrRecoveryConflict
+	default:
+		// Replace a stale record owned by this node; its shard, if any, is
+		// tombstoned so the ID is not leaked.
+		if err := m.abandonRecoveryLocked(existing, ver); err != nil {
+			return err
+		}
+		ver = 0
+	}
+	if _, err := m.putRecovery(&rec, ver); err != nil {
 		return err
 	}
-
-	err = m.setTableVersion(tbl, version)
-	if err != nil {
-		return err
+	if rec.RecoveryID != 0 {
+		if err := m.pinRecoverID(name, rec.RecoveryID); err != nil {
+			return err
+		}
 	}
 
-	err = m.waitForLeader(ctx, tbl.RecoverID)
-	if err != nil {
-		return err
+	// A locally supplied restore is synchronous from the caller's point of
+	// view, so wait out the phases that only make progress as peers catch up.
+	// Holding the in-process slot throughout keeps the reconcile loop from
+	// racing us for the same record.
+	err = m.driveRecoveryLocked(ctx, name, reader)
+	for errors.Is(err, ErrRecoveryPending) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-m.closed:
+			return serrors.ErrManagerClosed
+		case <-time.After(m.recoveryInterval):
+		}
+		err = m.driveRecoveryLocked(ctx, name, nil)
 	}
+	return err
+}
 
-	err = m.readIntoTable(ctx, tbl.RecoverID, name, reader, requireTerminal)
-	if err != nil {
-		return err
+// readerPath reports the on-disk path behind reader, when it has one, so a
+// recovery interrupted mid-load can reopen it instead of being abandoned.
+func readerPath(reader io.Reader) string {
+	if p, ok := reader.(interface{ Path() string }); ok {
+		return p.Path()
 	}
-
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	tbl, version, err = m.getTableVersion(name)
-	if err != nil {
-		return err
-	}
-
-	tbl.ClusterID = recoveryID
-	tbl.RecoverID = 0
-	err = m.setTableVersion(tbl, version)
-	if err != nil {
-		return err
-	}
-	return nil
+	return ""
 }
 
 func (m *Manager) getTableVersion(name string) (Table, uint64, error) {
@@ -805,12 +1051,15 @@ func readSnapshotWithTerminal(reader io.Reader, tableName string, maxBatchSize u
 	}
 }
 
+// waitForLeader blocks until clusterID has elected a leader. The budget is the
+// recovery step timeout rather than a multiple of the reconcile interval: how
+// long an election takes has nothing to do with how often tables reconcile, and
+// tying the two made a fast reconcile interval abort legitimate elections.
 func (m *Manager) waitForLeader(ctx context.Context, clusterID uint64) error {
-	t := time.NewTicker(500 * time.Millisecond)
+	t := time.NewTicker(100 * time.Millisecond)
 	defer t.Stop()
 
-	// TODO make configurable
-	waitCtx, cancel := context.WithTimeout(ctx, m.reconcileInterval*2)
+	waitCtx, cancel := context.WithTimeout(ctx, m.recoveryStepTimeout)
 	defer cancel()
 	for {
 		select {
@@ -832,6 +1081,12 @@ func (m *Manager) waitForLeader(ctx context.Context, clusterID uint64) error {
 // ignore this call — they will apply the Command_GC when it arrives from the
 // leader via normal replication.
 func (m *Manager) NotifyLogCompacted(shardID uint64, index uint64) {
+	// Compaction fires for every shard on this NodeHost, including the
+	// metadata store. Proposing a table command into a shard that is not a
+	// table panics its state machine, so resolve the shard first.
+	if _, err := m.GetTableByID(shardID); err != nil {
+		return
+	}
 	_, _, isLeader, err := m.nh.GetLeaderID(shardID)
 	if err != nil || !isLeader {
 		return

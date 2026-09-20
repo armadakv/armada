@@ -119,6 +119,10 @@ func New(cfg Config) (*Engine, error) {
 			Meta:   table.MetaConfig(cfg.Meta),
 		},
 	)
+	// Recovery coordination rides the gossip bus. It is attached from here
+	// rather than from the replication layer because the handlers start Raft
+	// replicas, which is the table manager's business.
+	e.AttachRecoveryBus(clst)
 	e.LogReader = &logreader.Simple{LogQuerier: nh}
 	e.disk = newDiskMetrics(cfg.NodeHostDir, cfg.WALDir, cfg.Table.DataDir)
 	return e, nil
