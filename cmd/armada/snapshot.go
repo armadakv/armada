@@ -102,6 +102,8 @@ func replicationExporterConfig(nodeID string, bucket objfs.Bucket) store.Exporte
 		Bucket:          bucket,
 		NodeID:          nodeID,
 		SnapshotTimeout: k.Duration("replication.snapshot-timeout"),
+		FullInterval:    k.Duration("shared-store.full-interval"),
+		IncrMaxChain:    k.Int("shared-store.incr-max-chain"),
 	}
 }
 

@@ -27,30 +27,38 @@ import (
 // Keys whose latest version has seqno <= sinceIndex are skipped entirely —
 // they have not changed since the follower's last snapshot.
 //
-// System keys are always skipped; the caller is responsible for checking that
-// sinceIndex > gcHorizon before calling (otherwise compacted versions may be
-// missing and the delta would be incomplete).
-func commandIncrementalSnapshot(reader pebble.Reader, tableName string, sinceIndex uint64, w io.Writer, stopc <-chan struct{}) (uint64, error) {
+// System keys are always skipped. The requested base is validated against the
+// GC horizon read from the same Pebble view that supplies the emitted records.
+func commandIncrementalSnapshot(reader pebble.Reader, tableName string, requestedBase uint64, w io.Writer, stopc <-chan struct{}) (*SnapshotResponse, error) {
+	idx, err := readLocalIndex(reader, sysLocalIndex)
+	if err != nil {
+		return nil, err
+	}
+	gcHorizon, err := readLocalIndex(reader, sysGCHorizon)
+	if err != nil {
+		return nil, err
+	}
+	baseIndex := requestedBase
+	if gcHorizon > 0 && baseIndex <= gcHorizon {
+		baseIndex = gcHorizon + 1
+	}
+
 	iter, err := reader.NewIter(nil)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer iter.Close()
 
-	idx, err := readLocalIndex(reader, sysLocalIndex)
-	if err != nil {
-		return 0, err
-	}
-
 	var buffer []byte
+records:
 	for iter.First(); iter.Valid(); {
 		select {
 		case <-stopc:
-			return 0, sm.ErrSnapshotStopped
+			return nil, sm.ErrSnapshotStopped
 		default:
 			k, err := key.DecodeBytes(iter.Key())
 			if err != nil {
-				return 0, err
+				return nil, err
 			}
 
 			// Only consider user keys; advance past all system keys.
@@ -69,28 +77,33 @@ func commandIncrementalSnapshot(reader pebble.Reader, tableName string, sinceInd
 			// we need to inspect.
 			seqno := key.DecodeV2Seqno(iter.Key())
 
-			if seqno > sinceIndex {
-				// This key changed after sinceIndex — emit it.
+			if seqno > baseIndex {
+				// This key changed after the effective base — emit it.
 				if isTombstone(iter.Value()) {
 					buffer, err = writeDeleteCommand(tableName, k.Key, seqno, buffer)
 				} else {
 					buffer, err = writeCommand(tableName, k.Key, iter.Value(), seqno, buffer)
 				}
 				if err != nil {
-					return 0, err
+					return nil, err
 				}
 				if _, err := w.Write(buffer); err != nil {
-					return 0, err
+					return nil, err
 				}
 			}
 
 			// Skip all remaining MVCC versions of this user key.
 			if !iterNextUserKey(iter, currentKey) {
-				break
+				break records
 			}
 		}
 	}
-	return idx, nil
+	return &SnapshotResponse{
+		Index:     idx,
+		TipIndex:  idx,
+		BaseIndex: baseIndex,
+		GCHorizon: gcHorizon,
+	}, nil
 }
 
 // writeDeleteCommand writes a DELETE proto.Command for key into (optionally provided) buffer.
@@ -286,18 +299,22 @@ type SnapshotRequest struct {
 	Stopper <-chan struct{}
 }
 
-// IncrementalSnapshotRequest to write an incremental Command snapshot into provided writer.
-// Only changes (puts and deletes) with seqno > SinceIndex are emitted.
-// The caller must ensure SinceIndex > gcHorizon, otherwise the delta may be incomplete.
+// IncrementalSnapshotRequest writes an incremental Command snapshot into the
+// provided writer. Only changes with seqno above the effective base are emitted;
+// the FSM rebases an unsafe requested base against its snapshot-view GC horizon.
 type IncrementalSnapshotRequest struct {
 	Writer     io.Writer
 	Stopper    <-chan struct{}
 	SinceIndex uint64
 }
 
-// SnapshotResponse returns local index to which the snapshot was created.
+// SnapshotResponse describes the exact Pebble view used to create a snapshot.
+// Index is retained for callers that use the snapshot's local Raft index.
 type SnapshotResponse struct {
-	Index uint64
+	Index     uint64
+	TipIndex  uint64
+	BaseIndex uint64
+	GCHorizon uint64
 }
 
 // LocalIndexRequest to read local index.

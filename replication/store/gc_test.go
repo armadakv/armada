@@ -219,6 +219,27 @@ func TestGC_MultipleTablesGCedIndependently(t *testing.T) {
 	assert.True(t, ok, "t2 full should survive")
 }
 
+type refreshDuringLeaseListBucket struct {
+	objfs.Bucket
+	table     string
+	node      string
+	refreshed bool
+}
+
+func (b *refreshDuringLeaseListBucket) List(ctx context.Context, prefix string, fn func(objfs.Attributes) error) error {
+	if prefix != "snapshots/" || b.refreshed {
+		return b.Bucket.List(ctx, prefix, fn)
+	}
+	b.refreshed = true
+	if err := WriteLease(ctx, b.Bucket, b.table, b.node); err != nil {
+		return err
+	}
+	return fn(objfs.Attributes{
+		Name:         LeaseKey(b.table, b.node),
+		LastModified: time.Now().Add(-LeaseTTL),
+	})
+}
+
 // TestGC_WithLease verifies that a leased table is entirely skipped by GC.
 func TestGC_WithLease(t *testing.T) {
 	ctx := context.Background()
@@ -244,6 +265,20 @@ func TestGC_WithLease(t *testing.T) {
 
 // TestGC_TombstonesWrittenBeforeDeletion verifies that GC writes tombstone log
 // entries before deleting artefacts.
+func TestGC_RefreshedLeaseIsNotDeletedAfterStaleListing(t *testing.T) {
+	ctx := context.Background()
+	base := NewLocalBucket(t)
+	bucket := &refreshDuringLeaseListBucket{Bucket: base, table: "orders", node: "follower"}
+	gc := NewGCWorker(GCConfig{Bucket: bucket, Retention: time.Hour}, newTestLogger())
+
+	leased, err := gc.collectLeases(ctx)
+	require.NoError(t, err)
+	require.Empty(t, leased, "the listed lease was stale before it refreshed")
+	exists, err := base.Exists(ctx, LeaseKey("orders", "follower"))
+	require.NoError(t, err)
+	require.True(t, exists, "GC must not delete a lease refreshed after it was listed")
+}
+
 func TestGC_TombstonesWrittenBeforeDeletion(t *testing.T) {
 	ctx := context.Background()
 	bucket := NewLocalBucket(t)

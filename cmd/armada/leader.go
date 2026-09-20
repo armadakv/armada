@@ -110,7 +110,7 @@ func leader() error {
 		nodeAddress := k.String("raft.address")
 
 		exp := store.NewSnapshotExporter(
-			store.NewEngineTableService(engine),
+			store.NewEngineTableService(engine, config.NodeID),
 			replicationExporterConfig(nodeAddress, bkt),
 			logger.Sugar(),
 		)
@@ -194,7 +194,7 @@ func leader() error {
 					uint64(k.Int64("replication.max-send-message-size-bytes")),
 				)
 				armadapb.RegisterMetadataServer(r, &armadaserver.MetadataServer{Tables: engine})
-				armadapb.RegisterSnapshotServer(r, &armadaserver.SnapshotServer{Tables: engine, SnapshotStore: sharedStoreBucket})
+				armadapb.RegisterSnapshotServer(r, &armadaserver.SnapshotServer{Tables: engine, SnapshotStore: sharedStoreBucket, Log: logger.Sugar().Named("snapshot-server")})
 				armadapb.RegisterKVServer(r, &armadaserver.KVServer{Storage: engine})
 				armadapb.RegisterLogServer(r, ls)
 			}, func(mux *http.ServeMux) {

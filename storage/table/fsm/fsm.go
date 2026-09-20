@@ -287,16 +287,16 @@ func (p *FSM) Lookup(l any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return &SnapshotResponse{Index: idx}, nil
+		return &SnapshotResponse{Index: idx, TipIndex: idx}, nil
 	case IncrementalSnapshotRequest:
 		snapshot := p.pebble.Load().NewSnapshot()
 		defer snapshot.Close()
 
-		idx, err := commandIncrementalSnapshot(snapshot, p.tableName, req.SinceIndex, req.Writer, req.Stopper)
+		resp, err := commandIncrementalSnapshot(snapshot, p.tableName, req.SinceIndex, req.Writer, req.Stopper)
 		if err != nil {
 			return nil, err
 		}
-		return &SnapshotResponse{Index: idx}, nil
+		return resp, nil
 	case LocalIndexRequest:
 		idx, err := readLocalIndex(p.pebble.Load(), sysLocalIndex)
 		if err != nil {

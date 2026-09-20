@@ -145,7 +145,10 @@ func (g *GCWorker) collectArtefacts(ctx context.Context) (map[string][]tableArte
 	return result, err
 }
 
-// collectLeases returns the set of object keys that have a downloader lease.
+// collectLeases returns the set of table prefixes protected by a live
+// downloader lease. Expired leases are ignored but deliberately not deleted:
+// a refresh can replace the same key between List and Delete, and objfs has no
+// conditional delete primitive to make that deletion safe.
 func (g *GCWorker) collectLeases(ctx context.Context) (map[string]struct{}, error) {
 	leased := make(map[string]struct{})
 	err := g.cfg.Bucket.List(ctx, "snapshots/", func(a objfs.Attributes) error {
@@ -157,9 +160,13 @@ func (g *GCWorker) collectLeases(ctx context.Context) (map[string]struct{}, erro
 		// the snap key without the lease suffix. We mark the table prefix as
 		// leased so any artefact for that table is preserved.
 		parts := strings.SplitN(name, "/.lease/", 2)
-		if len(parts) == 2 {
-			leased[parts[0]] = struct{}{}
+		if len(parts) != 2 {
+			return nil
 		}
+		if !a.LastModified.IsZero() && time.Since(a.LastModified) > LeaseTTL {
+			return nil
+		}
+		leased[parts[0]] = struct{}{}
 		return nil
 	})
 	return leased, err

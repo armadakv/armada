@@ -9,6 +9,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/raft/statemachine"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -430,6 +431,28 @@ func TestFSM_Lookup_Snapshot(t *testing.T) {
 		_, err := fsm.Lookup(SnapshotRequest{io.Discard, stopper})
 		require.ErrorIs(t, err, statemachine.ErrSnapshotStopped)
 	})
+}
+
+func TestFSM_IncrementalSnapshotResponseUsesOneView(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+
+	applyEntries(p,
+		putEntry(1, []byte("before"), []byte("value")),
+		statemachine.Entry{
+			Index: 2,
+			Cmd:   mustMarshallProto(&armadapb.Command{Type: armadapb.Command_GC}),
+		},
+		putEntry(3, []byte("after"), []byte("value")),
+	)
+
+	result, err := p.Lookup(IncrementalSnapshotRequest{Writer: io.Discard, SinceIndex: 0})
+	require.NoError(t, err)
+	resp := result.(*SnapshotResponse)
+	assert.Equal(t, uint64(3), resp.TipIndex)
+	assert.Equal(t, uint64(3), resp.BaseIndex)
+	assert.Equal(t, uint64(2), resp.GCHorizon)
+	assert.Equal(t, resp.TipIndex, resp.Index)
 }
 
 func TestFSM_Lookup_Range(t *testing.T) {

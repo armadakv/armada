@@ -50,6 +50,18 @@ func (r *grpcSnapshotQueryResolver) Query(ctx context.Context, table string, sou
 	return resp, nil
 }
 
+// highestRecordedGCHorizon returns the newest GC horizon any artefact saw when
+// it was exported, as an estimate of the leader's current horizon.
+func highestRecordedGCHorizon(metas []store.Meta) uint64 {
+	var h uint64
+	for _, m := range metas {
+		if m.GCHorizon > h {
+			h = m.GCHorizon
+		}
+	}
+	return h
+}
+
 type bucketSnapshotQueryResolver struct {
 	bucket objfs.Bucket
 }
@@ -64,16 +76,14 @@ func (r *bucketSnapshotQueryResolver) Query(ctx context.Context, table string, _
 		return nil, fmt.Errorf("snapshot query failed: %w", err)
 	}
 
-	// TODO: once incremental restore is implemented in engine.Restore, remove
-	// the filter below and pass all metas to SelectBestSnapshot directly.
-	var fullMetas []store.Meta
-	for _, m := range metas {
-		if m.Type == store.SnapshotTypeFull {
-			fullMetas = append(fullMetas, m)
-		}
-	}
-
-	meta, ok := store.SelectBestSnapshot(fullMetas, followerIndex)
+	// A bucket resolver has no live table horizon. The highest recorded horizon
+	// is a lower bound that safely rejects stale artefacts, but cannot establish
+	// that the follower can tail the current log.
+	meta, ok := store.SelectRecoverableSnapshot(metas, store.SnapshotSelectionOptions{
+		FollowerIndex:                  followerIndex,
+		LiveGCHorizon:                  highestRecordedGCHorizon(metas),
+		RequireKnownIncrementalHorizon: true,
+	})
 	if !ok {
 		return &armadapb.SnapshotQueryResponse{
 			Type: armadapb.SnapshotQueryResponse_NONE,
@@ -87,8 +97,6 @@ func (r *bucketSnapshotQueryResolver) Query(ctx context.Context, table string, _
 		snapshotType = armadapb.SnapshotQueryResponse_FULL
 		objectKey = store.FullSnapKey(meta.Table, meta.TipIndex)
 	case store.SnapshotTypeIncremental:
-		// TODO: incremental restore is not yet implemented; this branch is
-		// unreachable until the full-only filter below is removed.
 		snapshotType = armadapb.SnapshotQueryResponse_INCREMENTAL
 		objectKey = store.IncrSnapKey(meta.Table, meta.BaseIndex, meta.TipIndex)
 	default:

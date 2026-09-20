@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table"
+	"github.com/armadakv/objfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
@@ -94,6 +96,93 @@ func TestSnapshotHTTPHandler(t *testing.T) {
 			}
 		})
 	}
+}
+
+type presigningBucket struct {
+	objfs.Bucket
+	url string
+}
+
+func (b presigningBucket) PresignedURL(_ context.Context, _ string, op objfs.Operation, expiry time.Duration) (string, error) {
+	if op != objfs.OpGet || expiry != presignTTL {
+		return "", objfs.ErrUnsupported
+	}
+	return b.url, nil
+}
+
+func TestSnapshotHTTPHandler_LeaseLifecycle(t *testing.T) {
+	ctx := context.Background()
+	bucket := NewLocalBucket(t)
+	handler := NewSnapshotHTTPHandler(bucket, testLiveTableService{}, zaptest.NewLogger(t).Sugar())
+
+	put := httptest.NewRequest(http.MethodPut, "/snapshot-leases/orders", nil)
+	put.Header.Set(SnapshotLeaseHolderHeader, "follower.example:5012")
+	putResult := httptest.NewRecorder()
+	handler.ServeHTTP(putResult, put)
+	require.Equal(t, http.StatusNoContent, putResult.Code)
+
+	var found int
+	require.NoError(t, bucket.List(ctx, "snapshots/orders/.lease/", func(objfs.Attributes) error {
+		found++
+		return nil
+	}))
+	require.Equal(t, 1, found, "the HTTP lease must be written where GC looks for it")
+
+	deleteReq := httptest.NewRequest(http.MethodDelete, "/snapshot-leases/orders", nil)
+	deleteReq.Header.Set(SnapshotLeaseHolderHeader, "follower.example:5012")
+	deleteResult := httptest.NewRecorder()
+	handler.ServeHTTP(deleteResult, deleteReq)
+	require.Equal(t, http.StatusNoContent, deleteResult.Code)
+
+	found = 0
+	require.NoError(t, bucket.List(ctx, "snapshots/orders/.lease/", func(objfs.Attributes) error {
+		found++
+		return nil
+	}))
+	require.Zero(t, found)
+}
+
+func TestSnapshotHTTPHandler_LeaseValidation(t *testing.T) {
+	handler := NewSnapshotHTTPHandler(NewLocalBucket(t), testLiveTableService{}, zaptest.NewLogger(t).Sugar())
+
+	t.Run("requires a stable holder identity", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/snapshot-leases/orders", nil)
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		require.Equal(t, http.StatusBadRequest, res.Code)
+	})
+
+	t.Run("rejects table path traversal", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/snapshot-leases/orders", nil)
+		req.SetPathValue("table", "../other")
+		req.Header.Set(SnapshotLeaseHolderHeader, "follower.example:5012")
+		res := httptest.NewRecorder()
+		handler.serveSnapshotLease(res, req)
+		require.Equal(t, http.StatusBadRequest, res.Code)
+	})
+
+	t.Run("rejects unsafe holder paths", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPut, "/snapshot-leases/orders", nil)
+		req.Header.Set(SnapshotLeaseHolderHeader, "../other")
+		res := httptest.NewRecorder()
+		handler.ServeHTTP(res, req)
+		require.Equal(t, http.StatusBadRequest, res.Code)
+	})
+}
+
+func TestSnapshotHTTPHandler_PresignedGetRedirect(t *testing.T) {
+	base := NewLocalBucket(t)
+	require.NoError(t, base.Upload(context.Background(), "snapshots/t/full/1.snap", bytes.NewReader([]byte("testdata"))))
+	handler := NewSnapshotHTTPHandler(presigningBucket{Bucket: base, url: "https://object.example/signed"}, testLiveTableService{}, zaptest.NewLogger(t).Sugar())
+
+	req := httptest.NewRequest(http.MethodGet, "/snapshots/t/full/1.snap", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	resp := w.Result()
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode)
+	assert.Equal(t, "https://object.example/signed", resp.Header.Get("Location"))
 }
 
 func TestSnapshotHTTPHandlerContinuation(t *testing.T) {

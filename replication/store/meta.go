@@ -41,6 +41,7 @@ type Meta struct {
 	CreatedAt time.Time    `json:"created_at"`
 	NodeID    string       `json:"node_id"`
 	Format    string       `json:"format"`
+	GCHorizon uint64       `json:"gc_horizon,omitempty"`
 }
 
 // Object key helpers ─────────────────────────────────────────────────────────
