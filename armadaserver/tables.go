@@ -28,7 +28,7 @@ func (t *TablesServer) Create(ctx context.Context, req *armadapb.CreateTableRequ
 	table, err := t.Tables.CreateTable(req.Name)
 	if err != nil {
 		if errors.Is(err, serrors.ErrTableExists) {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return nil, status.Error(codes.AlreadyExists, err.Error())
 		}
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
@@ -41,7 +41,7 @@ func (t *TablesServer) Delete(ctx context.Context, req *armadapb.DeleteTableRequ
 	}
 	if err := t.Tables.DeleteTable(req.Name); err != nil {
 		if errors.Is(err, serrors.ErrTableNotFound) {
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return nil, status.Error(codes.NotFound, err.Error())
 		}
 		return nil, status.Error(codes.FailedPrecondition, err.Error())
 	}
