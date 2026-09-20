@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -20,6 +21,34 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	pb "google.golang.org/protobuf/proto"
 )
+
+func TestStaged_ReopenResumesOnlyCommittedBytes(t *testing.T) {
+	dir := t.TempDir()
+	staged, err := NewStaged(dir, "artifact")
+	require.NoError(t, err)
+	_, err = staged.Write([]byte("checkpointed"))
+	require.NoError(t, err)
+	require.NoError(t, staged.Commit(int64(len("checkpointed"))))
+	require.NoError(t, staged.Close())
+
+	// Simulate bytes written after the last checkpoint just before a crash.
+	part := filepath.Join(dir, "artifact.part")
+	f, err := os.OpenFile(part, os.O_WRONLY|os.O_APPEND, 0)
+	require.NoError(t, err)
+	_, err = f.Write([]byte("uncommitted"))
+	require.NoError(t, err)
+	require.NoError(t, f.Close())
+
+	reopened, err := NewStaged(dir, "artifact")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
+	offset, err := reopened.Offset()
+	require.NoError(t, err)
+	require.Equal(t, int64(len("checkpointed")), offset)
+	got, err := os.ReadFile(part)
+	require.NoError(t, err)
+	require.Equal(t, []byte("checkpointed"), got)
+}
 
 func Test_snapshotFile_Read(t *testing.T) {
 	r := require.New(t)

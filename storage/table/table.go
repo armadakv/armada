@@ -32,6 +32,10 @@ type Table struct {
 	Name      string `json:"name"`
 	ClusterID uint64 `json:"cluster_id"`
 	RecoverID uint64 `json:"recover_id"`
+	// Recovered records that ClusterID was installed by learner-first recovery.
+	// A node without local Raft state must join that shard rather than bootstrap
+	// the configured voter set from scratch.
+	Recovered bool `json:"recovered,omitempty"`
 }
 
 // AsActive returns an ActiveTable wrapper of this table.
@@ -227,7 +231,8 @@ func (t *ActiveTable) Snapshot(ctx context.Context, writer io.Writer) (*fsm.Snap
 }
 
 // IncrementalSnapshot streams only the changes (puts and deletes) with seqno > sinceIndex to the provided writer.
-// The caller must ensure sinceIndex is above the table's GC horizon, otherwise the delta may be incomplete.
+// The response reports the effective base, GC horizon, and tip from the same
+// Pebble view used to emit the delta.
 func (t *ActiveTable) IncrementalSnapshot(ctx context.Context, writer io.Writer, sinceIndex uint64) (*fsm.SnapshotResponse, error) {
 	return readTable[*fsm.SnapshotResponse](t, ctx, true, fsm.IncrementalSnapshotRequest{Writer: writer, Stopper: ctx.Done(), SinceIndex: sinceIndex})
 }

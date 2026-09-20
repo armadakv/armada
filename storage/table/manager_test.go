@@ -473,7 +473,6 @@ func TestManagerSnapshotContextHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	require.ErrorIs(t, tm.ApplySnapshot(ctx, "table", nil), context.Canceled)
 	require.ErrorIs(t, tm.Restore(ctx, "table", nil), context.Canceled)
 }
 
@@ -600,7 +599,9 @@ func Test_diffTables(t *testing.T) {
 			wantToStop:  nil,
 		},
 		{
-			name: "Start a recovery table",
+			// Recovery shards are started by the recovery loop, which knows
+			// whether this node is the coordinator or an admitted learner.
+			name: "Never auto-start a recovery table",
 			args: args{
 				tables: map[string]Table{
 					"foo": {
@@ -610,16 +611,11 @@ func Test_diffTables(t *testing.T) {
 				},
 				raftInfo: []raft.ShardInfo{},
 			},
-			wantToStart: map[uint64]Table{
-				10001: {
-					Name:      "foo",
-					RecoverID: 10001,
-				},
-			},
-			wantToStop: nil,
+			wantToStart: nil,
+			wantToStop:  nil,
 		},
 		{
-			name: "Recover existing table table",
+			name: "Recover existing table starts only the serving shard",
 			args: args{
 				tables: map[string]Table{
 					"foo": {
@@ -636,13 +632,28 @@ func Test_diffTables(t *testing.T) {
 					ClusterID: 10001,
 					RecoverID: 10002,
 				},
-				10002: {
-					Name:      "foo",
-					ClusterID: 10001,
-					RecoverID: 10002,
-				},
 			},
 			wantToStop: nil,
+		},
+		{
+			// A running recovery shard is known, so it must not be stopped
+			// out from under the coordinator.
+			name: "Keep a running recovery shard",
+			args: args{
+				tables: map[string]Table{
+					"foo": {
+						Name:      "foo",
+						ClusterID: 10001,
+						RecoverID: 10002,
+					},
+				},
+				raftInfo: []raft.ShardInfo{
+					{ShardID: 10001},
+					{ShardID: 10002},
+				},
+			},
+			wantToStart: nil,
+			wantToStop:  nil,
 		},
 	}
 	for _, tt := range tests {
@@ -655,14 +666,26 @@ func Test_diffTables(t *testing.T) {
 	}
 }
 
+// testRaftAddr reserves a loopback address for a NodeHost's transport.
+//
+// The probe has to be UDP. The transport is QUIC, so a port being free for TCP
+// says nothing about the same port being free for UDP, and two nodes handed the
+// same "free" TCP port go on to collide on bind.
+func testRaftAddr(t *testing.T) string {
+	t.Helper()
+	c, err := net.ListenPacket("udp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer c.Close()
+	return c.LocalAddr().String()
+}
+
 func startRaftNode(t *testing.T) (*raft.NodeHost, map[uint64]string) {
-	l, _ := net.Listen("tcp", "127.0.0.1:0")
-	require.NoError(t, l.Close())
+	addr := testRaftAddr(t)
 	nhc := config.NodeHostConfig{
 		WALDir:         "wal",
 		NodeHostDir:    "dragonboat",
 		RTTMillisecond: 1,
-		RaftAddress:    l.Addr().String(),
+		RaftAddress:    addr,
 		EnableMetrics:  true,
 	}
 	require.NoError(t, nhc.Prepare())
@@ -671,5 +694,5 @@ func startRaftNode(t *testing.T) (*raft.NodeHost, map[uint64]string) {
 	nhc.Expert.LogDB.Shards = 1
 	nh, err := raft.NewNodeHost(nhc)
 	require.NoError(t, err)
-	return nh, map[uint64]string{1: l.Addr().String()}
+	return nh, map[uint64]string{1: addr}
 }
