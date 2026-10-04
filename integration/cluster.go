@@ -624,10 +624,15 @@ func (n *Node) saveLogs(ctx context.Context) {
 	path := filepath.Join(n.env.LogDir, n.Name+".log")
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
+		infof("could not open log file for %s: %v", n.Name, err)
 		return
 	}
-	defer f.Close()
-	_, _ = f.WriteString(out)
+	if _, err := f.WriteString(out); err != nil {
+		infof("could not save logs for %s: %v", n.Name, err)
+	}
+	if err := f.Close(); err != nil {
+		infof("could not close log file for %s: %v", n.Name, err)
+	}
 }
 
 // ── clients ──────────────────────────────────────────────────────────────────

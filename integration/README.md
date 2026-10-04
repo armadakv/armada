@@ -8,11 +8,13 @@ shared filesystem store, and a follower cluster recovering from them.
 ```bash
 make test-integration                              # every scenario
 make test-integration-one SCENARIO=incremental     # one scenario
-cd integration && go test -v -run 'TestRecovery/full' ./...
+cd integration && go test -count=1 -timeout=60m -v -run '^TestRecovery/full$' ./...
 ```
 
-The only prerequisite is a working Docker (or Podman) socket — no `goreman`,
-`ghz`, `jq` or `arq` on the host. The image is built from the repository's
+The harness requires a Docker-compatible socket. Unless `ARMADA_TEST_IMAGE`
+points at a prebuilt image, it also requires the `docker` CLI on `PATH`; a host
+with only a Podman socket must provide that image. No `goreman`, `ghz`, `jq` or
+`arq` is needed. The default path builds the image from the repository's
 `Dockerfile` on the first run, which takes a few minutes; afterwards Docker's
 layer cache keys the `COPY . .` layer on content, so an unchanged tree rebuilds
 in seconds and an edited one is picked up automatically.
@@ -146,19 +148,17 @@ IPs exactly as in a real deployment. It has to be: a node's replica ID is its
 1-based position in that list, so the addresses must be known before anything
 starts.
 
-## Differences from `hack/recovery-e2e.sh`
+## Harness design
 
-The shell harness is still there and still works; this one is not a
-transliteration of it. What changed:
+The Go harness replaces the former shell-based recovery workflow:
 
 - **No external tools.** Load generation, key counting and table creation go
   through the generated gRPC clients, so there is no `ghz` templating, no
   base64-in-JSON, and no parsing of `arq` output. A failed write is an error
   value, not an absent "Error distribution" section in a report.
-- **Per-node attribution.** The shell version concatenated all three follower
-  logs into one file, so "exactly one node loaded the snapshot" could not
-  actually be checked. Here each container's log is separate, and assertions
-  report which node matched.
+- **Per-node attribution.** Each container's log is separate, so assertions can
+  verify that exactly one node loaded the snapshot and report which node
+  matched.
 - **Structured log readings.** The negotiated artefact and the completed swaps
   are parsed into `Negotiation` and `Swap` values rather than substring-matched,
   and the artefact type comes from the product's own constants — a rename breaks

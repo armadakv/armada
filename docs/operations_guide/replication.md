@@ -265,21 +265,17 @@ follower. The reconcile interval is controlled by `--replication.reconcile-inter
 
 ## Verifying Recovery Locally
 
-`hack/recovery-e2e.sh` exercises the whole recovery pipeline against real
-clusters on `127.0.0.1`: a three-node leader cluster exporting snapshots to a
-filesystem shared store, and a three-node follower cluster recovering from it.
-Load is driven with [`ghz`](https://ghz.sh) against the gRPC API when it is
-installed (`go install github.com/bojand/ghz/cmd/ghz@latest`), falling back to
-`arq` otherwise. Prefer ghz: `arq` spawns a process per transaction, and since
-one transaction is one Raft entry, generating the few hundred entries needed to
-trigger log compaction costs minutes rather than seconds.
+The container-based Go harness under `integration/` exercises the whole
+recovery pipeline against two real three-node clusters: a leader cluster
+exporting snapshots to a filesystem shared store, and a follower cluster
+recovering from it. It drives load through the generated gRPC clients and
+checks every replicated key and value.
 
 ```bash
-make test-recovery                  # run every scenario
-./hack/recovery-e2e.sh full         # run one scenario
-./hack/recovery-e2e.sh list         # list scenario names
-./hack/recovery-e2e.sh up           # bring the clusters up and leave them
-./hack/recovery-e2e.sh down         # tear down
+make test-integration                              # run every scenario
+make test-integration-one SCENARIO=full            # run one scenario
+cd integration && go test -count=1 -timeout=60m \
+  -v -run '^TestRecovery/incremental$' ./...        # direct Go invocation
 ```
 
 | Scenario | What it asserts |
@@ -290,17 +286,14 @@ make test-recovery                  # run every scenario
 | `powerloss` | `SIGKILL` of the recovery coordinator mid-recovery; it resumes from the journal instead of restarting or abandoning |
 | `direct` | `--replication.snapshot-source=direct` reads the bucket itself and never falls back to the HTTP-only live key |
 
-Knobs: `KEYS` (total keys written), `GHZ_CONCURRENCY` (ghz workers),
-`INCR_GAP` (entries the follower is pushed behind in the incremental scenario),
-`BATCH` (puts per transaction, arq fallback only), `ROOT` (state directory,
-default `/tmp/armada-recovery`).
-
-Both procfiles (`hack/Procfile.recovery-{leader,follower}`) deliberately run
-with small `raft.snapshot-entries` / `raft.compaction-overhead` and a short
-`shared-store.full-interval`, so log compaction and snapshot export happen in
-seconds rather than hours. They also run at `--log-level=DEBUG`, because the
-recovery phase machine reports seeding progress and skipped exports at debug
-level. Logs land in `$ROOT/logs/{leader,follower}.log`.
+The harness requires a Docker-compatible socket and, unless
+`ARMADA_TEST_IMAGE` names a prebuilt image, the `docker` CLI. Useful knobs
+include `ARMADA_TEST_KEYS`, `ARMADA_TEST_CONCURRENCY`,
+`ARMADA_TEST_INCR_GAP`, `ARMADA_TEST_INCR_CHUNK`, and
+`ARMADA_TEST_TIMEOUT_SCALE`. Set `ARMADA_TEST_ROOT` to retain state and logs at
+a known location, and combine it with `ARMADA_TEST_KEEP=1` to leave the
+containers running after one scenario. See `integration/README.md` for the full
+configuration and troubleshooting guide.
 
 Two things worth knowing when reading a run:
 

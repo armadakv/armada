@@ -11,7 +11,8 @@
 // asked for by name. Run it with:
 //
 //	make test-integration
-//	go test -timeout=60m ./...
+//	make test-integration-one SCENARIO=full
+//	cd integration && go test -count=1 -timeout=60m ./...
 //
-// See README.md for the knobs and for how it differs from hack/recovery-e2e.sh.
+// See README.md for usage and configuration.
 package integration

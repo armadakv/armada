@@ -498,7 +498,7 @@ func (e *Env) scenarioPowerloss(t *testing.T, ctx context.Context) {
 	mark.MustContain(ctx, t, "recovery complete, serving shard is now", "recovery finished after the kill")
 	// A restart must resume from the journal — reusing its shard id and its
 	// staged download — not tear the recovery down and allocate a new one.
-	mark.MustNotContain(ctx, t, "abandoning recovery in phase", "recovery was resumed, not abandoned")
+	mark.MustNotContain(ctx, t, "abandoned recovery in phase", "recovery was resumed, not abandoned")
 
 	if shard, err := e.ShardID(ctx, e.Follower()); err != nil {
 		t.Errorf("follower serves no shard after power loss: %v", err)
