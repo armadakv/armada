@@ -44,6 +44,18 @@ run-cluster-follower-dev: build
 clean-cluster-dev:
 	rm -rf /tmp/armada-cluster
 
+.PHONY: test-integration
+test-integration:
+	cd integration && go test -count=1 -timeout=60m -v ./...
+
+.PHONY: test-integration-one
+test-integration-one:
+	@case "$(SCENARIO)" in \
+		baseline|full|incremental|powerloss|direct) ;; \
+		*) echo "SCENARIO must be one of: baseline, full, incremental, powerloss, direct"; exit 2 ;; \
+	esac
+	cd integration && go test -count=1 -timeout=60m -v -run '^TestRecovery/$(SCENARIO)$$' ./...
+
 # Run golangci-lint linters
 .PHONY: lint
 lint: proto
