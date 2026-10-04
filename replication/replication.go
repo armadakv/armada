@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -64,13 +65,12 @@ func NewManager(
 	e *storage.Engine,
 	queue *storage.IndexNotificationQueue,
 	conn *grpc.ClientConn,
-	snapshotGetter SnapshotObjectGetter,
-	snapshotQuery SnapshotQueryResolver,
+	access SnapshotAccess,
 	cfg Config,
 ) *Manager {
 	replicationLog := zap.S().Named("replication")
-	if snapshotQuery == nil {
-		snapshotQuery = NewGRPCSnapshotQueryResolver(armadapb.NewSnapshotClient(conn))
+	if access.Query == nil {
+		access.Query = NewGRPCSnapshotQueryResolver(armadapb.NewSnapshotClient(conn))
 	}
 
 	replicationIndexGauge := prometheus.NewGaugeVec(
@@ -86,7 +86,7 @@ func NewManager(
 		}, []string{"table"},
 	)
 
-	return &Manager{
+	m := &Manager{
 		reconcileInterval: cfg.ReconcileInterval,
 		engine:            e,
 		metadataClient:    armadapb.NewMetadataClient(conn),
@@ -105,23 +105,30 @@ func NewManager(
 			},
 			log:            replicationLog,
 			logClient:      armadapb.NewLogClient(conn),
-			snapshotQuery:  snapshotQuery,
-			snapshotGetter: snapshotGetter,
+			snapshotAccess: access,
 			metrics: struct {
 				replicationIndex  *prometheus.GaugeVec
 				replicationLeased *prometheus.GaugeVec
 			}{replicationIndex: replicationIndexGauge, replicationLeased: replicationLeaseGauge},
 		},
-		workers: struct {
-			registry map[string]*worker
-			wg       sync.WaitGroup
-		}{
-			registry: make(map[string]*worker),
-		},
 		sources: make(map[string]sourceTableState),
 		log:     replicationLog.Named("manager"),
 		closer:  make(chan struct{}),
 	}
+	m.workers.registry = make(map[string]*worker)
+	return m
+}
+
+// workerRegistry holds the replication workers that are currently running.
+//
+// mtx guards registry: the reconcile goroutine mutates the map while other
+// goroutines read it, so it must not be touched unlocked. worker.Close is
+// always called outside the lock — it drains the worker's goroutines, which can
+// take as long as an in-flight recovery.
+type workerRegistry struct {
+	mtx      sync.RWMutex
+	registry map[string]*worker
+	wg       sync.WaitGroup
 }
 
 // Manager schedules replication workers.
@@ -130,13 +137,10 @@ type Manager struct {
 	engine            *storage.Engine
 	metadataClient    armadapb.MetadataClient
 	factory           *workerFactory
-	workers           struct {
-		registry map[string]*worker
-		wg       sync.WaitGroup
-	}
-	sources map[string]sourceTableState
-	log     *zap.SugaredLogger
-	closer  chan struct{}
+	workers           workerRegistry
+	sources           map[string]sourceTableState
+	log               *zap.SugaredLogger
+	closer            chan struct{}
 }
 
 func (m *Manager) Describe(descs chan<- *prometheus.Desc) {
@@ -232,8 +236,8 @@ func (m *Manager) reconcileTables() error {
 		if _, existsOnLeader := leaderTables[name]; existsOnLeader {
 			continue
 		}
-		if m.hasWorker(name) {
-			m.stopWorker(m.workers.registry[name])
+		if w, ok := m.worker(name); ok {
+			m.stopWorker(w)
 		}
 		if err := m.engine.DeleteTable(name); err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
 			return err
@@ -247,8 +251,14 @@ func (m *Manager) reconcileTables() error {
 }
 
 func (m *Manager) recreateFollowerTable(name string, state sourceTableState, existsLocally bool) error {
-	if m.hasWorker(name) {
-		m.stopWorker(m.workers.registry[name])
+	if w, ok := m.worker(name); ok {
+		m.stopWorker(w)
+	}
+	// A recovery record pins its source artifact separately from the table entry.
+	// Retire it before replacing the table so the manager's recovery loop cannot
+	// resume a previous source incarnation alongside the new follower table.
+	if err := m.engine.AbandonRecovery(name); err != nil && !errors.Is(err, table.ErrRecoveryPending) {
+		return fmt.Errorf("abandon recovery for recreated table %q: %w", name, err)
 	}
 	if existsLocally {
 		if err := m.engine.DeleteTable(name); err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
@@ -334,7 +344,7 @@ func (m *Manager) reconcileWorkers() error {
 			m.log.Warnf("skipping table %q without a persisted source identity", tbl.Name)
 			continue
 		}
-		if existing, ok := m.workers.registry[tbl.Name]; ok && (existing.sourceID != source.ClusterID || existing.forceRecovery.Load() != source.NeedsFullRestore) {
+		if existing, ok := m.worker(tbl.Name); ok && (existing.sourceID != source.ClusterID || existing.forceRecovery.Load() != source.NeedsFullRestore) {
 			m.stopWorker(existing)
 		}
 		if !m.hasWorker(tbl.Name) {
@@ -344,7 +354,7 @@ func (m *Manager) reconcileWorkers() error {
 
 	var toStop []*worker
 
-	for name, w := range m.workers.registry {
+	for name, w := range m.workerSnapshot() {
 		if !slices.ContainsFunc(tbs, func(t table.Table) bool {
 			return t.Name == name
 		}) {
@@ -361,27 +371,49 @@ func (m *Manager) reconcileWorkers() error {
 // Close will stop replication goroutine - could be called just once.
 func (m *Manager) Close() {
 	m.closer <- struct{}{}
-	for _, worker := range m.workers.registry {
+	for _, worker := range m.workerSnapshot() {
 		m.stopWorker(worker)
 	}
 	m.workers.wg.Wait()
 }
 
 func (m *Manager) hasWorker(name string) bool {
+	m.workers.mtx.RLock()
+	defer m.workers.mtx.RUnlock()
 	_, ok := m.workers.registry[name]
 	return ok
 }
 
+// worker returns the registered worker for name, if any.
+func (m *Manager) worker(name string) (*worker, bool) {
+	m.workers.mtx.RLock()
+	defer m.workers.mtx.RUnlock()
+	w, ok := m.workers.registry[name]
+	return w, ok
+}
+
+func (m *Manager) workerSnapshot() map[string]*worker {
+	m.workers.mtx.RLock()
+	defer m.workers.mtx.RUnlock()
+	snapshot := make(map[string]*worker, len(m.workers.registry))
+	maps.Copy(snapshot, m.workers.registry)
+	return snapshot
+}
+
 func (m *Manager) startWorker(worker *worker) {
 	m.log.Infof("launching replication for table %s", worker.table)
+	m.workers.mtx.Lock()
 	m.workers.registry[worker.table] = worker
+	m.workers.mtx.Unlock()
 	m.workers.wg.Add(1)
 	worker.Start()
 }
 
 func (m *Manager) stopWorker(worker *worker) {
 	m.log.Infof("stopping replication for table %s", worker.table)
+	m.workers.mtx.Lock()
+	delete(m.workers.registry, worker.table)
+	m.workers.mtx.Unlock()
 	worker.Close()
 	m.workers.wg.Done()
-	delete(m.workers.registry, worker.table)
 }
