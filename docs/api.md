@@ -324,6 +324,7 @@ RestoreInfo metadata of restore snapshot that is going to be uploaded.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | `table` | [bytes](#bytes) |  | table is name of the table in the stream. |
+| `format` | [string](#string) |  | format identifies the backup stream format. An empty value denotes the historical, unterminated maintenance backup format. |
 
 
 #### RestoreMessage {#restoremessage}
@@ -626,6 +627,7 @@ ReplicateRequest request of the replication data at given leader_index
 | ----- | ---- | ----- | ----------- |
 | `table` | [bytes](#bytes) |  | table is name of the table to replicate |
 | `leader_index` | [uint64](#uint64) |  | leader_index is the index in the leader raft log of the last stored item in the follower |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id identifies the leader table incarnation being requested. |
 
 
 #### ReplicateResponse {#replicateresponse}
@@ -654,6 +656,7 @@ ReplicateResponse response to the ReplicateRequest
 | ----- | ---- | ----- | ----------- |
 | `table` | [string](#string) |  |  |
 | `follower_index` | [uint64](#uint64) |  | follower_index is the current applied index on the follower |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id identifies the leader table incarnation being requested. |
 
 
 #### SnapshotQueryResponse {#snapshotqueryresponse}
@@ -675,6 +678,7 @@ ReplicateResponse response to the ReplicateRequest
 | `table` | [bytes](#bytes) |  | table is name of the table to stream |
 | `incremental` | [bool](#bool) |  | incremental indicates that the client wants an incremental snapshot starting from leader_index. If false, a full snapshot is produced regardless of leader_index. |
 | `leader_index` | [uint64](#uint64) |  | leader_index is the last leader index the follower already has applied. Only meaningful when incremental is true. The server will stream only the changes (puts and deletes) with seqno > leader_index. |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id identifies the leader table incarnation being requested. |
 
 
 #### Table {#table}
@@ -683,6 +687,7 @@ ReplicateResponse response to the ReplicateRequest
 | ----- | ---- | ----- | ----------- |
 | `name` | [string](#string) |  |  |
 | `type` | [Table.Type](#tabletype) |  |  |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id is the immutable Raft shard ID for this table incarnation. |
 
 
 

@@ -127,7 +127,8 @@ type Env struct {
 func New(t *testing.T) *Env {
 	t.Helper()
 	cfg := LoadConfig(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Minute)
+	t.Cleanup(cancel)
 
 	root := cfg.Root
 	if root == "" {

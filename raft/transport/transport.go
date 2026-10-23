@@ -71,7 +71,6 @@ var lazyFreeCycle = settings.LazyFreeCycle
 var (
 	plog                = logger.GetLogger("transport")
 	sendQueueLen        = settings.SendQueueLength
-	dialTimeoutSecond   = settings.GetConnectedTimeoutSecond
 	idleTimeout         = time.Minute
 	errChunkSendSkipped = errors.New("chunk skipped")
 	errBatchSendSkipped = errors.New("batch skipped")

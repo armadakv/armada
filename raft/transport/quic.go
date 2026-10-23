@@ -23,13 +23,14 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/quic-go/quic-go"
 
 	"github.com/armadakv/armada/raft/config"
@@ -75,7 +76,7 @@ var (
 	// at all.  This matches the behaviour of TCP's net.DialTimeout and ensures
 	// that dialling a port where nothing is listening (UDP void) fails in ~5 s
 	// rather than blocking for the full MaxIdleTimeout (30 s).
-	quicDialTimeout = time.Duration(dialTimeoutSecond) * time.Second
+	quicDialTimeout = time.Duration(settings.GetConnectedTimeoutSecond) * time.Second
 )
 
 // Compile-time interface assertions.
@@ -95,6 +96,9 @@ func writeFrame(w io.Writer, data []byte) error {
 		return err
 	}
 	_, err := w.Write(data)
+	if ae, ok := errors.AsType[*quic.ApplicationError](err); ok && ae.ErrorCode == 0 {
+		return nil
+	}
 	return err
 }
 
@@ -141,7 +145,7 @@ func readFrame(r io.Reader, maxSize uint64, budget *frameBudget, done <-chan str
 		return nil, nil, errors.New("quic transport: received zero-length frame")
 	}
 	if uint64(size) > maxSize {
-		return nil, nil, errors.Newf("quic transport: frame size %d exceeds limit %d", size, maxSize)
+		return nil, nil, fmt.Errorf("quic transport: frame size %d exceeds limit %d", size, maxSize)
 	}
 	release, err := budget.acquire(size, done)
 	if err != nil {
@@ -510,7 +514,7 @@ func (t *QUIC) dial(ctx context.Context, target string) (*quic.Conn, *quic.Strea
 	}
 	addr, err := net.ResolveUDPAddr("udp", target)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "quic: resolve address")
+		return nil, nil, fmt.Errorf("quic: resolve address error: %w", err)
 	}
 	dialCtx, cancel := context.WithTimeout(ctx, quicDialTimeout)
 	defer cancel()
@@ -587,7 +591,15 @@ func (t *QUIC) serveRaftStream(stream *quic.Stream, done <-chan struct{}) {
 		data, release, err := readFrame(stream, maxRaftFrameSize, t.frameBudget, done)
 		if err != nil {
 			if err != io.EOF {
-				plog.Errorf("quic: raft stream read error: %v", err)
+				if ae, ok := errors.AsType[*quic.ApplicationError](err); ok {
+					if ae.ErrorCode == 0 && len(ae.ErrorMessage) == 0 {
+						plog.Debugf("quic: raft stream read closed")
+					} else {
+						plog.Errorf("quic: raft stream read error: %s", ae.ErrorMessage)
+					}
+				} else {
+					plog.Errorf("quic: raft stream read error: %v", err)
+				}
 			}
 			return
 		}
@@ -674,7 +686,7 @@ func (t *QUIC) clientTLSConfig(_ string) (*tls.Config, error) {
 func selfSignedTLSConfig() (*tls.Config, error) {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		return nil, errors.Wrap(err, "quic: generate ECDSA key")
+		return nil, fmt.Errorf("quic: generate ECDSA key error: %w", err)
 	}
 	template := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
@@ -687,7 +699,7 @@ func selfSignedTLSConfig() (*tls.Config, error) {
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, key.Public(), key)
 	if err != nil {
-		return nil, errors.Wrap(err, "quic: create self-signed certificate")
+		return nil, fmt.Errorf("quic: create self-signed certificate error: %w", err)
 	}
 	return &tls.Config{
 		Certificates: []tls.Certificate{{
