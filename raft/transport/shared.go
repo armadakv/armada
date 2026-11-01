@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	sharedIdleTimeout = 30 * time.Second
+	sharedIdleTimeout = 20 * time.Second
 	sharedKeepAlive   = 10 * time.Second
 )
 

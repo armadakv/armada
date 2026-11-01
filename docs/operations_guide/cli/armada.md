@@ -184,9 +184,13 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--shared-store.filesystem.directory**="": Directory path to use for the filesystem backend.
 
+**--shared-store.full-interval**="": How often a full snapshot of every led table is exported to the shared store. Followers need a full snapshot as the base of any incremental chain. (default: 6h0m0s)
+
 **--shared-store.gc-interval**="": How often the GC worker runs to delete expired artefacts from the shared store. (default: 1h0m0s)
 
 **--shared-store.gcs.bucket**="": Bucket name to use for the GCS shared-store backend.
+
+**--shared-store.incr-max-chain**="": Maximum number of incremental snapshots chained off the newest full snapshot before the next export is forced to be a full one. (default: 8)
 
 **--shared-store.retention**="": Maximum age of artefacts in the shared store. Older artefacts are eligible for GC. (default: 48h0m0s)
 
@@ -374,9 +378,13 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--shared-store.filesystem.directory**="": Directory path to use for the filesystem backend.
 
+**--shared-store.full-interval**="": How often a full snapshot of every led table is exported to the shared store. Followers need a full snapshot as the base of any incremental chain. (default: 6h0m0s)
+
 **--shared-store.gc-interval**="": How often the GC worker runs to delete expired artefacts from the shared store. (default: 1h0m0s)
 
 **--shared-store.gcs.bucket**="": Bucket name to use for the GCS shared-store backend.
+
+**--shared-store.incr-max-chain**="": Maximum number of incremental snapshots chained off the newest full snapshot before the next export is forced to be a full one. (default: 8)
 
 **--shared-store.retention**="": Maximum age of artefacts in the shared store. Older artefacts are eligible for GC. (default: 48h0m0s)
 

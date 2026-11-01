@@ -26,8 +26,8 @@ func (e *Env) Leader() *Node { return e.Leaders.Nodes[0] }
 // Follower is the node the harness reads the follower cluster through.
 func (e *Env) Follower() *Node { return e.Followers.Nodes[0] }
 
-func key(i int) []byte   { return []byte(fmt.Sprintf("key-%08d", i)) }
-func value(i int) []byte { return []byte(fmt.Sprintf("value-%08d", i)) }
+func key(i int) []byte   { return fmt.Appendf(nil, "key-%08d", i) }
+func value(i int) []byte { return fmt.Appendf(nil, "value-%08d", i) }
 
 // ── readiness ────────────────────────────────────────────────────────────────
 
