@@ -497,9 +497,11 @@ func TestWorker_recover(t *testing.T) {
 	t.Log("create worker")
 	mockQuery := &mockSnapshotQueryResolver{}
 	w := &worker{
-		table: "test",
+		table:    "test",
+		sourceID: at.ClusterID,
 		workerFactory: &workerFactory{
 			snapshotTimeout: time.Minute,
+			logTimeout:      time.Second,
 			engine:          followerEngine,
 			queue:           storage.NewNotificationQueue(),
 			snapshotAccess:  SnapshotAccess{Query: mockQuery, Objects: &snapshotFileGetter{byKey: snapshots}, Live: &snapshotFileGetter{byKey: snapshots}},
@@ -522,10 +524,46 @@ func TestWorker_recover(t *testing.T) {
 	r.NoError(err)
 	r.Greater(ir.Index, uint64(1))
 
+	t.Run("required restore acknowledges completion after journal removal", func(t *testing.T) {
+		_, pending, err := followerEngine.RecoveryStatus("test")
+		require.NoError(t, err)
+		require.False(t, pending)
+		require.Equal(t, at.ClusterID, tab.RestoredSourceID)
+
+		// A fresh worker has not observed the recovery completing. This also
+		// models completion by the manager's background loop between polls.
+		resumed := &worker{
+			table:         "test",
+			sourceID:      at.ClusterID,
+			workerFactory: w.workerFactory,
+			log:           w.log,
+		}
+		resumed.forceRecovery.Store(true)
+		mockQuery.queryErr = fmt.Errorf("unexpected snapshot negotiation")
+		defer func() { mockQuery.queryErr = nil }()
+
+		require.NoError(t, resumed.recover(t.Context()))
+		current, err := followerEngine.GetTable("test")
+		require.NoError(t, err)
+		require.Equal(t, tab.ClusterID, current.ClusterID)
+		_, pending, err = followerEngine.RecoveryStatus("test")
+		require.NoError(t, err)
+		require.False(t, pending)
+
+		resumed.sourceID++
+		require.ErrorContains(t, resumed.recover(t.Context()), "unexpected snapshot negotiation",
+			"completion for another source must not satisfy the required restore")
+		resumed.sourceID = at.ClusterID
+		resumed.forceRecovery.Store(false)
+		require.ErrorContains(t, resumed.recover(t.Context()), "unexpected snapshot negotiation",
+			"a later log-compaction recovery must still negotiate a new snapshot")
+	})
+
 	w = &worker{
 		table: "test2",
 		workerFactory: &workerFactory{
 			snapshotTimeout: time.Minute,
+			logTimeout:      time.Second,
 			engine:          followerEngine,
 			queue:           storage.NewNotificationQueue(),
 			snapshotAccess:  SnapshotAccess{Query: mockQuery, Objects: &snapshotFileGetter{byKey: snapshots}, Live: &snapshotFileGetter{byKey: snapshots}},
@@ -543,6 +581,11 @@ func TestWorker_recover(t *testing.T) {
 	tab, err = followerEngine.GetTable("test2")
 	r.NoError(err)
 	r.Equal("test2", tab.Name)
+	r.Zero(tab.RestoredSourceID, "a restore without source identity must not acknowledge replication")
+	w.forceRecovery.Store(true)
+	mockQuery.queryErr = fmt.Errorf("required restore still needs a snapshot")
+	r.ErrorContains(w.recover(t.Context()), "required restore still needs a snapshot",
+		"zero source IDs must not count as a matching completion")
 }
 
 type snapshotFileGetter struct {
