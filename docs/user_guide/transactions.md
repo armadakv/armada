@@ -79,6 +79,8 @@ message Compare {
   }
   enum CompareTarget {
     VALUE = 0;
+    CREATE = 2;
+    MOD = 3;
   }
   
   // result is logical comparison operation for this comparison.
@@ -90,6 +92,8 @@ message Compare {
   oneof target_union {
     // value is the value of the given key, in bytes.
     bytes value = 4;
+    int64 create_revision = 5;
+    int64 mod_revision = 6;
   }
 
   // range_end compares the given target to all keys in the range [key, range_end).
@@ -103,8 +107,50 @@ message Compare {
     given key is described in [Testing Existence of Key](#testing-existence-of-key) and testing
     for existence of a key within range is described in
     [Testing Existence of Key Within Range](#testing-existence-of-key-within-range).
-* `CompareTarget` - domain on which the `CompareResult` is performed. Only `VALUE` is currently
-   supported.
+* `CompareTarget` - field to compare: `VALUE`, `CREATE` (creation revision), or
+   `MOD` (modification revision). Use the matching `value`, `create_revision`, or
+   `mod_revision` operand.
+
+### Comparing Revisions
+
+`CREATE` and `MOD` support `EQUAL`, `NOT_EQUAL`, `LESS`, and `GREATER`, with the
+stored revision on the left-hand side, as in etcd. An omitted revision operand
+defaults to `0`. Revision operands are signed integers, not range-filter bounds.
+
+Comparisons inspect the latest live version of each key. A missing or deleted
+key has creation and modification revision `0`. A range comparison must hold
+for every live key in `[key, range_end)`; if the range has no live keys, the
+revision comparison is evaluated once against `0`. Deleted and older versions
+are never compared. `VALUE` comparisons on missing keys or empty ranges fail.
+
+Use `CREATE EQUAL 0` to insert only if a key is absent, `CREATE GREATER 0` to
+test existence, or `MOD EQUAL <revision from a previous read>` for optimistic
+compare-and-swap. Updates preserve `CREATE`, while deleting and recreating a key
+changes it. Both revision targets use source leader revisions on followers.
+
+For example, replace a value only if it has not changed since revision `42`:
+
+```bash
+grpcurl -insecure "-d={
+    \"table\": \"$(echo -n "armada-test" | base64)\",
+    \"compare\": [{
+      \"key\": \"$(echo -n "key_1" | base64)\",
+      \"target\": \"MOD\",
+      \"result\": \"EQUAL\",
+      \"mod_revision\": 42
+    }],
+    \"success\": [{
+      \"request_put\": {
+        \"key\": \"$(echo -n "key_1" | base64)\",
+        \"value\": \"$(echo -n "updated" | base64)\"
+      }
+    }]
+}" localhost:8443 regatta.v1.KV/Txn
+```
+
+Armada retains its existing key-only existence predicates below. The revision
+comparison semantics match etcd, but Armada's protobuf numeric tags are not
+etcd wire-compatible. Upgrade all replicas before using the new targets.
 
 ### Testing Existence of Key
 

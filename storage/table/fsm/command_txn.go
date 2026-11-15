@@ -4,6 +4,7 @@ package fsm
 
 import (
 	"bytes"
+	"cmp"
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
@@ -74,6 +75,9 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
 	for _, cmp := range compare {
+		if err := cmp.Validate(); err != nil {
+			return false, err
+		}
 		var (
 			res bool
 			err error
@@ -91,9 +95,7 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 				defer func() {
 					_ = iter.Close()
 				}()
-				if !iter.First() {
-					return false, nil
-				}
+				found := false
 				for iter.First(); iter.Valid(); {
 					k, err := key.DecodeBytes(iter.Key())
 					if err != nil {
@@ -107,12 +109,20 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 						}
 						continue
 					}
-					if !txnCompareSingle(cmp, iter.Value()) {
+					found = true
+					matched, err := txnCompareEntry(cmp, k, iter)
+					if err != nil {
+						return false, err
+					}
+					if !matched {
 						return false, nil
 					}
-					iter.Next()
+					iterNextUserKey(iter, nil)
 				}
-				return true, nil
+				if err := iter.Error(); err != nil {
+					return false, err
+				}
+				return found || txnCompareMissing(cmp), nil
 			}()
 		} else {
 			res, err = func() (bool, error) {
@@ -132,7 +142,7 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 
 				if !iter.SeekPrefixGE(keyBuf.Bytes()) {
 					keyBuf.Reset()
-					return false, nil
+					return txnCompareMissing(cmp), iter.Error()
 				}
 
 				k, err := key.DecodeBytes(iter.Key())
@@ -141,17 +151,11 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 				}
 				if isTombstone(k) {
 					keyBuf.Reset()
-					return false, nil
-				}
-
-				value := iter.Value()
-				if !txnCompareSingle(cmp, value) {
-					keyBuf.Reset()
-					return false, nil
+					return txnCompareMissing(cmp), nil
 				}
 
 				keyBuf.Reset()
-				return true, nil
+				return txnCompareEntry(cmp, k, iter)
 			}()
 		}
 		if err != nil {
@@ -164,20 +168,54 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 	return true, nil
 }
 
-func txnCompareSingle(cmp *armadapb.Compare, value []byte) bool {
-	cmpValue := true
-	if cmp.Target == armadapb.Compare_VALUE && cmp.TargetUnion != nil {
-		switch cmp.Result {
-		case armadapb.Compare_EQUAL:
-			cmpValue = bytes.Equal(value, cmp.GetValue())
-		case armadapb.Compare_NOT_EQUAL:
-			cmpValue = !bytes.Equal(value, cmp.GetValue())
-		case armadapb.Compare_GREATER:
-			cmpValue = bytes.Compare(value, cmp.GetValue()) == 1
-		case armadapb.Compare_LESS:
-			cmpValue = bytes.Compare(value, cmp.GetValue()) == -1
+func txnCompareMissing(c *armadapb.Compare) bool {
+	return c.Target != armadapb.Compare_VALUE && txnCompareSingle(c, key.Key{}, nil)
+}
+
+func txnCompareEntry(c *armadapb.Compare, k key.Key, iter *pebble.Iterator) (bool, error) {
+	if err := validateRevision(k.CreateSeqno); err != nil {
+		return false, err
+	}
+	if err := validateRevision(k.Seqno); err != nil {
+		return false, err
+	}
+	var value []byte
+	if c.Target == armadapb.Compare_VALUE && c.TargetUnion != nil {
+		var err error
+		value, err = iter.ValueAndErr()
+		if err != nil {
+			return false, err
 		}
 	}
+	return txnCompareSingle(c, k, value), nil
+}
 
-	return cmpValue
+func txnCompareSingle(c *armadapb.Compare, k key.Key, value []byte) bool {
+	var order int
+	switch c.Target {
+	case armadapb.Compare_VALUE:
+		if c.TargetUnion == nil {
+			// A VALUE predicate without a value retains Armada's existence check.
+			return true
+		}
+		order = bytes.Compare(value, c.GetValue())
+	case armadapb.Compare_CREATE:
+		order = cmp.Compare(int64(k.CreateSeqno), c.GetCreateRevision())
+	case armadapb.Compare_MOD:
+		order = cmp.Compare(int64(k.Seqno), c.GetModRevision())
+	default:
+		return false
+	}
+	switch c.Result {
+	case armadapb.Compare_EQUAL:
+		return order == 0
+	case armadapb.Compare_NOT_EQUAL:
+		return order != 0
+	case armadapb.Compare_GREATER:
+		return order > 0
+	case armadapb.Compare_LESS:
+		return order < 0
+	default:
+		return false
+	}
 }

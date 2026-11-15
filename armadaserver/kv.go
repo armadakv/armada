@@ -48,6 +48,9 @@ func rangeKeyContainsNullByte(k, rangeEnd []byte) bool {
 // validateTxnKeys checks all keys embedded in a TxnRequest for null bytes.
 func validateTxnKeys(req *armadapb.TxnRequest) error {
 	for _, cmp := range req.Compare {
+		if err := cmp.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
 		if rangeKeyContainsNullByte(cmp.Key, cmp.RangeEnd) {
 			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
 		}

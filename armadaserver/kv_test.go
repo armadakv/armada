@@ -195,6 +195,41 @@ func TestKVServer_IterateRangeInvalidCreationRevisionBounds(t *testing.T) {
 	r.EqualError(err, status.Error(codes.InvalidArgument, "min_create_revision must not exceed max_create_revision").Error())
 }
 
+func TestKVServer_TxnRevisionComparisons(t *testing.T) {
+	for _, comparison := range []*armadapb.Compare{
+		{Key: key1Name, Target: armadapb.Compare_CREATE, TargetUnion: &armadapb.Compare_CreateRevision{CreateRevision: 0}},
+		{Key: key1Name, Target: armadapb.Compare_MOD, Result: armadapb.Compare_GREATER, TargetUnion: &armadapb.Compare_ModRevision{ModRevision: -1}},
+	} {
+		request := &armadapb.TxnRequest{Table: table1Name, Compare: []*armadapb.Compare{comparison}}
+		storage := &mockKVService{}
+		storage.On("Txn", mock.Anything, request).Return(&armadapb.TxnResponse{}, nil).Once()
+		kv := KVServer{Storage: storage}
+		_, err := kv.Txn(context.Background(), request)
+		require.NoError(t, err)
+		storage.AssertExpectations(t)
+	}
+	for _, test := range []struct {
+		name       string
+		comparison *armadapb.Compare
+	}{
+		{"nil", nil},
+		{"unknown target", &armadapb.Compare{Target: 99}},
+		{"unknown operator", &armadapb.Compare{Result: 99}},
+		{"create with mod operand", &armadapb.Compare{Target: armadapb.Compare_CREATE, TargetUnion: &armadapb.Compare_ModRevision{ModRevision: 1}}},
+		{"mod with create operand", &armadapb.Compare{Target: armadapb.Compare_MOD, TargetUnion: &armadapb.Compare_CreateRevision{CreateRevision: 1}}},
+		{"value with revision operand", &armadapb.Compare{TargetUnion: &armadapb.Compare_ModRevision{ModRevision: 1}}},
+		{"revision with value operand", &armadapb.Compare{Target: armadapb.Compare_MOD, TargetUnion: &armadapb.Compare_Value{Value: []byte("1")}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kv := KVServer{Storage: &mockKVService{}}
+			_, err := kv.Txn(context.Background(), &armadapb.TxnRequest{
+				Table: table1Name, Compare: []*armadapb.Compare{test.comparison},
+			})
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
+}
+
 func TestKVServer_TxnInvalidCreationRevisionBounds(t *testing.T) {
 	r := require.New(t)
 	kv := KVServer{Storage: &mockKVService{}}

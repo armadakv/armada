@@ -147,15 +147,23 @@ type Compare_CompareTarget int32
 
 const (
 	Compare_VALUE Compare_CompareTarget = 0
+	// Creation revision of the current live key incarnation.
+	Compare_CREATE Compare_CompareTarget = 2
+	// Modification revision of the current live key.
+	Compare_MOD Compare_CompareTarget = 3
 )
 
 // Enum value maps for Compare_CompareTarget.
 var (
 	Compare_CompareTarget_name = map[int32]string{
 		0: "VALUE",
+		2: "CREATE",
+		3: "MOD",
 	}
 	Compare_CompareTarget_value = map[string]int32{
-		"VALUE": 0,
+		"VALUE":  0,
+		"CREATE": 2,
+		"MOD":    3,
 	}
 )
 
@@ -661,8 +669,12 @@ type Compare struct {
 	// Types that are valid to be assigned to TargetUnion:
 	//
 	//	*Compare_Value
+	//	*Compare_CreateRevision
+	//	*Compare_ModRevision
 	TargetUnion isCompare_TargetUnion `protobuf_oneof:"target_union"`
 	// range_end compares the given target to all keys in the range [key, range_end).
+	// Only the latest live version of each key is compared. If no live keys match,
+	// revision targets compare against zero and VALUE comparisons fail.
 	// See RangeRequest for more details on key ranges.
 	RangeEnd      []byte `protobuf:"bytes,64,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"` // TODO: fill out with most of the rest of RangeRequest fields when needed.
 	unknownFields protoimpl.UnknownFields
@@ -736,6 +748,24 @@ func (x *Compare) GetValue() []byte {
 	return nil
 }
 
+func (x *Compare) GetCreateRevision() int64 {
+	if x != nil {
+		if x, ok := x.TargetUnion.(*Compare_CreateRevision); ok {
+			return x.CreateRevision
+		}
+	}
+	return 0
+}
+
+func (x *Compare) GetModRevision() int64 {
+	if x != nil {
+		if x, ok := x.TargetUnion.(*Compare_ModRevision); ok {
+			return x.ModRevision
+		}
+	}
+	return 0
+}
+
 func (x *Compare) GetRangeEnd() []byte {
 	if x != nil {
 		return x.RangeEnd
@@ -752,7 +782,23 @@ type Compare_Value struct {
 	Value []byte `protobuf:"bytes,4,opt,name=value,proto3,oneof"`
 }
 
+type Compare_CreateRevision struct {
+	// create_revision compares against the current incarnation's creation revision.
+	// Missing or deleted keys have revision zero.
+	CreateRevision int64 `protobuf:"varint,5,opt,name=create_revision,json=createRevision,proto3,oneof"`
+}
+
+type Compare_ModRevision struct {
+	// mod_revision compares against the current live key's modification revision.
+	// Missing or deleted keys have revision zero.
+	ModRevision int64 `protobuf:"varint,6,opt,name=mod_revision,json=modRevision,proto3,oneof"` // leave room for more target_union field tags, jump to 64
+}
+
 func (*Compare_Value) isCompare_TargetUnion() {}
+
+func (*Compare_CreateRevision) isCompare_TargetUnion() {}
+
+func (*Compare_ModRevision) isCompare_TargetUnion() {}
 
 type KeyValue struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1339,20 +1385,25 @@ const file_mvcc_proto_rawDesc = "" +
 	"\adeleted\x18\x01 \x01(\x03R\adeleted\x12,\n" +
 	"\bprev_kvs\x18\x02 \x03(\v2\x11.mvcc.v1.KeyValueR\aprevKvsB\n" +
 	"\n" +
-	"\bresponse\"\xae\x02\n" +
+	"\bresponse\"\x93\x03\n" +
 	"\aCompare\x126\n" +
 	"\x06result\x18\x01 \x01(\x0e2\x1e.mvcc.v1.Compare.CompareResultR\x06result\x126\n" +
 	"\x06target\x18\x02 \x01(\x0e2\x1e.mvcc.v1.Compare.CompareTargetR\x06target\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\fR\x03key\x12\x16\n" +
-	"\x05value\x18\x04 \x01(\fH\x00R\x05value\x12\x1b\n" +
+	"\x05value\x18\x04 \x01(\fH\x00R\x05value\x12)\n" +
+	"\x0fcreate_revision\x18\x05 \x01(\x03H\x00R\x0ecreateRevision\x12#\n" +
+	"\fmod_revision\x18\x06 \x01(\x03H\x00R\vmodRevision\x12\x1b\n" +
 	"\trange_end\x18@ \x01(\fR\brangeEnd\"@\n" +
 	"\rCompareResult\x12\t\n" +
 	"\x05EQUAL\x10\x00\x12\v\n" +
 	"\aGREATER\x10\x01\x12\b\n" +
 	"\x04LESS\x10\x02\x12\r\n" +
-	"\tNOT_EQUAL\x10\x03\"\x1a\n" +
+	"\tNOT_EQUAL\x10\x03\"/\n" +
 	"\rCompareTarget\x12\t\n" +
-	"\x05VALUE\x10\x00B\x0e\n" +
+	"\x05VALUE\x10\x00\x12\n" +
+	"\n" +
+	"\x06CREATE\x10\x02\x12\a\n" +
+	"\x03MOD\x10\x03B\x0e\n" +
 	"\ftarget_union\"~\n" +
 	"\bKeyValue\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12'\n" +
@@ -1439,6 +1490,8 @@ func file_mvcc_proto_init() {
 	}
 	file_mvcc_proto_msgTypes[5].OneofWrappers = []any{
 		(*Compare_Value)(nil),
+		(*Compare_CreateRevision)(nil),
+		(*Compare_ModRevision)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

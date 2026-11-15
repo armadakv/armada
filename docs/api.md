@@ -423,7 +423,9 @@ Examples:
 | `target` | [Compare.CompareTarget](#comparecomparetarget) |  | target is the key-value field to inspect for the comparison. |
 | `key` | [bytes](#bytes) |  | key is the subject key for the comparison operation. |
 | `value` | [bytes](#bytes) |  | value is the value of the given key, in bytes. |
-| `range_end` | [bytes](#bytes) |  | range_end compares the given target to all keys in the range [key, range_end). See RangeRequest for more details on key ranges.  TODO: fill out with most of the rest of RangeRequest fields when needed. |
+| `create_revision` | [int64](#int64) |  | create_revision compares against the current incarnation's creation revision. Missing or deleted keys have revision zero. |
+| `mod_revision` | [int64](#int64) |  | mod_revision compares against the current live key's modification revision. Missing or deleted keys have revision zero.  leave room for more target_union field tags, jump to 64 |
+| `range_end` | [bytes](#bytes) |  | range_end compares the given target to all keys in the range [key, range_end). Only the latest live version of each key is compared. If no live keys match, revision targets compare against zero and VALUE comparisons fail. See RangeRequest for more details on key ranges.  TODO: fill out with most of the rest of RangeRequest fields when needed. |
 
 
 #### KeyValue {#keyvalue}
@@ -553,6 +555,8 @@ Examples:
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | `VALUE` | 0 |  |
+| `CREATE` | 2 | Creation revision of the current live key incarnation. |
+| `MOD` | 3 | Modification revision of the current live key. |
 
 
 
