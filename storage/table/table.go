@@ -121,6 +121,8 @@ func (t *ActiveTable) Range(ctx context.Context, req *armadapb.RangeRequest) (*a
 		CountOnly:         req.CountOnly,
 		MinCreateRevision: req.MinCreateRevision,
 		MaxCreateRevision: req.MaxCreateRevision,
+		MinModRevision:    req.MinModRevision,
+		MaxModRevision:    req.MaxModRevision,
 	})
 	if err != nil {
 		return nil, err
@@ -229,6 +231,8 @@ func (t *ActiveTable) Iterator(ctx context.Context, req *armadapb.RangeRequest) 
 		CountOnly:         req.CountOnly,
 		MinCreateRevision: req.MinCreateRevision,
 		MaxCreateRevision: req.MaxCreateRevision,
+		MinModRevision:    req.MinModRevision,
+		MaxModRevision:    req.MaxModRevision,
 	}})
 }
 

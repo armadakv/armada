@@ -233,7 +233,7 @@ func readLocalIndex(db pebble.Reader, indexKey []byte) (idx uint64, err error) {
 }
 
 func lookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb.ResponseOp_Range, error) {
-	if err := validateCreationRevisionBounds(req.MinCreateRevision, req.MaxCreateRevision); err != nil {
+	if err := validateRangeRevisionBounds(req); err != nil {
 		return nil, err
 	}
 	if req.RangeEnd != nil {
@@ -251,7 +251,7 @@ func rangeLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb
 }
 
 func singleLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb.ResponseOp_Range, error) {
-	if err := validateCreationRevisionBounds(req.MinCreateRevision, req.MaxCreateRevision); err != nil {
+	if err := validateRangeRevisionBounds(req); err != nil {
 		return nil, err
 	}
 	keyBuf := bufferPool.Get()
@@ -290,7 +290,7 @@ func singleLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadap
 	if err := validateRevision(k.Seqno); err != nil {
 		return nil, err
 	}
-	if !matchesCreationRevision(k, req) {
+	if !matchesRevisionBounds(k, req) {
 		return &armadapb.ResponseOp_Range{}, nil
 	}
 
@@ -319,18 +319,29 @@ func singleLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadap
 	}, nil
 }
 
-func validateCreationRevisionBounds(min, max int64) error {
-	if min < 0 || max < 0 || min != 0 && max != 0 && min > max {
+func validateRangeRevisionBounds(req *armadapb.RequestOp_Range) error {
+	if req.MinCreateRevision < 0 || req.MaxCreateRevision < 0 ||
+		req.MinCreateRevision != 0 && req.MaxCreateRevision != 0 && req.MinCreateRevision > req.MaxCreateRevision {
 		return errors.New("invalid creation revision bounds")
+	}
+	if req.MinModRevision < 0 || req.MaxModRevision < 0 ||
+		req.MinModRevision != 0 && req.MaxModRevision != 0 && req.MinModRevision > req.MaxModRevision {
+		return errors.New("invalid modification revision bounds")
 	}
 	return nil
 }
 
-func matchesCreationRevision(k key.Key, req *armadapb.RequestOp_Range) bool {
+func matchesRevisionBounds(k key.Key, req *armadapb.RequestOp_Range) bool {
 	if req.MinCreateRevision > 0 && k.CreateSeqno < uint64(req.MinCreateRevision) {
 		return false
 	}
 	if req.MaxCreateRevision > 0 && k.CreateSeqno > uint64(req.MaxCreateRevision) {
+		return false
+	}
+	if req.MinModRevision > 0 && k.Seqno < uint64(req.MinModRevision) {
+		return false
+	}
+	if req.MaxModRevision > 0 && k.Seqno > uint64(req.MaxModRevision) {
 		return false
 	}
 	return true

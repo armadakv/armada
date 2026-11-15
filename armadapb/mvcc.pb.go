@@ -850,8 +850,14 @@ type RequestOp_Range struct {
 	// Inclusive upper bound for the current key incarnation's creation revision.
 	// Zero means unbounded.
 	MaxCreateRevision int64 `protobuf:"varint,7,opt,name=max_create_revision,json=maxCreateRevision,proto3" json:"max_create_revision,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Inclusive lower bound for the current live key's modification revision.
+	// Zero means unbounded; this filters current values, not historical versions.
+	MinModRevision int64 `protobuf:"varint,8,opt,name=min_mod_revision,json=minModRevision,proto3" json:"min_mod_revision,omitempty"`
+	// Inclusive upper bound for the current live key's modification revision.
+	// Zero means unbounded; this filters current values, not historical versions.
+	MaxModRevision int64 `protobuf:"varint,9,opt,name=max_mod_revision,json=maxModRevision,proto3" json:"max_mod_revision,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RequestOp_Range) Reset() {
@@ -929,6 +935,20 @@ func (x *RequestOp_Range) GetMinCreateRevision() int64 {
 func (x *RequestOp_Range) GetMaxCreateRevision() int64 {
 	if x != nil {
 		return x.MaxCreateRevision
+	}
+	return 0
+}
+
+func (x *RequestOp_Range) GetMinModRevision() int64 {
+	if x != nil {
+		return x.MinModRevision
+	}
+	return 0
+}
+
+func (x *RequestOp_Range) GetMaxModRevision() int64 {
+	if x != nil {
+		return x.MaxModRevision
 	}
 	return 0
 }
@@ -1277,12 +1297,12 @@ const file_mvcc_proto_rawDesc = "" +
 	"\x03Txn\x12*\n" +
 	"\acompare\x18\x01 \x03(\v2\x10.mvcc.v1.CompareR\acompare\x12,\n" +
 	"\asuccess\x18\x02 \x03(\v2\x12.mvcc.v1.RequestOpR\asuccess\x12,\n" +
-	"\afailure\x18\x03 \x03(\v2\x12.mvcc.v1.RequestOpR\afailure\"\x86\x05\n" +
+	"\afailure\x18\x03 \x03(\v2\x12.mvcc.v1.RequestOpR\afailure\"\xda\x05\n" +
 	"\tRequestOp\x12?\n" +
 	"\rrequest_range\x18\x01 \x01(\v2\x18.mvcc.v1.RequestOp.RangeH\x00R\frequestRange\x129\n" +
 	"\vrequest_put\x18\x02 \x01(\v2\x16.mvcc.v1.RequestOp.PutH\x00R\n" +
 	"requestPut\x12R\n" +
-	"\x14request_delete_range\x18\x03 \x01(\v2\x1e.mvcc.v1.RequestOp.DeleteRangeH\x00R\x12requestDeleteRange\x1a\xe8\x01\n" +
+	"\x14request_delete_range\x18\x03 \x01(\v2\x1e.mvcc.v1.RequestOp.DeleteRangeH\x00R\x12requestDeleteRange\x1a\xbc\x02\n" +
 	"\x05Range\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\x1b\n" +
 	"\trange_end\x18\x02 \x01(\fR\brangeEnd\x12\x14\n" +
@@ -1291,7 +1311,9 @@ const file_mvcc_proto_rawDesc = "" +
 	"\n" +
 	"count_only\x18\x05 \x01(\bR\tcountOnly\x12.\n" +
 	"\x13min_create_revision\x18\x06 \x01(\x03R\x11minCreateRevision\x12.\n" +
-	"\x13max_create_revision\x18\a \x01(\x03R\x11maxCreateRevision\x1aF\n" +
+	"\x13max_create_revision\x18\a \x01(\x03R\x11maxCreateRevision\x12(\n" +
+	"\x10min_mod_revision\x18\b \x01(\x03R\x0eminModRevision\x12(\n" +
+	"\x10max_mod_revision\x18\t \x01(\x03R\x0emaxModRevision\x1aF\n" +
 	"\x03Put\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value\x12\x17\n" +

@@ -112,6 +112,14 @@ message RequestOp {
     // Inclusive upper bound for the current key incarnation's creation revision.
     // Zero means unbounded.
     int64 max_create_revision = 7;
+
+    // Inclusive lower bound for the current live key's modification revision.
+    // Zero means unbounded; this filters current values, not historical versions.
+    int64 min_mod_revision = 8;
+
+    // Inclusive upper bound for the current live key's modification revision.
+    // Zero means unbounded; this filters current values, not historical versions.
+    int64 max_mod_revision = 9;
   }
 
   message Put {

@@ -172,3 +172,29 @@ grpcurl -insecure "-d={
     \"keys_only\": true}" \
     127.0.0.1:8443 regatta.v1.KV/Range
 ```
+
+## Filter by modification revision
+
+Use `min_mod_revision` and `max_mod_revision` to select live keys whose latest
+modification revision is within the inclusive bounds. `0` means unbounded;
+negative bounds or a nonzero minimum greater than a nonzero maximum are invalid.
+These filters work with exact lookups, ranges, `IterateRange`, and transaction
+Range operations. They can be combined with creation-revision filters; all
+specified bounds must match.
+
+Filtering happens before counting, limiting, or returning values. Deleted keys
+are excluded, and rejecting a key's latest version does not return an older
+version. This is not a historical read or a change feed: deletions and intermediate
+updates are not returned.
+
+For example, find current keys last modified between revisions 100 and 200:
+
+```bash
+grpcurl -insecure "-d={
+    \"table\": \"$(echo -n "armada-test" | base64)\",
+    \"key\": \"$(echo -n "key_1" | base64)\",
+    \"range_end\": \"$(echo -n "key_20" | base64)\",
+    \"min_mod_revision\": 100,
+    \"max_mod_revision\": 200}" \
+    127.0.0.1:8443 regatta.v1.KV/Range
+```

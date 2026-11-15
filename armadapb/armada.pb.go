@@ -136,11 +136,11 @@ type RangeRequest struct {
 	KeysOnly bool `protobuf:"varint,6,opt,name=keys_only,json=keysOnly,proto3" json:"keys_only,omitempty"`
 	// count_only when set returns only the count of the keys in the range.
 	CountOnly bool `protobuf:"varint,7,opt,name=count_only,json=countOnly,proto3" json:"count_only,omitempty"`
-	// min_mod_revision is the lower bound for returned key mod revisions; all keys with
-	// lesser mod revisions will be filtered away.
+	// Inclusive lower bound for the current live key's modification revision.
+	// Zero means unbounded; this filters current values, not historical versions.
 	MinModRevision int64 `protobuf:"varint,8,opt,name=min_mod_revision,json=minModRevision,proto3" json:"min_mod_revision,omitempty"`
-	// max_mod_revision is the upper bound for returned key mod revisions; all keys with
-	// greater mod revisions will be filtered away.
+	// Inclusive upper bound for the current live key's modification revision.
+	// Zero means unbounded; this filters current values, not historical versions.
 	MaxModRevision int64 `protobuf:"varint,9,opt,name=max_mod_revision,json=maxModRevision,proto3" json:"max_mod_revision,omitempty"`
 	// Inclusive lower bound for the current key incarnation's creation revision.
 	// Zero means unbounded.

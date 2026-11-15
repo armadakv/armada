@@ -4,10 +4,12 @@ package fsm
 
 import (
 	"bytes"
+	"math"
 	"testing"
 
 	"github.com/armadakv/armada/armadapb"
 	sm "github.com/armadakv/armada/raft/statemachine"
+	"github.com/armadakv/armada/util/iterx"
 	"github.com/stretchr/testify/require"
 )
 
@@ -74,6 +76,121 @@ func TestCreationRevisionIncarnationsAndRangeFilters(t *testing.T) {
 	require.Equal(t, int64(50), kv.CreateRevision)
 	require.Equal(t, int64(50), kv.ModRevision)
 	require.Empty(t, kv.Value)
+}
+
+func TestModificationRevisionFilters(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+	_, err := p.Update([]sm.Entry{
+		putEntry(10, []byte("a"), []byte("old")),
+		putEntry(20, []byte("b"), []byte("deleted")),
+		putEntry(30, []byte("a"), []byte("updated")),
+		{Index: 40, Cmd: mustMarshallProto(&armadapb.Command{
+			Type: armadapb.Command_DELETE, Kv: &armadapb.KeyValue{Key: []byte("b")},
+		})},
+		putEntry(50, []byte("c"), []byte("c")),
+		putEntry(60, []byte("d"), []byte("d")),
+	})
+	require.NoError(t, err)
+
+	for _, test := range []struct {
+		name string
+		req  *armadapb.RequestOp_Range
+		keys []string
+		more bool
+	}{
+		{"inclusive exact", &armadapb.RequestOp_Range{Key: []byte("a"), MinModRevision: 30, MaxModRevision: 30}, []string{"a"}, false},
+		{"no historical exact", &armadapb.RequestOp_Range{Key: []byte("a"), MaxModRevision: 10}, nil, false},
+		{"no historical range", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte("z"), MaxModRevision: 20}, nil, false},
+		{"inclusive range", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte("z"), MinModRevision: 30, MaxModRevision: 50}, []string{"a", "c"}, false},
+		{"filter before limit", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte("z"), MinModRevision: 50, Limit: 1}, []string{"c"}, true},
+		{"filtered tail not more", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte("z"), MaxModRevision: 30, Limit: 1}, []string{"a"}, false},
+		{"combined filters", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte("z"), MaxCreateRevision: 10, MinModRevision: 30}, []string{"a"}, false},
+		{"combined rejection", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte("z"), MinCreateRevision: 20, MaxModRevision: 30}, nil, false},
+		{"exclusive key bound", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte("c"), MinModRevision: 30}, []string{"a"}, false},
+		{"max revision", &armadapb.RequestOp_Range{Key: []byte("a"), RangeEnd: []byte{0}, MaxModRevision: math.MaxInt64}, []string{"a", "c", "d"}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, mode := range []string{"values", "keys", "count"} {
+				t.Run(mode, func(t *testing.T) {
+					test.req.KeysOnly = mode == "keys"
+					test.req.CountOnly = mode == "count"
+					result, err := p.Lookup(test.req)
+					require.NoError(t, err)
+					response := result.(*armadapb.ResponseOp_Range)
+					require.Equal(t, int64(len(test.keys)), response.Count)
+					require.Equal(t, test.more, response.More)
+					var keys []string
+					for _, kv := range response.Kvs {
+						keys = append(keys, string(kv.Key))
+						if test.req.KeysOnly {
+							require.Empty(t, kv.Value)
+						}
+					}
+					if test.req.CountOnly {
+						require.Empty(t, response.Kvs)
+					} else {
+						require.Equal(t, test.keys, keys)
+					}
+					stream, err := iteratorLookup(p.pebble.Load(), test.req)
+					require.NoError(t, err)
+					require.Equal(t, response, iterx.First(stream))
+				})
+			}
+		})
+	}
+
+	for _, req := range []*armadapb.RequestOp_Range{
+		{Key: []byte("a"), MinModRevision: -1},
+		{Key: []byte("a"), MaxModRevision: -1},
+		{Key: []byte("a"), MinModRevision: 4, MaxModRevision: 3},
+	} {
+		for _, end := range [][]byte{nil, []byte("z")} {
+			req.RangeEnd = end
+			_, err := p.Lookup(req)
+			require.Error(t, err)
+			_, err = iteratorLookup(p.pebble.Load(), req)
+			require.Error(t, err)
+		}
+	}
+}
+
+func TestModificationRevisionTransactionReads(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+	_, err := p.Update([]sm.Entry{putEntry(10, []byte("key"), []byte("old"))})
+	require.NoError(t, err)
+
+	sourceRevision := uint64(30)
+	command := &armadapb.Command{
+		Type: armadapb.Command_TXN, LeaderIndex: &sourceRevision,
+		Txn: &armadapb.Txn{Success: []*armadapb.RequestOp{
+			{Request: &armadapb.RequestOp_RequestPut{RequestPut: &armadapb.RequestOp_Put{
+				Key: []byte("key"), Value: []byte("new"),
+			}}},
+			{Request: &armadapb.RequestOp_RequestRange{RequestRange: &armadapb.RequestOp_Range{
+				Key: []byte("key"), MaxModRevision: 10,
+			}}},
+			{Request: &armadapb.RequestOp_RequestRange{RequestRange: &armadapb.RequestOp_Range{
+				Key: []byte("key"), MinCreateRevision: 10, MaxCreateRevision: 10,
+				MinModRevision: 30, MaxModRevision: 30,
+			}}},
+		}},
+	}
+	entries, err := p.Update([]sm.Entry{{Index: 100, Cmd: mustMarshallProto(command)}})
+	require.NoError(t, err)
+	var result armadapb.CommandResult
+	require.NoError(t, result.UnmarshalVT(entries[0].Result.Data))
+	require.Zero(t, result.Responses[1].GetResponseRange().Count)
+	require.Equal(t, []*armadapb.KeyValue{{
+		Key: []byte("key"), Value: []byte("new"), CreateRevision: 10, ModRevision: 30,
+	}}, result.Responses[2].GetResponseRange().Kvs)
+
+	response, err := p.Lookup(&armadapb.TxnRequest{Success: command.Txn.Success[1:]})
+	require.NoError(t, err)
+	txn := response.(*armadapb.TxnResponse)
+	require.Zero(t, txn.Responses[0].GetResponseRange().Count)
+	require.Equal(t, result.Responses[2].GetResponseRange(), txn.Responses[1].GetResponseRange())
 }
 
 func TestCreationRevisionSameSequenceReplacementAndRestoreMetadata(t *testing.T) {
