@@ -169,8 +169,8 @@ FollowerGetTablesResponse contains information about tables stored in the cluste
 | `count_only` | [bool](#bool) |  | count_only when set returns only the count of the keys in the range. |
 | `min_mod_revision` | [int64](#int64) |  | min_mod_revision is the lower bound for returned key mod revisions; all keys with lesser mod revisions will be filtered away. |
 | `max_mod_revision` | [int64](#int64) |  | max_mod_revision is the upper bound for returned key mod revisions; all keys with greater mod revisions will be filtered away. |
-| `min_create_revision` | [int64](#int64) |  | min_create_revision is the lower bound for returned key create revisions; all keys with lesser create revisions will be filtered away. |
-| `max_create_revision` | [int64](#int64) |  | max_create_revision is the upper bound for returned key create revisions; all keys with greater create revisions will be filtered away. |
+| `min_create_revision` | [int64](#int64) |  | Inclusive lower bound for the current key incarnation's creation revision. Zero means unbounded. |
+| `max_create_revision` | [int64](#int64) |  | Inclusive upper bound for the current key incarnation's creation revision. Zero means unbounded. |
 
 
 #### RangeResponse {#rangeresponse}
@@ -324,6 +324,7 @@ RestoreInfo metadata of restore snapshot that is going to be uploaded.
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | `table` | [bytes](#bytes) |  | table is name of the table in the stream. |
+| `format` | [string](#string) |  | format identifies the backup stream format. An empty value denotes the historical, unterminated maintenance backup format. |
 
 
 #### RestoreMessage {#restoremessage}
@@ -430,8 +431,8 @@ Examples:
 | Field | Type | Label | Description |
 | ----- | ---- | ----- | ----------- |
 | `key` | [bytes](#bytes) |  | key is the key in bytes. An empty key is not allowed. |
-| `create_revision` | [int64](#int64) |  | create_revision is the revision of last creation on this key. |
-| `mod_revision` | [int64](#int64) |  | mod_revision is the revision of last modification on this key. |
+| `create_revision` | [int64](#int64) |  | create_revision is the revision that created the current incarnation of this key. Deleting and recreating a key assigns a new create_revision. |
+| `mod_revision` | [int64](#int64) |  | mod_revision is the revision of the last modification to this key. |
 | `value` | [bytes](#bytes) |  | value is the value held by the key, in bytes. |
 
 
@@ -472,6 +473,8 @@ Examples:
 | `limit` | [int64](#int64) |  | limit is a limit on the number of keys returned for the request. When limit is set to 0, it is treated as no limit. |
 | `keys_only` | [bool](#bool) |  | keys_only when set returns only the keys and not the values. |
 | `count_only` | [bool](#bool) |  | count_only when set returns only the count of the keys in the range. |
+| `min_create_revision` | [int64](#int64) |  | Inclusive lower bound for the current key incarnation's creation revision. Zero means unbounded. |
+| `max_create_revision` | [int64](#int64) |  | Inclusive upper bound for the current key incarnation's creation revision. Zero means unbounded. |
 
 
 #### ResponseOp {#responseop}
@@ -626,6 +629,7 @@ ReplicateRequest request of the replication data at given leader_index
 | ----- | ---- | ----- | ----------- |
 | `table` | [bytes](#bytes) |  | table is name of the table to replicate |
 | `leader_index` | [uint64](#uint64) |  | leader_index is the index in the leader raft log of the last stored item in the follower |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id identifies the leader table incarnation being requested. |
 
 
 #### ReplicateResponse {#replicateresponse}
@@ -654,6 +658,7 @@ ReplicateResponse response to the ReplicateRequest
 | ----- | ---- | ----- | ----------- |
 | `table` | [string](#string) |  |  |
 | `follower_index` | [uint64](#uint64) |  | follower_index is the current applied index on the follower |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id identifies the leader table incarnation being requested. |
 
 
 #### SnapshotQueryResponse {#snapshotqueryresponse}
@@ -675,6 +680,7 @@ ReplicateResponse response to the ReplicateRequest
 | `table` | [bytes](#bytes) |  | table is name of the table to stream |
 | `incremental` | [bool](#bool) |  | incremental indicates that the client wants an incremental snapshot starting from leader_index. If false, a full snapshot is produced regardless of leader_index. |
 | `leader_index` | [uint64](#uint64) |  | leader_index is the last leader index the follower already has applied. Only meaningful when incremental is true. The server will stream only the changes (puts and deletes) with seqno > leader_index. |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id identifies the leader table incarnation being requested. |
 
 
 #### Table {#table}
@@ -683,6 +689,7 @@ ReplicateResponse response to the ReplicateRequest
 | ----- | ---- | ----- | ----------- |
 | `name` | [string](#string) |  |  |
 | `type` | [Table.Type](#tabletype) |  |  |
+| `cluster_id` | [uint64](#uint64) |  | cluster_id is the immutable Raft shard ID for this table incarnation. |
 
 
 

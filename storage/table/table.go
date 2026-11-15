@@ -114,11 +114,13 @@ func (t *ActiveTable) Range(ctx context.Context, req *armadapb.RangeRequest) (*a
 	}
 
 	response, err := readTable[*armadapb.ResponseOp_Range](t, ctx, req.Linearizable, &armadapb.RequestOp_Range{
-		Key:       req.Key,
-		RangeEnd:  req.RangeEnd,
-		Limit:     req.Limit,
-		KeysOnly:  req.KeysOnly,
-		CountOnly: req.CountOnly,
+		Key:               req.Key,
+		RangeEnd:          req.RangeEnd,
+		Limit:             req.Limit,
+		KeysOnly:          req.KeysOnly,
+		CountOnly:         req.CountOnly,
+		MinCreateRevision: req.MinCreateRevision,
+		MaxCreateRevision: req.MaxCreateRevision,
 	})
 	if err != nil {
 		return nil, err
@@ -220,11 +222,13 @@ func (t *ActiveTable) Txn(ctx context.Context, req *armadapb.TxnRequest) (*armad
 // Iterator returns open pebble.Iterator it is an API consumer responsibility to close it.
 func (t *ActiveTable) Iterator(ctx context.Context, req *armadapb.RangeRequest) (iter.Seq[*armadapb.ResponseOp_Range], error) {
 	return readTable[iter.Seq[*armadapb.ResponseOp_Range]](t, ctx, req.Linearizable, fsm.IteratorRequest{RangeOp: &armadapb.RequestOp_Range{
-		Key:       req.Key,
-		RangeEnd:  req.RangeEnd,
-		Limit:     req.Limit,
-		KeysOnly:  req.KeysOnly,
-		CountOnly: req.CountOnly,
+		Key:               req.Key,
+		RangeEnd:          req.RangeEnd,
+		Limit:             req.Limit,
+		KeysOnly:          req.KeysOnly,
+		CountOnly:         req.CountOnly,
+		MinCreateRevision: req.MinCreateRevision,
+		MaxCreateRevision: req.MaxCreateRevision,
 	}})
 }
 
