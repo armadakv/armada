@@ -36,6 +36,9 @@ type Table struct {
 	// A node without local Raft state must join that shard rather than bootstrap
 	// the configured voter set from scratch.
 	Recovered bool `json:"recovered,omitempty"`
+	// RestoredSourceID acknowledges a completed full restore from this source
+	// incarnation. It is committed with the serving shard, before journal removal.
+	RestoredSourceID uint64 `json:"restored_source_id,omitempty"`
 }
 
 // AsActive returns an ActiveTable wrapper of this table.

@@ -697,6 +697,19 @@ func (w *worker) recover(parent context.Context) error {
 		return fmt.Errorf("unknown recovery result %d", result)
 	}
 
+	// The manager may have finished between worker ticks (or before a restart).
+	// Only the serving shard's durable, source-specific acknowledgement can
+	// satisfy a required full restore; an absent journal alone cannot.
+	if w.forceRecovery.Load() && w.sourceID != 0 {
+		t, err := w.engine.GetTable(w.table)
+		if err != nil && !errors.Is(err, serrors.ErrTableNotFound) {
+			return fmt.Errorf("failed to read recovery completion: %w", err)
+		}
+		if err == nil && t.RestoredSourceID == w.sourceID {
+			return nil
+		}
+	}
+
 	followerIndex, _, err := w.tableState(ctx)
 	if err != nil {
 		if !errors.Is(err, serrors.ErrTableNotFound) {

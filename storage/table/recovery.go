@@ -924,6 +924,7 @@ func (m *Manager) recoverySwap(rec *RecoveryRecord, ver *uint64) error {
 		tbl.ClusterID = rec.RecoveryID
 		tbl.RecoverID = 0
 		tbl.Recovered = true
+		tbl.RestoredSourceID = rec.SourceID
 		if err := m.setTableVersion(tbl, tblVer); err != nil {
 			return err
 		}
