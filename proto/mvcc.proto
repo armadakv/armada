@@ -104,6 +104,14 @@ message RequestOp {
 
     // count_only when set returns only the count of the keys in the range.
     bool count_only = 5;
+
+    // Inclusive lower bound for the current key incarnation's creation revision.
+    // Zero means unbounded.
+    int64 min_create_revision = 6;
+
+    // Inclusive upper bound for the current key incarnation's creation revision.
+    // Zero means unbounded.
+    int64 max_create_revision = 7;
   }
 
   message Put {
@@ -228,9 +236,10 @@ message Compare {
 message KeyValue {
   // key is the key in bytes. An empty key is not allowed.
   bytes key = 1;
-  // create_revision is the revision of last creation on this key.
+  // create_revision is the revision that created the current incarnation of this key.
+  // Deleting and recreating a key assigns a new create_revision.
   int64 create_revision = 2;
-  // mod_revision is the revision of last modification on this key.
+  // mod_revision is the revision of the last modification to this key.
   int64 mod_revision = 3;
   // value is the value held by the key, in bytes.
   bytes value = 4;

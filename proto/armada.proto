@@ -93,12 +93,12 @@ message RangeRequest {
   // greater mod revisions will be filtered away.
   int64 max_mod_revision = 9;
 
-  // min_create_revision is the lower bound for returned key create revisions; all keys with
-  // lesser create revisions will be filtered away.
+  // Inclusive lower bound for the current key incarnation's creation revision.
+  // Zero means unbounded.
   int64 min_create_revision = 10;
 
-  // max_create_revision is the upper bound for returned key create revisions; all keys with
-  // greater create revisions will be filtered away.
+  // Inclusive upper bound for the current key incarnation's creation revision.
+  // Zero means unbounded.
   int64 max_create_revision = 11;
 }
 
