@@ -103,6 +103,8 @@ func (h *SnapshotHTTPHandler) serveSharedSnapshot(w http.ResponseWriter, r *http
 		}
 		// http.ServeFileFS honours Range, which is what makes a follower's
 		// download resumable without any extra server-side support.
+		// #nosec G703 -- objectKey is cleaned and checked above to remain
+		// under snapshots/ before any bucket access.
 		http.ServeFileFS(w, r, h.bucket, objectKey)
 		return
 	}
