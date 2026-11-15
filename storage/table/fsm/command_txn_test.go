@@ -11,6 +11,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
+	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
@@ -286,7 +287,9 @@ func Test_handleTxn(t *testing.T) {
 	r.True(succ)
 	r.NoError(err)
 	r.Len(res, 1)
-	r.Equal(wrapResponseOp(&armadapb.ResponseOp_Put{PrevKv: &armadapb.KeyValue{Key: []byte("key_5"), Value: nil}}), res[0])
+	r.Equal(wrapResponseOp(&armadapb.ResponseOp_Put{PrevKv: &armadapb.KeyValue{
+		Key: []byte("key_5"), Value: nil, CreateRevision: 1, ModRevision: 1,
+	}}), res[0])
 
 	// compare key_5 value with "value" and delete keys up to key_4 (non-inclusive)
 	succ, res, err = handleTxn(c, []*armadapb.Compare{{Key: []byte("key_5"), TargetUnion: &armadapb.Compare_Value{Value: []byte("value")}}}, []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestDeleteRange{RequestDeleteRange: &armadapb.RequestOp_DeleteRange{Key: []byte("key_1"), RangeEnd: []byte("key_4"), PrevKv: true}}}}, nil)
@@ -296,9 +299,9 @@ func Test_handleTxn(t *testing.T) {
 	r.Equal(wrapResponseOp(&armadapb.ResponseOp_DeleteRange{
 		Deleted: 3,
 		PrevKvs: []*armadapb.KeyValue{
-			{Key: []byte("key_1"), Value: []byte("value")},
-			{Key: []byte("key_2"), Value: []byte("value")},
-			{Key: []byte("key_3"), Value: []byte("value")},
+			{Key: []byte("key_1"), Value: []byte("value"), CreateRevision: 1, ModRevision: 1},
+			{Key: []byte("key_2"), Value: []byte("value"), CreateRevision: 1, ModRevision: 1},
+			{Key: []byte("key_3"), Value: []byte("value"), CreateRevision: 1, ModRevision: 1},
 		},
 	}), res[0])
 
@@ -310,7 +313,9 @@ func Test_handleTxn(t *testing.T) {
 	for iter.First(); iter.Valid(); iter.Next() {
 		// Skip MVCC tombstone entries — they are internal deletion markers and
 		// are not visible to readers; only count live (non-tombstone) entries.
-		if isTombstone(iter.Value()) {
+		decoded, err := key.DecodeBytes(iter.Key())
+		r.NoError(err)
+		if isTombstone(decoded) {
 			continue
 		}
 		count++

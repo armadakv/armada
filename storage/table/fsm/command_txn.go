@@ -6,6 +6,7 @@ import (
 	"bytes"
 
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
 )
 
@@ -94,7 +95,11 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 					return false, nil
 				}
 				for iter.First(); iter.Valid(); {
-					if isTombstone(iter.Value()) {
+					k, err := key.DecodeBytes(iter.Key())
+					if err != nil {
+						return false, err
+					}
+					if isTombstone(k) {
 						currentKey := make([]byte, len(iter.Key()))
 						copy(currentKey, iter.Key())
 						if !iterNextUserKey(iter, currentKey) {
@@ -114,7 +119,7 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 				// Use SeekPrefixGE to find the latest MVCC version of the key.
 				// Encoding with ^uint64(0) (MaxUint64, stored as all-zeros) ensures
 				// SeekPrefixGE lands on the first (latest) version within the prefix.
-				if err := encodeUserKey(keyBuf, cmp.Key, ^uint64(0)); err != nil {
+				if err := encodeUserKeyPrefix(keyBuf, cmp.Key); err != nil {
 					return false, err
 				}
 				iter, err := reader.NewIter(nil)
@@ -130,7 +135,11 @@ func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error)
 					return false, nil
 				}
 
-				if isTombstone(iter.Value()) {
+				k, err := key.DecodeBytes(iter.Key())
+				if err != nil {
+					return false, err
+				}
+				if isTombstone(k) {
 					keyBuf.Reset()
 					return false, nil
 				}

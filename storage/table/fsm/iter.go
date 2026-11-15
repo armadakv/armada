@@ -20,45 +20,19 @@ import (
 // maximum possible seqno suffix (all 0xFF bytes), then call Next() once.  That
 // positions piter on the very first key whose prefix is strictly greater than
 // the current one.
-func iterNextUserKey(piter *pebble.Iterator, currentPebbleKey []byte) bool {
-	// The split point separates user-key prefix from the seqno suffix.
-	// For V2 keys split = len(key) - V2SeqLen; for others split = len(key).
-	split := key.V2SeqLen + key.V2SepLen + 1 // header(4) + keyType(1) accounted for below
-	_ = split
-
-	if len(currentPebbleKey) <= key.V2SeqLen || currentPebbleKey[0] != key.V2 {
-		// Not a V2 key – plain Next() is sufficient (no MVCC versions).
+func iterNextUserKey(piter *pebble.Iterator, _ []byte) bool {
+	if piter.Key()[0] != key.V2 {
 		return piter.Next()
 	}
-
-	// For a V2 key the prefix (everything except the last V2SeqLen bytes) is
-	// header + keyType + userKey + separator.  Build a seek target that is
-	// identical to that prefix but with the seqno bytes set to 0xFF…FF, which
-	// is the encoded form of seqno=0 and sorts last within the prefix.
-	prefixLen := len(currentPebbleKey) - key.V2SeqLen
-	seekKey := make([]byte, len(currentPebbleKey))
-	copy(seekKey, currentPebbleKey[:prefixLen])
-	for i := prefixLen; i < len(seekKey); i++ {
-		seekKey[i] = 0xFF
-	}
-
-	// SeekGE on seekKey lands on seekKey itself (last version of current key)
-	// or already past it.  One more Next() moves us to the first key of the
-	// next user-key prefix.
-	if !piter.SeekGE(seekKey) {
-		return false
-	}
-	// If we landed exactly on seekKey (the last-version sentinel), advance once.
-	if bytes.Equal(piter.Key(), seekKey) {
-		return piter.Next()
-	}
-	// We already moved past all versions of the current user key.
-	return true
+	return piter.NextPrefix()
 }
 
 // iterate until the provided pebble.Iterator is no longer valid or the limit is reached.
 // Apply a function on the key/value pair in every iteration filling proto.RangeResponse.
 func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*armadapb.ResponseOp_Range], error) { //nolint:gocognit
+	if err := validateCreationRevisionBounds(req.MinCreateRevision, req.MaxCreateRevision); err != nil {
+		return nil, err
+	}
 	opts, err := iterOptionsForBounds(req.Key, req.RangeEnd)
 	if err != nil {
 		return nil, err
@@ -91,7 +65,20 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 			copy(currentKey, piter.Key())
 			// Skip tombstoned keys — they represent MVCC deletes and must not
 			// appear in range query results.
-			if isTombstone(piter.Value()) {
+			if isTombstone(k) {
+				if !iterNextUserKey(piter, currentKey) {
+					yield(response)
+					return
+				}
+				continue
+			}
+			if err := validateRevision(k.CreateSeqno); err != nil {
+				panic(err)
+			}
+			if err := validateRevision(k.Seqno); err != nil {
+				panic(err)
+			}
+			if !matchesCreationRevision(k, req) {
 				if !iterNextUserKey(piter, currentKey) {
 					yield(response)
 					return
@@ -99,14 +86,14 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 				continue
 			}
 			if i == limit && limit != 0 {
-				response.More = piter.Next()
+				response.More = true
 				yield(response)
 				return
 			}
 			// Track response size incrementally to avoid calling SizeVT() on every
 			// iteration, which re-walks all accumulated KV pairs and makes large
 			// range scans O(n²).
-			entrySize := sf(k.Key, piter.ValueAndErr)
+			entrySize := sf(k.Key, piter.ValueAndErr, k.CreateSeqno, k.Seqno)
 			if responseSize+entrySize >= maxRangeSize {
 				response.More = true
 				if !yield(response) {
@@ -117,7 +104,7 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 			}
 			i++
 			responseSize += entrySize
-			fill(k.Key, piter.ValueAndErr, response)
+			fill(k.Key, piter.ValueAndErr, k.CreateSeqno, k.Seqno, response)
 			// iterNextUserKey skips all older MVCC versions of the same user key,
 			// positioning the iterator on the first entry of the next distinct
 			// user key prefix.  This works even when NextPrefix is disallowed
@@ -133,30 +120,28 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 func iterOptionsForBounds(low, high []byte) (*pebble.IterOptions, error) { //nolint:unparam
 	lowBuf := bufferPool.Get()
 	defer bufferPool.Put(lowBuf)
-	// Use MaxUint64 seqno so the lower bound starts at the latest version of the low key
-	// (MaxUint64 encodes as all-zeros after bit-inversion, which sorts first within a prefix).
-	if err := encodeUserKey(lowBuf, low, ^uint64(0)); err != nil {
+	if err := encodeUserKeyPrefix(lowBuf, low); err != nil {
 		return nil, err
 	}
+	lowBuf.Truncate(lowBuf.Len() - key.V2SuffixLen)
 	iterOptions := &pebble.IterOptions{
 		LowerBound: make([]byte, lowBuf.Len()),
 	}
 	copy(iterOptions.LowerBound, lowBuf.Bytes())
 
 	if bytes.Equal(high, wildcard) {
-		// In order to include the last key in the iterator as well we have to increment the rightmost byte of the maximum user key.
-		iterOptions.UpperBound = make([]byte, len(maxEncodedUserKey))
-		copy(iterOptions.UpperBound, maxEncodedUserKey)
-		iterOptions.UpperBound = incrementRightmostByte(iterOptions.UpperBound)
+		iterOptions.UpperBound = append([]byte(nil), maxEncodedUserKey[:len(maxEncodedUserKey)-key.V2SuffixLen]...)
+		iterOptions.UpperBound[len(iterOptions.UpperBound)-1] = 1
 	} else {
 		highBuf := bufferPool.Get()
 		defer bufferPool.Put(highBuf)
 
 		// Use MaxUint64 seqno so the upper bound starts at the latest version of the high key,
 		// making the range exclusive of the high key's latest version and all older versions.
-		if err := encodeUserKey(highBuf, high, ^uint64(0)); err != nil {
+		if err := encodeUserKeyPrefix(highBuf, high); err != nil {
 			return nil, err
 		}
+		highBuf.Truncate(highBuf.Len() - key.V2SuffixLen)
 		iterOptions.UpperBound = make([]byte, highBuf.Len())
 		copy(iterOptions.UpperBound, highBuf.Bytes())
 	}
@@ -167,10 +152,10 @@ func iterOptionsForBounds(low, high []byte) (*pebble.IterOptions, error) { //nol
 type lazyValueOrErr func() ([]byte, error)
 
 // fillEntriesFunc fills proto.RangeResponse response.
-type fillEntriesFunc func(key []byte, value lazyValueOrErr, response *armadapb.ResponseOp_Range)
+type fillEntriesFunc func(key []byte, value lazyValueOrErr, createSeqno, modSeqno uint64, response *armadapb.ResponseOp_Range)
 
 // sizeEntriesFunc estimates entry size.
-type sizeEntriesFunc func(key []byte, value lazyValueOrErr) uint64
+type sizeEntriesFunc func(key []byte, value lazyValueOrErr, createSeqno, modSeqno uint64) uint64
 
 func iterFuncsFromReq(req *armadapb.RequestOp_Range) (fillEntriesFunc, sizeEntriesFunc) {
 	switch {
@@ -184,9 +169,14 @@ func iterFuncsFromReq(req *armadapb.RequestOp_Range) (fillEntriesFunc, sizeEntri
 }
 
 // addKVPair adds a key/value pair from the provided iterator to the proto.RangeResponse.
-func addKVPair(key []byte, value lazyValueOrErr, response *armadapb.ResponseOp_Range) {
+func addKVPair(key []byte, value lazyValueOrErr, createSeqno, modSeqno uint64, response *armadapb.ResponseOp_Range) {
 	val, _ := value()
-	kv := &armadapb.KeyValue{Key: make([]byte, len(key)), Value: make([]byte, len(val))}
+	kv := &armadapb.KeyValue{
+		Key:            make([]byte, len(key)),
+		Value:          make([]byte, len(val)),
+		CreateRevision: int64(createSeqno),
+		ModRevision:    int64(modSeqno),
+	}
 	copy(kv.Key, key)
 	copy(kv.Value, val)
 	response.Kvs = append(response.Kvs, kv)
@@ -195,14 +185,18 @@ func addKVPair(key []byte, value lazyValueOrErr, response *armadapb.ResponseOp_R
 
 // sizeKVPair returns the encoded protobuf size contribution for one KV pair
 // in ResponseOp_Range, including both KeyValue and repeated-field framing.
-func sizeKVPair(key []byte, value lazyValueOrErr) uint64 {
+func sizeKVPair(key []byte, value lazyValueOrErr, createSeqno, modSeqno uint64) uint64 {
 	val, _ := value()
-	return sizeRangeResponseKVEntry(len(key), len(val))
+	return sizeRangeResponseKVEntry(len(key), len(val), createSeqno, modSeqno)
 }
 
 // addKeyOnly adds a key from the provided iterator to the proto.RangeResponse.
-func addKeyOnly(key []byte, _ lazyValueOrErr, response *armadapb.ResponseOp_Range) {
-	kv := &armadapb.KeyValue{Key: make([]byte, len(key))}
+func addKeyOnly(key []byte, _ lazyValueOrErr, createSeqno, modSeqno uint64, response *armadapb.ResponseOp_Range) {
+	kv := &armadapb.KeyValue{
+		Key:            make([]byte, len(key)),
+		CreateRevision: int64(createSeqno),
+		ModRevision:    int64(modSeqno),
+	}
 	copy(kv.Key, key)
 	response.Kvs = append(response.Kvs, kv)
 	response.Count++
@@ -210,27 +204,33 @@ func addKeyOnly(key []byte, _ lazyValueOrErr, response *armadapb.ResponseOp_Rang
 
 // sizeKeyOnly returns the encoded protobuf size contribution for one key-only
 // KeyValue in ResponseOp_Range, including repeated-field framing.
-func sizeKeyOnly(key []byte, _ lazyValueOrErr) uint64 {
-	return sizeRangeResponseKVEntry(len(key), 0)
+func sizeKeyOnly(key []byte, _ lazyValueOrErr, createSeqno, modSeqno uint64) uint64 {
+	return sizeRangeResponseKVEntry(len(key), 0, createSeqno, modSeqno)
 }
 
 // addCountOnly increments number of keys from the provided iterator to the proto.RangeResponse.
-func addCountOnly(_ []byte, _ lazyValueOrErr, response *armadapb.ResponseOp_Range) {
+func addCountOnly(_ []byte, _ lazyValueOrErr, _, _ uint64, response *armadapb.ResponseOp_Range) {
 	response.Count++
 }
 
 // sizeCountOnly for count the size remains constant.
-func sizeCountOnly(_ []byte, _ lazyValueOrErr) uint64 {
+func sizeCountOnly(_ []byte, _ lazyValueOrErr, _, _ uint64) uint64 {
 	return uint64(0)
 }
 
-func sizeRangeResponseKVEntry(keyLen, valueLen int) uint64 {
+func sizeRangeResponseKVEntry(keyLen, valueLen int, createSeqno, modSeqno uint64) uint64 {
 	kvSize := uint64(0)
 	if keyLen > 0 {
 		kvSize += 1 + uint64(keyLen) + sizeOfVarint(uint64(keyLen))
 	}
 	if valueLen > 0 {
 		kvSize += 1 + uint64(valueLen) + sizeOfVarint(uint64(valueLen))
+	}
+	if createSeqno != 0 {
+		kvSize += 1 + sizeOfVarint(createSeqno)
+	}
+	if modSeqno != 0 {
+		kvSize += 1 + sizeOfVarint(modSeqno)
 	}
 	return 1 + kvSize + sizeOfVarint(kvSize)
 }

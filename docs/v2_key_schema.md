@@ -17,7 +17,7 @@ The **V2 Key Schema** completely redesigns how keys are encoded physically insid
 
 The V2 physical key layout looks like this:
 
-`[ Header 4B ] [ KeyType 1B ] [ UserKey ] [ 0x00 Separator 1B ] [ Seqno 8B ]`
+`[ Header 4B ] [ KeyType 1B ] [ UserKey ] [ 0x00 Separator 1B ] [ Inverted modification seqno 8B ] [ Creation seqno 8B ] [ Record kind 1B ]`
 
 ### Structure Breakdown
 
@@ -25,17 +25,19 @@ The V2 physical key layout looks like this:
 2. **KeyType (1 byte):** Denotes whether this is a `User` key or a `System` key.
 3. **UserKey (variable length):** The actual key string provided by the user.
 4. **Separator (1 byte):** A single null byte (`0x00`) that separates the user key from the sequence number. This ensures correct lexicographical ordering between keys where one user key is a prefix of another.
-5. **Seqno (8 bytes):** The MVCC sequence number (or Raft index).
+5. **Modification seqno (8 bytes):** The MVCC sequence number (or source leader index).
+6. **Creation seqno (8 bytes):** The source sequence that created the current logical key incarnation.
+7. **Record kind (1 byte):** `0` is a live value and `1` is a tombstone. Deletion state is not inferred from value bytes.
 
 ## MVCC and Seqno Encoding
 
 Armada is an MVCC-capable database. Every write operation gets a monotonically increasing sequence number (seqno), allowing the database to keep multiple versions of the same key.
 
-To ensure that the *latest* version of a key sorts first during Pebble iterators, the 8-byte `Seqno` is encoded as **big-endian with every bit inverted**. 
+To ensure that the *latest* version of a key sorts first during Pebble iterators, the modification sequence is encoded as **big-endian with every bit inverted**. Creation sequence is ordinary big-endian and record kind sorts after both sequences.
 
 For example:
-* A `seqno` of `0` becomes `[FF FF FF FF FF FF FF FF]`.
-* A `seqno` of `1` becomes `[FF FF FF FF FF FF FF FE]`.
+* A modification `seqno` of `0` becomes `[FF FF FF FF FF FF FF FF]`.
+* A modification `seqno` of `1` becomes `[FF FF FF FF FF FF FF FE]`.
 
 By sorting the inverted sequence numbers lexicographically, Pebble natively surfaces the most recent write for a given `UserKey` before any of its older revisions.
 
@@ -43,11 +45,11 @@ By sorting the inverted sequence numbers lexicographically, Pebble natively surf
 
 The V2 schema deeply integrates with Pebble's internal structures to optimize reads:
 
-* **Prefix Extraction:** Armada configures Pebble's `Split` function to separate the prefix (everything up to and including the null separator) from the suffix (the `Seqno`). This allows Pebble's `SeekPrefixGE` to efficiently jump straight to the latest version of a specific `UserKey` while skipping older versions.
+* **Prefix Extraction:** Armada configures Pebble's `Split` function to separate the prefix (everything up to and including the null separator) from the 17-byte metadata suffix. Bare scan bounds use the same unsuffixed prefix, allowing `NextPrefix()` to skip older versions of a user key.
 * **Block Properties:** Armada implements a custom Pebble block property collector (`armada.mvcc.seqno`). It tracks the `[min, max)` interval of MVCC seqnos present in each SST block and table. This enables powerful optimizations, such as fast garbage collection (GC) and efficient filtering of SSTables that do not contain relevant sequence numbers.
 
 ## Benefits
 
 * **Faster Reads:** The inverted seqno and prefix extraction allow immediate access to the latest version of a key without scanning through old revisions.
 * **Efficient Range Scans:** Range scans can efficiently skip unneeded data, and the null byte separator prevents prefix collision edge cases.
-* **Smart Garbage Collection:** Block-level properties tracking seqno intervals allow the compaction and GC routines to drop entire SSTables containing expired MVCC data without iterating through the keys inside them.
+* **Smart Garbage Collection:** Block-level properties track modification-sequence intervals, allowing GC to skip SST blocks that cannot contain expired versions.

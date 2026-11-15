@@ -343,9 +343,9 @@ func TestReadSnapshot(t *testing.T) {
 
 	t.Run("retains every threshold-crossing record and commits the terminal marker", func(t *testing.T) {
 		commands := marshalSnapshotCommands(t,
-			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &second, Kv: &armadapb.KeyValue{Key: []byte("b"), Value: []byte("second")}},
-			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("a"), Value: []byte("first")}},
-			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DELETE, LeaderIndex: &third, Kv: &armadapb.KeyValue{Key: []byte("c")}},
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &second, Kv: &armadapb.KeyValue{Key: []byte("b"), Value: []byte("second"), CreateRevision: 10, ModRevision: 20}},
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("a"), Value: []byte("first"), CreateRevision: 10, ModRevision: 10}},
+			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DELETE, LeaderIndex: &third, Kv: &armadapb.KeyValue{Key: []byte("c"), CreateRevision: 10, ModRevision: 30}},
 			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &third},
 		)
 
@@ -354,7 +354,7 @@ func TestReadSnapshot(t *testing.T) {
 			keys  []string
 			index uint64
 		}
-		err := readSnapshot(&snapshotCommandReader{records: commands}, tableName, 1, func(command *armadapb.Command) error {
+		err := readSnapshotWithTerminal(&snapshotCommandReader{records: commands}, tableName, 1, true, func(command *armadapb.Command) error {
 			proposal := struct {
 				type_ armadapb.Command_CommandType
 				keys  []string
@@ -381,7 +381,7 @@ func TestReadSnapshot(t *testing.T) {
 			&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &third},
 		)
 		var proposed []*armadapb.Command
-		err := readSnapshot(&snapshotCommandReader{records: commands}, tableName, 1024, func(command *armadapb.Command) error {
+		err := readSnapshotWithTerminal(&snapshotCommandReader{records: commands}, tableName, 1024, true, func(command *armadapb.Command) error {
 			proposed = append(proposed, command)
 			return nil
 		})
@@ -399,7 +399,7 @@ func TestReadSnapshot(t *testing.T) {
 	}{
 		{
 			name:     "missing terminal marker",
-			commands: []*armadapb.Command{{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("key")}}},
+			commands: []*armadapb.Command{{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("key"), CreateRevision: 1, ModRevision: 1}}},
 			wantErr:  "missing its terminal marker",
 		},
 		{
@@ -430,10 +430,39 @@ func TestReadSnapshot(t *testing.T) {
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			err := readSnapshot(&snapshotCommandReader{records: marshalSnapshotCommands(t, tt.commands...)}, tableName, 1024, func(*armadapb.Command) error {
+			err := readSnapshotWithTerminal(&snapshotCommandReader{records: marshalSnapshotCommands(t, tt.commands...)}, tableName, 1024, true, func(*armadapb.Command) error {
 				return nil
 			})
 			require.ErrorContains(t, err, tt.wantErr)
+		})
+	}
+}
+
+func TestReadSnapshotRejectsInvalidRevisions(t *testing.T) {
+	const tableName = "test"
+	leaderIndex := uint64(10)
+
+	for _, testCase := range []struct {
+		name string
+		kv   *armadapb.KeyValue
+	}{
+		{name: "missing", kv: &armadapb.KeyValue{Key: []byte("key")}},
+		{name: "negative", kv: &armadapb.KeyValue{Key: []byte("key"), CreateRevision: -1, ModRevision: 1}},
+		{name: "creation after modification", kv: &armadapb.KeyValue{Key: []byte("key"), CreateRevision: 2, ModRevision: 1}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			commands := marshalSnapshotCommands(t,
+				&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &leaderIndex, Kv: testCase.kv},
+				&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &leaderIndex},
+			)
+
+			proposed := false
+			err := readSnapshotWithTerminal(&snapshotCommandReader{records: commands}, tableName, 1, true, func(*armadapb.Command) error {
+				proposed = true
+				return nil
+			})
+			require.ErrorContains(t, err, "invalid revisions")
+			require.False(t, proposed)
 		})
 	}
 }

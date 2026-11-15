@@ -45,7 +45,9 @@ func Test_handleDelete(t *testing.T) {
 		PrevKv: true,
 	})
 	r.NoError(err)
-	r.Equal(&armadapb.ResponseOp_DeleteRange{Deleted: 1, PrevKvs: []*armadapb.KeyValue{{Key: []byte("key_1"), Value: []byte("value_1")}}}, res)
+	r.Equal(&armadapb.ResponseOp_DeleteRange{Deleted: 1, PrevKvs: []*armadapb.KeyValue{{
+		Key: []byte("key_1"), Value: []byte("value_1"), CreateRevision: 1, ModRevision: 1,
+	}}}, res)
 	r.NoError(c.Commit())
 
 	// Assert that there are no more live user keys left.
@@ -178,7 +180,7 @@ func Test_handleDeleteAllPreservesSystemState(t *testing.T) {
 		r.NoError(err)
 		r.Equal(key.TypeUser, decoded.KeyType)
 		r.Equal(deleteLeaderIndex, decoded.Seqno)
-		r.True(isTombstone(iter.Value()))
+		r.True(isTombstone(decoded))
 		latestVersions++
 		physicalKey := append([]byte(nil), iter.Key()...)
 		valid = iterNextUserKey(iter, physicalKey)

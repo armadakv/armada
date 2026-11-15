@@ -43,9 +43,10 @@ func gcPrefixUpper(prefix []byte) []byte {
 func incrementStoredSeqno(physKey []byte) []byte {
 	out := make([]byte, len(physKey))
 	copy(out, physKey)
-	seqStart := len(out) - key.V2SeqLen
+	seqStart := len(out) - key.V2SuffixLen
 	stored := binary.BigEndian.Uint64(out[seqStart:])
 	binary.BigEndian.PutUint64(out[seqStart:], stored+1)
+	clear(out[seqStart+key.V2SeqLen:])
 	return out
 }
 
@@ -139,7 +140,7 @@ func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 		}
 
 		// Prefix = everything except the trailing seqno bytes.
-		prefixLen := len(physKey) - key.V2SeqLen
+		prefixLen := len(physKey) - key.V2SuffixLen
 		prefix := physKey[:prefixLen]
 
 		if !bytes.Equal(lastPrefix, prefix) {
@@ -159,11 +160,15 @@ func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 		prefixUpper := gcPrefixUpper(prefix)
 
 		var rangeLo []byte
-		if hasLiveAbove || isTombstone(iter.Value()) {
+		if hasLiveAbove || isTombstone(k) {
 			// Cases 1 & 2: delete the first old key and everything older.
 			rangeLo = make([]byte, len(physKey))
 			copy(rangeLo, physKey)
 		} else {
+			if k.Seqno == 0 {
+				valid = iter.SeekGE(prefixUpper)
+				continue
+			}
 			// Case 3: keep the current (live) version; delete any older ones.
 			rangeLo = incrementStoredSeqno(physKey)
 		}

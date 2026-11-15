@@ -223,6 +223,15 @@ func Test_iterateLargeDataset(t *testing.T) {
 }
 
 func Test_iterOptionsForBounds(t *testing.T) {
+	prefix := func(userKey []byte) []byte {
+		encoded := mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: userKey})
+		return encoded[:len(encoded)-key.V2SuffixLen]
+	}
+	prefixUpper := func(userKey []byte) []byte {
+		bound := prefix(userKey)
+		bound[len(bound)-1] = 1
+		return bound
+	}
 	type args struct {
 		low  []byte
 		high []byte
@@ -237,8 +246,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 			name: "empty args",
 			args: args{},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
-				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
+				LowerBound: prefix(nil),
+				UpperBound: prefix(nil),
 			},
 			wantErr: require.NoError,
 		},
@@ -248,8 +257,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				low: []byte("foo"),
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: []byte("foo"), Seqno: ^uint64(0)}),
-				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
+				LowerBound: prefix([]byte("foo")),
+				UpperBound: prefix(nil),
 			},
 			wantErr: require.NoError,
 		},
@@ -259,8 +268,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				high: []byte("foo"),
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
-				UpperBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: []byte("foo"), Seqno: ^uint64(0)}),
+				LowerBound: prefix(nil),
+				UpperBound: prefix([]byte("foo")),
 			},
 			wantErr: require.NoError,
 		},
@@ -270,8 +279,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				high: wildcard,
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Seqno: ^uint64(0)}),
-				UpperBound: incrementRightmostByte(append([]byte{}, maxEncodedUserKey...)),
+				LowerBound: prefix(nil),
+				UpperBound: prefixUpper(key.LatestMaxKey),
 			},
 			wantErr: require.NoError,
 		},
@@ -282,8 +291,8 @@ func Test_iterOptionsForBounds(t *testing.T) {
 				high: wildcard,
 			},
 			want: &pebble.IterOptions{
-				LowerBound: mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: wildcard, Seqno: ^uint64(0)}),
-				UpperBound: incrementRightmostByte(append([]byte{}, maxEncodedUserKey...)),
+				LowerBound: prefix(wildcard),
+				UpperBound: prefixUpper(key.LatestMaxKey),
 			},
 			wantErr: require.NoError,
 		},

@@ -3,6 +3,8 @@
 package fsm
 
 import (
+	"fmt"
+
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/key"
 )
@@ -12,12 +14,13 @@ type commandDelete struct {
 }
 
 func (c commandDelete) handle(ctx *updateContext) (UpdateResult, *armadapb.CommandResult, error) {
-	resp, err := handleDelete(ctx, &armadapb.RequestOp_DeleteRange{
+	resp, err := handleDeleteWithMetadata(ctx, &armadapb.RequestOp_DeleteRange{
 		Key:      c.Kv.Key,
 		RangeEnd: c.RangeEnd,
 		PrevKv:   c.PrevKvs,
 		Count:    c.Count,
-	})
+	}, c.Kv.CreateRevision, c.Kv.ModRevision,
+		c.Kv.CreateRevision != 0 || c.Kv.ModRevision != 0)
 	if err != nil {
 		return ResultFailure, nil, err
 	}
@@ -28,9 +31,29 @@ func (c commandDelete) handle(ctx *updateContext) (UpdateResult, *armadapb.Comma
 }
 
 func handleDelete(ctx *updateContext, del *armadapb.RequestOp_DeleteRange) (*armadapb.ResponseOp_DeleteRange, error) {
+	return handleDeleteWithMetadata(ctx, del, 0, 0, false)
+}
+
+func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_DeleteRange, sourceCreate, sourceMod int64, hasSourceMetadata bool) (*armadapb.ResponseOp_DeleteRange, error) {
 	resp := &armadapb.ResponseOp_DeleteRange{}
+	modSeqno := ctx.seqno()
+	if hasSourceMetadata {
+		if sourceCreate < 0 || sourceMod < 0 {
+			return nil, fmt.Errorf("snapshot key revisions must be non-negative")
+		}
+		if sourceCreate > sourceMod {
+			return nil, fmt.Errorf("snapshot creation revision exceeds modification revision")
+		}
+		modSeqno = uint64(sourceMod)
+	}
+	if err := validateRevision(modSeqno); err != nil {
+		return nil, err
+	}
 
 	if del.RangeEnd != nil {
+		if hasSourceMetadata {
+			return nil, fmt.Errorf("snapshot metadata is only valid for a single-key delete")
+		}
 		// Range delete: iterate the latest version of every distinct user key in
 		// [del.Key, del.RangeEnd) and write a tombstone for each live key.
 		//
@@ -53,7 +76,12 @@ func handleDelete(ctx *updateContext, del *armadapb.RequestOp_DeleteRange) (*arm
 		// Collect the live user keys in this range so we can write tombstones
 		// after closing the iterator (pebble disallows mutating a batch while
 		// an iterator over it is open).
-		var toTombstone [][]byte
+		type recordToDelete struct {
+			userKey     []byte
+			physicalKey []byte
+			createSeqno uint64
+		}
+		var toTombstone []recordToDelete
 		var prevKvs []*armadapb.KeyValue
 
 		for iter.First(); iter.Valid(); {
@@ -65,18 +93,20 @@ func handleDelete(ctx *updateContext, del *armadapb.RequestOp_DeleteRange) (*arm
 
 			if k.KeyType == key.TypeUser {
 				val := iter.Value()
-				if !isTombstone(val) {
-					userKey := make([]byte, len(k.Key))
-					copy(userKey, k.Key)
-					toTombstone = append(toTombstone, userKey)
+				if !isTombstone(k) {
+					userKey := append([]byte(nil), k.Key...)
+					physicalKey := append([]byte(nil), iter.Key()...)
+					toTombstone = append(toTombstone, recordToDelete{
+						userKey: userKey, physicalKey: physicalKey, createSeqno: k.CreateSeqno,
+					})
 
 					if del.PrevKv {
-						v := make([]byte, len(val))
-						copy(v, val)
-						prevKvs = append(prevKvs, &armadapb.KeyValue{
-							Key:   userKey,
-							Value: v,
-						})
+						prevKv, err := makeKeyValue(userKey, val, k.CreateSeqno, k.Seqno)
+						if err != nil {
+							_ = iter.Close()
+							return nil, err
+						}
+						prevKvs = append(prevKvs, prevKv)
 					}
 				}
 			}
@@ -93,13 +123,22 @@ func handleDelete(ctx *updateContext, del *armadapb.RequestOp_DeleteRange) (*arm
 		}
 
 		// Write one tombstone per live user key at the current raft index.
-		for _, userKey := range toTombstone {
+		for _, record := range toTombstone {
 			keyBuf := bufferPool.Get()
-			if err := encodeUserKey(keyBuf, userKey, ctx.seqno()); err != nil {
+			if err := encodeUserRecord(keyBuf, record.userKey, modSeqno, record.createSeqno, key.KindTombstone); err != nil {
 				bufferPool.Put(keyBuf)
 				return nil, err
 			}
-			if err := ctx.batch.Set(keyBuf.Bytes(), tombstoneValue, nil); err != nil {
+			if decoded, err := key.DecodeBytes(record.physicalKey); err != nil {
+				bufferPool.Put(keyBuf)
+				return nil, err
+			} else if decoded.Seqno == modSeqno {
+				if err := ctx.batch.Delete(record.physicalKey, nil); err != nil {
+					bufferPool.Put(keyBuf)
+					return nil, err
+				}
+			}
+			if err := ctx.batch.Set(keyBuf.Bytes(), nil, nil); err != nil {
 				bufferPool.Put(keyBuf)
 				return nil, err
 			}
@@ -114,54 +153,46 @@ func handleDelete(ctx *updateContext, del *armadapb.RequestOp_DeleteRange) (*arm
 			resp.PrevKvs = prevKvs
 		}
 	} else {
-		// Single-key delete: write one tombstone at the current raft index.
-		//
-		// When the caller requests prev-KV or a count we look up the current
-		// version first so we can populate those fields and also avoid writing
-		// a tombstone on top of an already-tombstoned (or absent) key.
-		if del.PrevKv || del.Count {
-			if err := ctx.EnsureIndexed(); err != nil {
-				return nil, err
-			}
-			rng, err := singleLookup(ctx.batch, &armadapb.RequestOp_Range{
-				Key:       del.Key,
-				CountOnly: del.Count && !del.PrevKv,
-			})
-			if err != nil {
-				return nil, err
-			}
-			// singleLookup already skips tombstones, so Count==0 means not found.
-			if rng.Count == 0 {
-				return resp, nil
-			}
-			resp.Deleted = rng.Count
-			resp.PrevKvs = rng.Kvs
-		} else {
-			// No count/prevKV requested: still must not double-tombstone.
-			// A cheap existence check avoids a pointless write.
-			if err := ctx.EnsureIndexed(); err != nil {
-				return nil, err
-			}
-			existing, err := singleLookup(ctx.batch, &armadapb.RequestOp_Range{
-				Key:       del.Key,
-				CountOnly: true,
-			})
-			if err != nil {
-				return nil, err
-			}
-			if existing.Count == 0 {
-				// Key does not exist or is already tombstoned; nothing to do.
-				return resp, nil
-			}
-			// resp.Deleted intentionally left at 0 — caller did not ask for it.
-		}
-
-		keyBuf := bufferPool.Get()
-		defer bufferPool.Put(keyBuf)
-		if err := encodeUserKey(keyBuf, del.Key, ctx.seqno()); err != nil {
+		if err := ctx.EnsureIndexed(); err != nil {
 			return nil, err
 		}
-		if err := ctx.batch.Set(keyBuf.Bytes(), tombstoneValue, nil); err != nil {
+		current, value, physicalKey, found, err := currentRecord(ctx.batch, del.Key)
+		if err != nil {
+			return nil, err
+		}
+		if (!found || isTombstone(current)) && !hasSourceMetadata {
+			return resp, nil
+		}
+		createSeqno := current.CreateSeqno
+		if hasSourceMetadata {
+			createSeqno = uint64(sourceCreate)
+		}
+		if err := validateRevision(createSeqno); err != nil {
+			return nil, err
+		}
+		if del.Count || del.PrevKv {
+			if found && !isTombstone(current) {
+				resp.Deleted = 1
+			}
+		}
+		if del.PrevKv && found && !isTombstone(current) {
+			prevKv, err := makeKeyValue(del.Key, value, current.CreateSeqno, current.Seqno)
+			if err != nil {
+				return nil, err
+			}
+			resp.PrevKvs = []*armadapb.KeyValue{prevKv}
+		}
+		keyBuf := bufferPool.Get()
+		defer bufferPool.Put(keyBuf)
+		if err := encodeUserRecord(keyBuf, del.Key, modSeqno, createSeqno, key.KindTombstone); err != nil {
+			return nil, err
+		}
+		if found && current.Seqno == modSeqno {
+			if err := ctx.batch.Delete(physicalKey, nil); err != nil {
+				return nil, err
+			}
+		}
+		if err := ctx.batch.Set(keyBuf.Bytes(), nil, nil); err != nil {
 			return nil, err
 		}
 	}

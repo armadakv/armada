@@ -10,15 +10,25 @@ import (
 const (
 	V2              uint8 = 2
 	V2SeqLen              = 8
+	V2CreateSeqLen        = 8
 	V2SepLen              = 1 // null separator between user key and seqno
+	V2KindLen             = 1
+	V2SuffixLen           = V2SeqLen + V2CreateSeqLen + V2KindLen
 	V2MaxUserKeyLen       = 1024
-	V2KeyLen              = keyHeaderLen + 1 + V2MaxUserKeyLen + V2SepLen + V2SeqLen
+	V2KeyLen              = keyHeaderLen + 1 + V2MaxUserKeyLen + V2SepLen + V2SuffixLen
 	keyV2BodyLen          = V2KeyLen - keyHeaderLen
+)
+
+type RecordKind byte
+
+const (
+	KindValue RecordKind = iota
+	KindTombstone
 )
 
 // V2Len computes length of a V2 key.
 func V2Len(userkeyLen int) int {
-	return keyHeaderLen + 1 + userkeyLen + V2SepLen + V2SeqLen
+	return keyHeaderLen + 1 + userkeyLen + V2SepLen + V2SuffixLen
 }
 
 var V2MinKey = func() []byte {
@@ -34,16 +44,19 @@ var V2MaxKey = func() []byte {
 }
 
 type keyV2 struct {
-	keyType Type
-	key     []byte
-	seqno   uint64
+	keyType     Type
+	key         []byte
+	seqno       uint64
+	createSeqno uint64
+	kind        RecordKind
 }
 
 func (k *keyV2) Encode(writer io.Writer) (int, error) {
-	// Layout: [keyType 1B] [userKey bytes] [0x00 separator 1B] [seqno 8B]
+	// Layout: [keyType 1B] [userKey bytes] [0x00 separator 1B]
+	// [inverted seqno 8B] [creation seqno 8B] [record kind 1B]
 	// The null separator ensures correct lexicographic ordering between keys
 	// where one user key is a prefix of another.
-	buf := make([]byte, 1+len(k.key)+V2SepLen+V2SeqLen)
+	buf := make([]byte, 1+len(k.key)+V2SepLen+V2SuffixLen)
 	buf[0] = byte(k.keyType)
 	copy(buf[1:], k.key)
 	buf[1+len(k.key)] = 0x00 // null separator
@@ -53,65 +66,77 @@ func (k *keyV2) Encode(writer io.Writer) (int, error) {
 	for i := range seqBuf {
 		seqBuf[i] = ^seqBuf[i]
 	}
-	copy(buf[1+len(k.key)+V2SepLen:], seqBuf[:])
+	suffixStart := 1 + len(k.key) + V2SepLen
+	copy(buf[suffixStart:], seqBuf[:])
+	binary.BigEndian.PutUint64(buf[suffixStart+V2SeqLen:], k.createSeqno)
+	buf[len(buf)-V2KindLen] = byte(k.kind)
 
 	return writer.Write(buf)
 }
 
 func (k *keyV2) Decode(reader io.Reader) error {
-	// Layout: [keyType 1B] [userKey bytes] [0x00 separator 1B] [seqno 8B]
-	// We read everything and then split off the last (V2SepLen + V2SeqLen) bytes.
-	raw, err := io.ReadAll(io.LimitReader(reader, int64(keyV2BodyLen)))
+	raw, err := io.ReadAll(io.LimitReader(reader, int64(keyV2BodyLen+1)))
 	if err != nil {
 		return err
 	}
-	if len(raw) < 1+V2SepLen+V2SeqLen {
-		return ErrMissingKeyType
+	decoded, err := decodeV2Raw(raw)
+	if err != nil {
+		return err
 	}
-	k.keyType = Type(raw[0])
-	// The last V2SeqLen bytes are the encoded seqno; before that is the null separator.
-	seqStart := len(raw) - V2SeqLen
-	k.key = raw[1 : seqStart-V2SepLen]
-
-	var seqBuf [V2SeqLen]byte
-	copy(seqBuf[:], raw[seqStart:])
-	for i := range seqBuf {
-		seqBuf[i] = ^seqBuf[i]
-	}
-	k.seqno = binary.BigEndian.Uint64(seqBuf[:])
+	*k = decoded
 	return nil
 }
 
-// DecodeV2Seqno recovers the uint64 seqno (= leaderIndex at write time) from
-// the last V2SeqLen bytes of a physical V2 Pebble key. Returns 0 for non-V2
-// keys or keys that are too short.
-func DecodeV2Seqno(physicalKey []byte) uint64 {
-	if len(physicalKey) <= V2SeqLen || physicalKey[0] != V2 {
-		return 0
+func decodeV2Raw(raw []byte) (keyV2, error) {
+	if len(raw) < 1+V2SepLen+V2SuffixLen || len(raw) > keyV2BodyLen {
+		return keyV2{}, ErrMalformedV2Key
 	}
-	var buf [V2SeqLen]byte
-	copy(buf[:], physicalKey[len(physicalKey)-V2SeqLen:])
-	for i := range buf {
-		buf[i] = ^buf[i]
+	kind := RecordKind(raw[len(raw)-V2KindLen])
+	if kind != KindValue && kind != KindTombstone {
+		return keyV2{}, ErrMalformedV2Key
 	}
-	return binary.BigEndian.Uint64(buf[:])
-}
-
-func v2DecodeRaw(raw []byte) keyV2 {
-	// Layout: [keyType 1B] [userKey bytes] [0x00 separator 1B] [seqno 8B]
-	k := keyV2{}
-	if len(raw) < 1+V2SepLen+V2SeqLen {
-		return k
+	separator := len(raw) - V2SuffixLen - V2SepLen
+	if raw[separator] != 0 {
+		return keyV2{}, ErrMalformedV2Key
 	}
-	k.keyType = Type(raw[0])
-	seqStart := len(raw) - V2SeqLen
-	k.key = raw[1 : seqStart-V2SepLen]
 
 	var seqBuf [V2SeqLen]byte
-	copy(seqBuf[:], raw[seqStart:])
+	copy(seqBuf[:], raw[separator+V2SepLen:separator+V2SepLen+V2SeqLen])
 	for i := range seqBuf {
 		seqBuf[i] = ^seqBuf[i]
 	}
-	k.seqno = binary.BigEndian.Uint64(seqBuf[:])
-	return k
+
+	return keyV2{
+		keyType:     Type(raw[0]),
+		key:         raw[1:separator],
+		seqno:       binary.BigEndian.Uint64(seqBuf[:]),
+		createSeqno: binary.BigEndian.Uint64(raw[separator+V2SepLen+V2SeqLen : len(raw)-V2KindLen]),
+		kind:        kind,
+	}, nil
+}
+
+// DecodeV2Seqno recovers the uint64 modification seqno from a physical V2 key.
+// Returns 0 for non-V2 keys or malformed keys.
+func DecodeV2Seqno(physicalKey []byte) uint64 {
+	if len(physicalKey) <= keyHeaderLen || physicalKey[0] != V2 {
+		return 0
+	}
+	k, err := decodeV2Raw(physicalKey[keyHeaderLen:])
+	if err != nil {
+		return 0
+	}
+	return k.seqno
+}
+
+// DecodeV2CreateSeqno recovers the creation seqno from a physical V2 key.
+// Returns 0 for non-V2 keys or malformed keys.
+func DecodeV2CreateSeqno(physicalKey []byte) uint64 {
+	if len(physicalKey) <= keyHeaderLen || physicalKey[0] != V2 {
+		return 0
+	}
+	k, err := decodeV2Raw(physicalKey[keyHeaderLen:])
+	if err != nil {
+		return 0
+	}
+	return k.createSeqno
 }

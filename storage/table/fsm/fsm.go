@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -507,19 +508,32 @@ func (p *FSM) getRecoverer(recoveryType SnapshotRecoveryType) snapshotRecoverer 
 	}
 }
 
-// encodeUserKey into provided writer.
-func encodeUserKey(dst io.Writer, keyBytes []byte, seqno uint64) error {
+// encodeUserKeyPrefix writes the upper-bound user key used to scan all versions of a key.
+func encodeUserKeyPrefix(dst io.Writer, keyBytes []byte) error {
+	return encodeUserRecord(dst, keyBytes, ^uint64(0), 0, key.KindValue)
+}
+
+func encodeUserRecord(dst io.Writer, keyBytes []byte, seqno, createSeqno uint64, kind key.RecordKind) error {
 	enc := key.NewEncoder(dst)
 	k := &key.Key{
-		KeyType: key.TypeUser,
-		Key:     keyBytes,
-		Seqno:   seqno,
+		KeyType:     key.TypeUser,
+		Key:         keyBytes,
+		Seqno:       seqno,
+		CreateSeqno: createSeqno,
+		Kind:        kind,
 	}
 
 	if _, err := enc.Encode(k); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func validateRevision(seqno uint64) error {
+	if seqno > math.MaxInt64 {
+		return fmt.Errorf("revision %d exceeds the maximum supported revision", seqno)
+	}
 	return nil
 }
 

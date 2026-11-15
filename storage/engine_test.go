@@ -181,7 +181,7 @@ func TestEngine_Range(t *testing.T) {
 					ShardId:   10001,
 				},
 				Kvs: []*armadapb.KeyValue{
-					{Key: []byte("key"), Value: []byte("value")},
+					{Key: []byte("key"), CreateRevision: 3, ModRevision: 3, Value: []byte("value")},
 				},
 				Count: 1,
 			},
@@ -207,7 +207,7 @@ func TestEngine_Range(t *testing.T) {
 					ShardId:   10001,
 				},
 				Kvs: []*armadapb.KeyValue{
-					{Key: []byte("key"), Value: []byte("value")},
+					{Key: []byte("key"), CreateRevision: 3, ModRevision: 3, Value: []byte("value")},
 				},
 				Count: 1,
 			},
@@ -314,7 +314,7 @@ func TestEngine_IterateRange(t *testing.T) {
 					ShardId:   10001,
 				},
 				Kvs: []*armadapb.KeyValue{
-					{Key: []byte("key"), Value: []byte("value")},
+					{Key: []byte("key"), CreateRevision: 3, ModRevision: 3, Value: []byte("value")},
 				},
 				Count: 1,
 			},
@@ -341,7 +341,7 @@ func TestEngine_IterateRange(t *testing.T) {
 					ShardId:   10001,
 				},
 				Kvs: []*armadapb.KeyValue{
-					{Key: []byte("key"), Value: []byte("value")},
+					{Key: []byte("key"), CreateRevision: 3, ModRevision: 3, Value: []byte("value")},
 				},
 				Count: 1,
 			},
@@ -367,7 +367,7 @@ func TestEngine_IterateRange(t *testing.T) {
 					ShardId:   10001,
 				},
 				Kvs: []*armadapb.KeyValue{
-					{Key: []byte("key"), Value: []byte("value")},
+					{Key: []byte("key"), CreateRevision: 3, ModRevision: 3, Value: []byte("value")},
 				},
 				Count: 1,
 			},
@@ -482,8 +482,10 @@ func TestEngine_Put(t *testing.T) {
 					Revision:  4,
 				},
 				PrevKv: &armadapb.KeyValue{
-					Key:   []byte("key"),
-					Value: []byte("value"),
+					Key:            []byte("key"),
+					CreateRevision: 3,
+					ModRevision:    3,
+					Value:          []byte("value"),
 				},
 			},
 			wantErr: require.NoError,
@@ -600,7 +602,7 @@ func TestEngine_Delete(t *testing.T) {
 				},
 				Deleted: 1,
 				PrevKvs: []*armadapb.KeyValue{
-					{Key: []byte("key"), Value: []byte("value")},
+					{Key: []byte("key"), CreateRevision: 3, ModRevision: 3, Value: []byte("value")},
 				},
 			},
 			wantErr: require.NoError,
@@ -810,7 +812,7 @@ func TestEngine_Txn(t *testing.T) {
 				Succeeded: false,
 				Responses: []*armadapb.ResponseOp{{Response: &armadapb.ResponseOp_ResponsePut{
 					ResponsePut: &armadapb.ResponseOp_Put{
-						PrevKv: &armadapb.KeyValue{Key: []byte("key"), Value: []byte("value")},
+						PrevKv: &armadapb.KeyValue{Key: []byte("key"), CreateRevision: 3, ModRevision: 3, Value: []byte("value")},
 					},
 				}}},
 			},

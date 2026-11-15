@@ -48,7 +48,9 @@ func Test_handlePut(t *testing.T) {
 	c.batch = db.NewBatch()
 	res, err = handlePut(c, req)
 	r.NoError(err)
-	r.Equal(&armadapb.ResponseOp_Put{PrevKv: &armadapb.KeyValue{Key: []byte("key_1"), Value: []byte("value_1")}}, res)
+	r.Equal(&armadapb.ResponseOp_Put{PrevKv: &armadapb.KeyValue{
+		Key: []byte("key_1"), Value: []byte("value_1"), CreateRevision: 1, ModRevision: 1,
+	}}, res)
 	r.NoError(c.Commit())
 
 	iter, err := db.NewIter(allUserKeysOpts())

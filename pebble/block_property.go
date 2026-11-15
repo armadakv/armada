@@ -3,8 +3,7 @@
 package pebble
 
 import (
-	"encoding/binary"
-
+	tablekey "github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
 	"github.com/cockroachdb/pebble/v2/sstable"
 )
@@ -18,46 +17,36 @@ const (
 	// v2KeyVersion is the first byte of a V2 physical key header.
 	v2KeyVersion = byte(0x02)
 
-	// v2SeqLen is the number of bytes used to encode the MVCC seqno at the
-	// tail of every V2 physical key.
-	v2SeqLen = 8
+	// v2SeqLen is the number of bytes used to encode the inverted MVCC seqno.
+	v2SeqLen       = 8
+	v2CreateSeqLen = 8
+	v2KindLen      = 1
 )
 
 // mvccSeqnoMapper implements sstable.IntervalMapper. For every V2 user key it
-// decodes the MVCC seqno from the trailing 8 bytes of the physical key and
+// decodes the MVCC seqno before the creation metadata and record kind and
 // maps it to the half-open interval [seqno, seqno+1). System keys and
 // non-V2 keys are ignored (empty interval).
 type mvccSeqnoMapper struct{}
 
 // MapPointKey implements sstable.IntervalMapper.
-func (m mvccSeqnoMapper) MapPointKey(key sstable.InternalKey, _ []byte) (sstable.BlockInterval, error) {
-	uk := key.UserKey
-	// Minimum meaningful V2 key:
-	//   header(4) + keyType(1) + sep(1) + seqno(8) = 14 bytes.
-	// We only require len > v2SeqLen to be safe.
-	if len(uk) <= v2SeqLen || uk[0] != v2KeyVersion {
+func (m mvccSeqnoMapper) MapPointKey(ikey sstable.InternalKey, _ []byte) (sstable.BlockInterval, error) {
+	uk := ikey.UserKey
+	// Minimum meaningful V2 key includes its complete metadata suffix.
+	if len(uk) < 4+1+1+v2SeqLen+v2CreateSeqLen+v2KindLen || uk[0] != v2KeyVersion {
 		return sstable.BlockInterval{}, nil
 	}
-	seqno := decodeV2Seqno(uk)
-	return sstable.BlockInterval{Lower: seqno, Upper: seqno + 1}, nil
+	decoded, err := tablekey.DecodeBytes(uk)
+	if err != nil {
+		return sstable.BlockInterval{}, err
+	}
+	return sstable.BlockInterval{Lower: decoded.Seqno, Upper: decoded.Seqno + 1}, nil
 }
 
 // MapRangeKeys implements sstable.IntervalMapper. Range keys are not MVCC
 // versioned in our schema, so we return an empty interval.
 func (m mvccSeqnoMapper) MapRangeKeys(_ sstable.Span) (sstable.BlockInterval, error) {
 	return sstable.BlockInterval{}, nil
-}
-
-// decodeV2Seqno recovers the original uint64 seqno from the last v2SeqLen
-// bytes of a physical V2 key. The bytes are stored as big-endian with every
-// bit inverted so that higher seqnos sort before lower ones.
-func decodeV2Seqno(key []byte) uint64 {
-	var buf [v2SeqLen]byte
-	copy(buf[:], key[len(key)-v2SeqLen:])
-	for i := range buf {
-		buf[i] = ^buf[i]
-	}
-	return binary.BigEndian.Uint64(buf[:])
 }
 
 // NewMVCCSeqnoCollector returns a BlockPropertyCollector factory function

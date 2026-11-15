@@ -4,11 +4,16 @@ package key
 
 import (
 	"bytes"
+	"encoding/binary"
 	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func withV2Metadata(raw []byte) []byte {
+	return append(raw, make([]byte, V2CreateSeqLen+V2KindLen)...)
+}
 
 func TestDecoder_Decode(t *testing.T) {
 	type fields struct {
@@ -23,7 +28,7 @@ func TestDecoder_Decode(t *testing.T) {
 		{
 			name: "Decode - V2 User key with seqno=1",
 			// header [0x02 0x00 0x00 0x00] + keyType(User) + "test" + 0x00 separator + encoded seqno=1 [FF FF FF FF FF FF FF FE]
-			fields: fields{r: bytes.NewBuffer(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe))},
+			fields: fields{r: bytes.NewBuffer(withV2Metadata(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)))},
 			wantKey: Key{
 				version: V2,
 				KeyType: TypeUser,
@@ -34,7 +39,7 @@ func TestDecoder_Decode(t *testing.T) {
 		{
 			name: "Decode - V2 User key with seqno=0",
 			// seqno=0 encoded as all 0xFF; null separator before seqno
-			fields: fields{r: bytes.NewBuffer(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff))},
+			fields: fields{r: bytes.NewBuffer(withV2Metadata(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)))},
 			wantKey: Key{
 				version: V2,
 				KeyType: TypeUser,
@@ -146,7 +151,7 @@ func TestEncoder_Encode(t *testing.T) {
 			}},
 			// LatestVersion is now V2: header [0x02 0x00 0x00 0x00] + keyType + userKey + 0x00 sep + seqno(8B).
 			// seqno=0 → ^uint64(0)=MaxUint64 big-endian → [FF FF FF FF FF FF FF FF].
-			wantWriter: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
+			wantWriter: withV2Metadata(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)),
 		},
 		{
 			name:   "Encode - V2 User key with seqno",
@@ -159,7 +164,7 @@ func TestEncoder_Encode(t *testing.T) {
 			}},
 			// seqno=1 → ^uint64(1)=0xFFFFFFFFFFFFFFFE big-endian → [FF FF FF FF FF FF FF FE].
 			// null separator (0x00) sits between user key and seqno.
-			wantWriter: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe),
+			wantWriter: withV2Metadata(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)),
 		},
 		{
 			name:   "Encode - V2 System key",
@@ -171,7 +176,7 @@ func TestEncoder_Encode(t *testing.T) {
 				Seqno:   0,
 			}},
 			// null separator (0x00) sits between user key and seqno.
-			wantWriter: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeSystem)}, append([]byte("index"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff),
+			wantWriter: withV2Metadata(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeSystem)}, append([]byte("index"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)),
 		},
 	}
 	for _, tt := range tests {
@@ -194,6 +199,40 @@ func TestLatestVersionKeyLimits(t *testing.T) {
 	require.Equal(t, V2KeyLen, V2Len(LatestVersionLen))
 	require.Equal(t, []byte{0}, LatestMinKey)
 	require.Len(t, LatestMaxKey, LatestVersionLen)
+}
+
+func TestV2CreationMetadataRoundTrip(t *testing.T) {
+	raw := bytes.NewBuffer(nil)
+	want := &Key{
+		KeyType:     TypeUser,
+		Key:         []byte("key"),
+		Seqno:       150,
+		CreateSeqno: 100,
+		Kind:        KindTombstone,
+	}
+	_, err := NewEncoder(raw).Encode(want)
+	require.NoError(t, err)
+
+	var got Key
+	require.NoError(t, NewDecoder(bytes.NewReader(raw.Bytes())).Decode(&got))
+	require.Equal(t, V2, got.version)
+	require.Equal(t, want.KeyType, got.KeyType)
+	require.Equal(t, want.Key, got.Key)
+	require.Equal(t, want.Seqno, got.Seqno)
+	require.Equal(t, want.CreateSeqno, got.CreateSeqno)
+	require.Equal(t, want.Kind, got.Kind)
+
+	creationStart := len(raw.Bytes()) - V2KindLen - V2CreateSeqLen
+	require.Equal(t, uint64(100), binary.BigEndian.Uint64(raw.Bytes()[creationStart:creationStart+V2CreateSeqLen]))
+}
+
+func TestV2DecodeRejectsInvalidRecordKind(t *testing.T) {
+	raw := bytes.NewBuffer(nil)
+	_, err := NewEncoder(raw).Encode(&Key{KeyType: TypeUser, Key: []byte("key")})
+	require.NoError(t, err)
+	raw.Bytes()[len(raw.Bytes())-1] = 2
+	_, err = DecodeBytes(raw.Bytes())
+	require.ErrorIs(t, err, ErrMalformedV2Key)
 }
 
 func TestV2MaximumUserKeyRoundTrip(t *testing.T) {
@@ -291,7 +330,7 @@ func TestDecodeRaw(t *testing.T) {
 		{
 			name: "v2 User key with seqno=1",
 			// null separator (0x00) between user key and seqno
-			args: args{raw: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe)},
+			args: args{raw: withV2Metadata(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeUser)}, append([]byte("test"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe))},
 			want: Key{
 				version: V2,
 				KeyType: TypeUser,
@@ -303,7 +342,7 @@ func TestDecodeRaw(t *testing.T) {
 		{
 			name: "v2 System key with seqno=0",
 			// null separator (0x00) between user key and seqno
-			args: args{raw: append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeSystem)}, append([]byte("index"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff)},
+			args: args{raw: withV2Metadata(append(append([]byte{V2, 0x0, 0x0, 0x0, byte(TypeSystem)}, append([]byte("index"), 0x00)...), 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff))},
 			want: Key{
 				version: V2,
 				KeyType: TypeSystem,
