@@ -289,6 +289,16 @@ func (m *RequestOp_Range) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MaxCreateRevision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxCreateRevision))
+		i--
+		dAtA[i] = 0x38
+	}
+	if m.MinCreateRevision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinCreateRevision))
+		i--
+		dAtA[i] = 0x30
+	}
 	if m.CountOnly {
 		i--
 		if m.CountOnly {
@@ -1122,6 +1132,12 @@ func (m *RequestOp_Range) SizeVT() (n int) {
 	}
 	if m.CountOnly {
 		n += 2
+	}
+	if m.MinCreateRevision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinCreateRevision))
+	}
+	if m.MaxCreateRevision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaxCreateRevision))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -2163,6 +2179,44 @@ func (m *RequestOp_Range) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.CountOnly = bool(v != 0)
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinCreateRevision", wireType)
+			}
+			m.MinCreateRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinCreateRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxCreateRevision", wireType)
+			}
+			m.MaxCreateRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxCreateRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -4246,6 +4300,44 @@ func (m *RequestOp_Range) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 			}
 			m.CountOnly = bool(v != 0)
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinCreateRevision", wireType)
+			}
+			m.MinCreateRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinCreateRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 7:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxCreateRevision", wireType)
+			}
+			m.MaxCreateRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxCreateRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
