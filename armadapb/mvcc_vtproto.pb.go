@@ -289,6 +289,16 @@ func (m *RequestOp_Range) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.MaxModRevision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxModRevision))
+		i--
+		dAtA[i] = 0x48
+	}
+	if m.MinModRevision != 0 {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MinModRevision))
+		i--
+		dAtA[i] = 0x40
+	}
 	if m.MaxCreateRevision != 0 {
 		i = protohelpers.EncodeVarint(dAtA, i, uint64(m.MaxCreateRevision))
 		i--
@@ -922,6 +932,30 @@ func (m *Compare_Value) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 	dAtA[i] = 0x22
 	return len(dAtA) - i, nil
 }
+func (m *Compare_CreateRevision) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Compare_CreateRevision) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.CreateRevision))
+	i--
+	dAtA[i] = 0x28
+	return len(dAtA) - i, nil
+}
+func (m *Compare_ModRevision) MarshalToVT(dAtA []byte) (int, error) {
+	size := m.SizeVT()
+	return m.MarshalToSizedBufferVT(dAtA[:size])
+}
+
+func (m *Compare_ModRevision) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	i = protohelpers.EncodeVarint(dAtA, i, uint64(m.ModRevision))
+	i--
+	dAtA[i] = 0x30
+	return len(dAtA) - i, nil
+}
 func (m *KeyValue) MarshalVT() (dAtA []byte, err error) {
 	if m == nil {
 		return nil, nil
@@ -1138,6 +1172,12 @@ func (m *RequestOp_Range) SizeVT() (n int) {
 	}
 	if m.MaxCreateRevision != 0 {
 		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaxCreateRevision))
+	}
+	if m.MinModRevision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MinModRevision))
+	}
+	if m.MaxModRevision != 0 {
+		n += 1 + protohelpers.SizeOfVarint(uint64(m.MaxModRevision))
 	}
 	n += len(m.unknownFields)
 	return n
@@ -1388,6 +1428,24 @@ func (m *Compare_Value) SizeVT() (n int) {
 	_ = l
 	l = len(m.Value)
 	n += 1 + l + protohelpers.SizeOfVarint(uint64(l))
+	return n
+}
+func (m *Compare_CreateRevision) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.CreateRevision))
+	return n
+}
+func (m *Compare_ModRevision) SizeVT() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	n += 1 + protohelpers.SizeOfVarint(uint64(m.ModRevision))
 	return n
 }
 func (m *KeyValue) SizeVT() (n int) {
@@ -2213,6 +2271,44 @@ func (m *RequestOp_Range) UnmarshalVT(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.MaxCreateRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinModRevision", wireType)
+			}
+			m.MinModRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinModRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxModRevision", wireType)
+			}
+			m.MaxModRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxModRevision |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -3334,6 +3430,46 @@ func (m *Compare) UnmarshalVT(dAtA []byte) error {
 			copy(v, dAtA[iNdEx:postIndex])
 			m.TargetUnion = &Compare_Value{Value: v}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreateRevision", wireType)
+			}
+			var v int64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.TargetUnion = &Compare_CreateRevision{CreateRevision: v}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ModRevision", wireType)
+			}
+			var v int64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.TargetUnion = &Compare_ModRevision{ModRevision: v}
 		case 64:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RangeEnd", wireType)
@@ -4334,6 +4470,44 @@ func (m *RequestOp_Range) UnmarshalVTUnsafe(dAtA []byte) error {
 				b := dAtA[iNdEx]
 				iNdEx++
 				m.MaxCreateRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 8:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MinModRevision", wireType)
+			}
+			m.MinModRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MinModRevision |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 9:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field MaxModRevision", wireType)
+			}
+			m.MaxModRevision = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.MaxModRevision |= int64(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -5439,6 +5613,46 @@ func (m *Compare) UnmarshalVTUnsafe(dAtA []byte) error {
 			v := dAtA[iNdEx:postIndex]
 			m.TargetUnion = &Compare_Value{Value: v}
 			iNdEx = postIndex
+		case 5:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CreateRevision", wireType)
+			}
+			var v int64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.TargetUnion = &Compare_CreateRevision{CreateRevision: v}
+		case 6:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field ModRevision", wireType)
+			}
+			var v int64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= int64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.TargetUnion = &Compare_ModRevision{ModRevision: v}
 		case 64:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field RangeEnd", wireType)

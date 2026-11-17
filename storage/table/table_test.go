@@ -11,8 +11,10 @@ import (
 	"github.com/armadakv/armada/raft/client"
 	sm "github.com/armadakv/armada/raft/statemachine"
 	serrors "github.com/armadakv/armada/storage/errors"
+	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/armadakv/armada/util"
+	"github.com/armadakv/armada/util/iterx"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	pb "google.golang.org/protobuf/proto"
@@ -184,6 +186,36 @@ func TestActiveTable_Range(t *testing.T) {
 			r.NoError(err)
 			r.Equal(tt.want, got)
 		})
+	}
+}
+
+func TestActiveTable_RevisionFilterQueries(t *testing.T) {
+	for _, linearizable := range []bool{false, true} {
+		req := &armadapb.RangeRequest{
+			Key: []byte("a"), RangeEnd: []byte("z"), Linearizable: linearizable,
+			MinCreateRevision: 1, MaxCreateRevision: 10,
+			MinModRevision: 20, MaxModRevision: 30,
+		}
+		op := &armadapb.RequestOp_Range{
+			Key: []byte("a"), RangeEnd: []byte("z"),
+			MinCreateRevision: 1, MaxCreateRevision: 10,
+			MinModRevision: 20, MaxModRevision: 30,
+		}
+		nh := &mockRaftHandler{}
+		stream := iterx.From(&armadapb.ResponseOp_Range{})
+		if linearizable {
+			nh.On("SyncRead", mock.Anything, uint64(0), op).Return(&armadapb.ResponseOp_Range{}, nil).Once()
+			nh.On("SyncRead", mock.Anything, uint64(0), fsm.IteratorRequest{RangeOp: op}).Return(stream, nil).Once()
+		} else {
+			nh.On("StaleRead", uint64(0), op).Return(&armadapb.ResponseOp_Range{}, nil).Once()
+			nh.On("StaleRead", uint64(0), fsm.IteratorRequest{RangeOp: op}).Return(stream, nil).Once()
+		}
+		at := &ActiveTable{nh: nh}
+		_, err := at.Range(context.Background(), req)
+		require.NoError(t, err)
+		_, err = at.Iterator(context.Background(), req)
+		require.NoError(t, err)
+		nh.AssertExpectations(t)
 	}
 }
 

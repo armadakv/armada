@@ -115,27 +115,42 @@ func TestKVServer_RangeError(t *testing.T) {
 	r.EqualError(err, status.Error(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
 }
 
-func TestKVServer_RangeUnimplemented(t *testing.T) {
-	r := require.New(t)
-	kv := KVServer{
-		Storage: &mockKVService{},
+func TestKVServer_InvalidModificationRevisionBounds(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		min     int64
+		max     int64
+		message string
+	}{
+		{"negative minimum", -1, 0, "modification revision bounds must be non-negative"},
+		{"negative maximum", 0, -1, "modification revision bounds must be non-negative"},
+		{"inverted bounds", 3, 2, "min_mod_revision must not exceed max_mod_revision"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kv := KVServer{Storage: &mockKVService{}}
+			req := &armadapb.RangeRequest{
+				Table: table1Name, Key: key1Name,
+				MinModRevision: test.min, MaxModRevision: test.max,
+			}
+			_, err := kv.Range(context.Background(), req)
+			require.EqualError(t, err, status.Error(codes.InvalidArgument, test.message).Error())
+			err = kv.IterateRange(req, nil)
+			require.EqualError(t, err, status.Error(codes.InvalidArgument, test.message).Error())
+
+			op := &armadapb.RequestOp{Request: &armadapb.RequestOp_RequestRange{
+				RequestRange: &armadapb.RequestOp_Range{
+					Key: key1Name, MinModRevision: test.min, MaxModRevision: test.max,
+				},
+			}}
+			for _, txn := range []*armadapb.TxnRequest{
+				{Table: table1Name, Success: []*armadapb.RequestOp{op}},
+				{Table: table1Name, Failure: []*armadapb.RequestOp{op}},
+			} {
+				_, err := kv.Txn(context.Background(), txn)
+				require.EqualError(t, err, status.Error(codes.InvalidArgument, test.message).Error())
+			}
+		})
 	}
-
-	t.Log("Get kv with unimplemented min_mod_revision")
-	_, err := kv.Range(context.Background(), &armadapb.RangeRequest{
-		Table:          table1Name,
-		Key:            key1Name,
-		MinModRevision: 1,
-	})
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "min_mod_revision not implemented").Error())
-
-	t.Log("Get kv with unimplemented max_mod_revision")
-	_, err = kv.Range(context.Background(), &armadapb.RangeRequest{
-		Table:          table1Name,
-		Key:            key1Name,
-		MaxModRevision: 1,
-	})
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "max_mod_revision not implemented").Error())
 }
 
 func TestKVServer_RangeCreationRevisionBounds(t *testing.T) {
@@ -178,6 +193,41 @@ func TestKVServer_IterateRangeInvalidCreationRevisionBounds(t *testing.T) {
 		MaxCreateRevision: 2,
 	}, nil)
 	r.EqualError(err, status.Error(codes.InvalidArgument, "min_create_revision must not exceed max_create_revision").Error())
+}
+
+func TestKVServer_TxnRevisionComparisons(t *testing.T) {
+	for _, comparison := range []*armadapb.Compare{
+		{Key: key1Name, Target: armadapb.Compare_CREATE, TargetUnion: &armadapb.Compare_CreateRevision{CreateRevision: 0}},
+		{Key: key1Name, Target: armadapb.Compare_MOD, Result: armadapb.Compare_GREATER, TargetUnion: &armadapb.Compare_ModRevision{ModRevision: -1}},
+	} {
+		request := &armadapb.TxnRequest{Table: table1Name, Compare: []*armadapb.Compare{comparison}}
+		storage := &mockKVService{}
+		storage.On("Txn", mock.Anything, request).Return(&armadapb.TxnResponse{}, nil).Once()
+		kv := KVServer{Storage: storage}
+		_, err := kv.Txn(context.Background(), request)
+		require.NoError(t, err)
+		storage.AssertExpectations(t)
+	}
+	for _, test := range []struct {
+		name       string
+		comparison *armadapb.Compare
+	}{
+		{"nil", nil},
+		{"unknown target", &armadapb.Compare{Target: 99}},
+		{"unknown operator", &armadapb.Compare{Result: 99}},
+		{"create with mod operand", &armadapb.Compare{Target: armadapb.Compare_CREATE, TargetUnion: &armadapb.Compare_ModRevision{ModRevision: 1}}},
+		{"mod with create operand", &armadapb.Compare{Target: armadapb.Compare_MOD, TargetUnion: &armadapb.Compare_CreateRevision{CreateRevision: 1}}},
+		{"value with revision operand", &armadapb.Compare{TargetUnion: &armadapb.Compare_ModRevision{ModRevision: 1}}},
+		{"revision with value operand", &armadapb.Compare{Target: armadapb.Compare_MOD, TargetUnion: &armadapb.Compare_Value{Value: []byte("1")}}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			kv := KVServer{Storage: &mockKVService{}}
+			_, err := kv.Txn(context.Background(), &armadapb.TxnRequest{
+				Table: table1Name, Compare: []*armadapb.Compare{test.comparison},
+			})
+			require.Equal(t, codes.InvalidArgument, status.Code(err))
+		})
+	}
 }
 
 func TestKVServer_TxnInvalidCreationRevisionBounds(t *testing.T) {
@@ -277,27 +327,34 @@ func TestKVServer_IterateRangeError(t *testing.T) {
 	r.EqualError(err, status.Error(codes.Unavailable, raft.ErrSystemBusy.Error()).Error())
 }
 
-func TestKVServer_IterateRangeUnimplemented(t *testing.T) {
-	r := require.New(t)
-	kv := KVServer{
-		Storage: &mockKVService{},
+func TestKVServer_ModificationRevisionBounds(t *testing.T) {
+	request := &armadapb.RangeRequest{
+		Table: table1Name, Key: key1Name,
+		MinCreateRevision: 1, MaxCreateRevision: 2,
+		MinModRevision: 3, MaxModRevision: 3,
 	}
+	storage := &mockKVService{}
+	storage.On("Range", mock.Anything, request).Return(&armadapb.RangeResponse{}, nil).Once()
+	storage.On("IterateRange", mock.Anything, request).Return(iterx.From(&armadapb.RangeResponse{}), nil).Once()
+	kv := KVServer{Storage: storage}
+	_, err := kv.Range(context.Background(), request)
+	require.NoError(t, err)
+	srv := &mockIterateRangeServer{}
+	srv.On("Context").Return(context.Background())
+	srv.On("Send", mock.Anything).Return(nil).Once()
+	require.NoError(t, kv.IterateRange(request, srv))
 
-	t.Log("Get kv with unimplemented min_mod_revision")
-	err := kv.IterateRange(&armadapb.RangeRequest{
-		Table:          table1Name,
-		Key:            key1Name,
-		MinModRevision: 1,
-	}, nil)
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "min_mod_revision not implemented").Error())
-
-	t.Log("Get kv with unimplemented max_mod_revision")
-	err = kv.IterateRange(&armadapb.RangeRequest{
-		Table:          table1Name,
-		Key:            key1Name,
-		MaxModRevision: 1,
-	}, nil)
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "max_mod_revision not implemented").Error())
+	txn := &armadapb.TxnRequest{
+		Table: table1Name,
+		Success: []*armadapb.RequestOp{{Request: &armadapb.RequestOp_RequestRange{
+			RequestRange: &armadapb.RequestOp_Range{Key: key1Name, MinModRevision: 3, MaxModRevision: 3},
+		}}},
+	}
+	storage.On("Txn", mock.Anything, txn).Return(&armadapb.TxnResponse{}, nil).Once()
+	_, err = kv.Txn(context.Background(), txn)
+	require.NoError(t, err)
+	storage.AssertExpectations(t)
+	srv.AssertExpectations(t)
 }
 
 func TestKVServer_IterateRange(t *testing.T) {

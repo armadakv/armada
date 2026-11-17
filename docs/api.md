@@ -167,8 +167,8 @@ FollowerGetTablesResponse contains information about tables stored in the cluste
 | `linearizable` | [bool](#bool) |  | linearizable sets the range request to use linearizable read. Linearizable requests have higher latency and lower throughput than serializable requests but reflect the current consensus of the cluster. For better performance, in exchange for possible stale reads, a serializable range request is served locally without needing to reach consensus with other nodes in the cluster. The serializable request is default option. |
 | `keys_only` | [bool](#bool) |  | keys_only when set returns only the keys and not the values. |
 | `count_only` | [bool](#bool) |  | count_only when set returns only the count of the keys in the range. |
-| `min_mod_revision` | [int64](#int64) |  | min_mod_revision is the lower bound for returned key mod revisions; all keys with lesser mod revisions will be filtered away. |
-| `max_mod_revision` | [int64](#int64) |  | max_mod_revision is the upper bound for returned key mod revisions; all keys with greater mod revisions will be filtered away. |
+| `min_mod_revision` | [int64](#int64) |  | Inclusive lower bound for the current live key's modification revision. Zero means unbounded; this filters current values, not historical versions. |
+| `max_mod_revision` | [int64](#int64) |  | Inclusive upper bound for the current live key's modification revision. Zero means unbounded; this filters current values, not historical versions. |
 | `min_create_revision` | [int64](#int64) |  | Inclusive lower bound for the current key incarnation's creation revision. Zero means unbounded. |
 | `max_create_revision` | [int64](#int64) |  | Inclusive upper bound for the current key incarnation's creation revision. Zero means unbounded. |
 
@@ -423,7 +423,9 @@ Examples:
 | `target` | [Compare.CompareTarget](#comparecomparetarget) |  | target is the key-value field to inspect for the comparison. |
 | `key` | [bytes](#bytes) |  | key is the subject key for the comparison operation. |
 | `value` | [bytes](#bytes) |  | value is the value of the given key, in bytes. |
-| `range_end` | [bytes](#bytes) |  | range_end compares the given target to all keys in the range [key, range_end). See RangeRequest for more details on key ranges.  TODO: fill out with most of the rest of RangeRequest fields when needed. |
+| `create_revision` | [int64](#int64) |  | create_revision compares against the current incarnation's creation revision. Missing or deleted keys have revision zero. |
+| `mod_revision` | [int64](#int64) |  | mod_revision compares against the current live key's modification revision. Missing or deleted keys have revision zero.  leave room for more target_union field tags, jump to 64 |
+| `range_end` | [bytes](#bytes) |  | range_end compares the given target to all keys in the range [key, range_end). Only the latest live version of each key is compared. If no live keys match, revision targets compare against zero and VALUE comparisons fail. See RangeRequest for more details on key ranges.  TODO: fill out with most of the rest of RangeRequest fields when needed. |
 
 
 #### KeyValue {#keyvalue}
@@ -475,6 +477,8 @@ Examples:
 | `count_only` | [bool](#bool) |  | count_only when set returns only the count of the keys in the range. |
 | `min_create_revision` | [int64](#int64) |  | Inclusive lower bound for the current key incarnation's creation revision. Zero means unbounded. |
 | `max_create_revision` | [int64](#int64) |  | Inclusive upper bound for the current key incarnation's creation revision. Zero means unbounded. |
+| `min_mod_revision` | [int64](#int64) |  | Inclusive lower bound for the current live key's modification revision. Zero means unbounded; this filters current values, not historical versions. |
+| `max_mod_revision` | [int64](#int64) |  | Inclusive upper bound for the current live key's modification revision. Zero means unbounded; this filters current values, not historical versions. |
 
 
 #### ResponseOp {#responseop}
@@ -551,6 +555,8 @@ Examples:
 | Name | Number | Description |
 | ---- | ------ | ----------- |
 | `VALUE` | 0 |  |
+| `CREATE` | 2 | Creation revision of the current live key incarnation. |
+| `MOD` | 3 | Modification revision of the current live key. |
 
 
 

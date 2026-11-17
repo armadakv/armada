@@ -30,7 +30,7 @@ func iterNextUserKey(piter *pebble.Iterator, _ []byte) bool {
 // iterate until the provided pebble.Iterator is no longer valid or the limit is reached.
 // Apply a function on the key/value pair in every iteration filling proto.RangeResponse.
 func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*armadapb.ResponseOp_Range], error) { //nolint:gocognit
-	if err := validateCreationRevisionBounds(req.MinCreateRevision, req.MaxCreateRevision); err != nil {
+	if err := validateRangeRevisionBounds(req); err != nil {
 		return nil, err
 	}
 	opts, err := iterOptionsForBounds(req.Key, req.RangeEnd)
@@ -78,7 +78,7 @@ func iterate(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*arm
 			if err := validateRevision(k.Seqno); err != nil {
 				panic(err)
 			}
-			if !matchesCreationRevision(k, req) {
+			if !matchesRevisionBounds(k, req) {
 				if !iterNextUserKey(piter, currentKey) {
 					yield(response)
 					return

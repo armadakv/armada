@@ -147,15 +147,23 @@ type Compare_CompareTarget int32
 
 const (
 	Compare_VALUE Compare_CompareTarget = 0
+	// Creation revision of the current live key incarnation.
+	Compare_CREATE Compare_CompareTarget = 2
+	// Modification revision of the current live key.
+	Compare_MOD Compare_CompareTarget = 3
 )
 
 // Enum value maps for Compare_CompareTarget.
 var (
 	Compare_CompareTarget_name = map[int32]string{
 		0: "VALUE",
+		2: "CREATE",
+		3: "MOD",
 	}
 	Compare_CompareTarget_value = map[string]int32{
-		"VALUE": 0,
+		"VALUE":  0,
+		"CREATE": 2,
+		"MOD":    3,
 	}
 )
 
@@ -661,8 +669,12 @@ type Compare struct {
 	// Types that are valid to be assigned to TargetUnion:
 	//
 	//	*Compare_Value
+	//	*Compare_CreateRevision
+	//	*Compare_ModRevision
 	TargetUnion isCompare_TargetUnion `protobuf_oneof:"target_union"`
 	// range_end compares the given target to all keys in the range [key, range_end).
+	// Only the latest live version of each key is compared. If no live keys match,
+	// revision targets compare against zero and VALUE comparisons fail.
 	// See RangeRequest for more details on key ranges.
 	RangeEnd      []byte `protobuf:"bytes,64,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"` // TODO: fill out with most of the rest of RangeRequest fields when needed.
 	unknownFields protoimpl.UnknownFields
@@ -736,6 +748,24 @@ func (x *Compare) GetValue() []byte {
 	return nil
 }
 
+func (x *Compare) GetCreateRevision() int64 {
+	if x != nil {
+		if x, ok := x.TargetUnion.(*Compare_CreateRevision); ok {
+			return x.CreateRevision
+		}
+	}
+	return 0
+}
+
+func (x *Compare) GetModRevision() int64 {
+	if x != nil {
+		if x, ok := x.TargetUnion.(*Compare_ModRevision); ok {
+			return x.ModRevision
+		}
+	}
+	return 0
+}
+
 func (x *Compare) GetRangeEnd() []byte {
 	if x != nil {
 		return x.RangeEnd
@@ -752,7 +782,23 @@ type Compare_Value struct {
 	Value []byte `protobuf:"bytes,4,opt,name=value,proto3,oneof"`
 }
 
+type Compare_CreateRevision struct {
+	// create_revision compares against the current incarnation's creation revision.
+	// Missing or deleted keys have revision zero.
+	CreateRevision int64 `protobuf:"varint,5,opt,name=create_revision,json=createRevision,proto3,oneof"`
+}
+
+type Compare_ModRevision struct {
+	// mod_revision compares against the current live key's modification revision.
+	// Missing or deleted keys have revision zero.
+	ModRevision int64 `protobuf:"varint,6,opt,name=mod_revision,json=modRevision,proto3,oneof"` // leave room for more target_union field tags, jump to 64
+}
+
 func (*Compare_Value) isCompare_TargetUnion() {}
+
+func (*Compare_CreateRevision) isCompare_TargetUnion() {}
+
+func (*Compare_ModRevision) isCompare_TargetUnion() {}
 
 type KeyValue struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -850,8 +896,14 @@ type RequestOp_Range struct {
 	// Inclusive upper bound for the current key incarnation's creation revision.
 	// Zero means unbounded.
 	MaxCreateRevision int64 `protobuf:"varint,7,opt,name=max_create_revision,json=maxCreateRevision,proto3" json:"max_create_revision,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// Inclusive lower bound for the current live key's modification revision.
+	// Zero means unbounded; this filters current values, not historical versions.
+	MinModRevision int64 `protobuf:"varint,8,opt,name=min_mod_revision,json=minModRevision,proto3" json:"min_mod_revision,omitempty"`
+	// Inclusive upper bound for the current live key's modification revision.
+	// Zero means unbounded; this filters current values, not historical versions.
+	MaxModRevision int64 `protobuf:"varint,9,opt,name=max_mod_revision,json=maxModRevision,proto3" json:"max_mod_revision,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *RequestOp_Range) Reset() {
@@ -929,6 +981,20 @@ func (x *RequestOp_Range) GetMinCreateRevision() int64 {
 func (x *RequestOp_Range) GetMaxCreateRevision() int64 {
 	if x != nil {
 		return x.MaxCreateRevision
+	}
+	return 0
+}
+
+func (x *RequestOp_Range) GetMinModRevision() int64 {
+	if x != nil {
+		return x.MinModRevision
+	}
+	return 0
+}
+
+func (x *RequestOp_Range) GetMaxModRevision() int64 {
+	if x != nil {
+		return x.MaxModRevision
 	}
 	return 0
 }
@@ -1277,12 +1343,12 @@ const file_mvcc_proto_rawDesc = "" +
 	"\x03Txn\x12*\n" +
 	"\acompare\x18\x01 \x03(\v2\x10.mvcc.v1.CompareR\acompare\x12,\n" +
 	"\asuccess\x18\x02 \x03(\v2\x12.mvcc.v1.RequestOpR\asuccess\x12,\n" +
-	"\afailure\x18\x03 \x03(\v2\x12.mvcc.v1.RequestOpR\afailure\"\x86\x05\n" +
+	"\afailure\x18\x03 \x03(\v2\x12.mvcc.v1.RequestOpR\afailure\"\xda\x05\n" +
 	"\tRequestOp\x12?\n" +
 	"\rrequest_range\x18\x01 \x01(\v2\x18.mvcc.v1.RequestOp.RangeH\x00R\frequestRange\x129\n" +
 	"\vrequest_put\x18\x02 \x01(\v2\x16.mvcc.v1.RequestOp.PutH\x00R\n" +
 	"requestPut\x12R\n" +
-	"\x14request_delete_range\x18\x03 \x01(\v2\x1e.mvcc.v1.RequestOp.DeleteRangeH\x00R\x12requestDeleteRange\x1a\xe8\x01\n" +
+	"\x14request_delete_range\x18\x03 \x01(\v2\x1e.mvcc.v1.RequestOp.DeleteRangeH\x00R\x12requestDeleteRange\x1a\xbc\x02\n" +
 	"\x05Range\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\x1b\n" +
 	"\trange_end\x18\x02 \x01(\fR\brangeEnd\x12\x14\n" +
@@ -1291,7 +1357,9 @@ const file_mvcc_proto_rawDesc = "" +
 	"\n" +
 	"count_only\x18\x05 \x01(\bR\tcountOnly\x12.\n" +
 	"\x13min_create_revision\x18\x06 \x01(\x03R\x11minCreateRevision\x12.\n" +
-	"\x13max_create_revision\x18\a \x01(\x03R\x11maxCreateRevision\x1aF\n" +
+	"\x13max_create_revision\x18\a \x01(\x03R\x11maxCreateRevision\x12(\n" +
+	"\x10min_mod_revision\x18\b \x01(\x03R\x0eminModRevision\x12(\n" +
+	"\x10max_mod_revision\x18\t \x01(\x03R\x0emaxModRevision\x1aF\n" +
 	"\x03Put\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\fR\x05value\x12\x17\n" +
@@ -1317,20 +1385,25 @@ const file_mvcc_proto_rawDesc = "" +
 	"\adeleted\x18\x01 \x01(\x03R\adeleted\x12,\n" +
 	"\bprev_kvs\x18\x02 \x03(\v2\x11.mvcc.v1.KeyValueR\aprevKvsB\n" +
 	"\n" +
-	"\bresponse\"\xae\x02\n" +
+	"\bresponse\"\x93\x03\n" +
 	"\aCompare\x126\n" +
 	"\x06result\x18\x01 \x01(\x0e2\x1e.mvcc.v1.Compare.CompareResultR\x06result\x126\n" +
 	"\x06target\x18\x02 \x01(\x0e2\x1e.mvcc.v1.Compare.CompareTargetR\x06target\x12\x10\n" +
 	"\x03key\x18\x03 \x01(\fR\x03key\x12\x16\n" +
-	"\x05value\x18\x04 \x01(\fH\x00R\x05value\x12\x1b\n" +
+	"\x05value\x18\x04 \x01(\fH\x00R\x05value\x12)\n" +
+	"\x0fcreate_revision\x18\x05 \x01(\x03H\x00R\x0ecreateRevision\x12#\n" +
+	"\fmod_revision\x18\x06 \x01(\x03H\x00R\vmodRevision\x12\x1b\n" +
 	"\trange_end\x18@ \x01(\fR\brangeEnd\"@\n" +
 	"\rCompareResult\x12\t\n" +
 	"\x05EQUAL\x10\x00\x12\v\n" +
 	"\aGREATER\x10\x01\x12\b\n" +
 	"\x04LESS\x10\x02\x12\r\n" +
-	"\tNOT_EQUAL\x10\x03\"\x1a\n" +
+	"\tNOT_EQUAL\x10\x03\"/\n" +
 	"\rCompareTarget\x12\t\n" +
-	"\x05VALUE\x10\x00B\x0e\n" +
+	"\x05VALUE\x10\x00\x12\n" +
+	"\n" +
+	"\x06CREATE\x10\x02\x12\a\n" +
+	"\x03MOD\x10\x03B\x0e\n" +
 	"\ftarget_union\"~\n" +
 	"\bKeyValue\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12'\n" +
@@ -1417,6 +1490,8 @@ func file_mvcc_proto_init() {
 	}
 	file_mvcc_proto_msgTypes[5].OneofWrappers = []any{
 		(*Compare_Value)(nil),
+		(*Compare_CreateRevision)(nil),
+		(*Compare_ModRevision)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{

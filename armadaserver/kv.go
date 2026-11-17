@@ -48,6 +48,9 @@ func rangeKeyContainsNullByte(k, rangeEnd []byte) bool {
 // validateTxnKeys checks all keys embedded in a TxnRequest for null bytes.
 func validateTxnKeys(req *armadapb.TxnRequest) error {
 	for _, cmp := range req.Compare {
+		if err := cmp.Validate(); err != nil {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
 		if rangeKeyContainsNullByte(cmp.Key, cmp.RangeEnd) {
 			return status.Errorf(codes.InvalidArgument, "key must not contain null bytes")
 		}
@@ -78,6 +81,16 @@ func validateCreationRevisionBounds(min, max int64) error {
 	return nil
 }
 
+func validateModificationRevisionBounds(min, max int64) error {
+	if min < 0 || max < 0 {
+		return status.Error(codes.InvalidArgument, "modification revision bounds must be non-negative")
+	}
+	if min != 0 && max != 0 && min > max {
+		return status.Error(codes.InvalidArgument, "min_mod_revision must not exceed max_mod_revision")
+	}
+	return nil
+}
+
 func validateRequestOpKeys(op *armadapb.RequestOp) error {
 	if r := op.GetRequestRange(); r != nil {
 		if rangeKeyContainsNullByte(r.Key, r.RangeEnd) {
@@ -87,6 +100,9 @@ func validateRequestOpKeys(op *armadapb.RequestOp) error {
 			return status.Errorf(codes.InvalidArgument, "range_end must not contain null bytes")
 		}
 		if err := validateCreationRevisionBounds(r.GetMinCreateRevision(), r.GetMaxCreateRevision()); err != nil {
+			return err
+		}
+		if err := validateModificationRevisionBounds(r.GetMinModRevision(), r.GetMaxModRevision()); err != nil {
 			return err
 		}
 	}
@@ -120,10 +136,8 @@ func (s *KVServer) Range(ctx context.Context, req *armadapb.RangeRequest) (*arma
 		return nil, status.Errorf(codes.InvalidArgument, "limit must be a positive number")
 	} else if req.GetKeysOnly() && req.GetCountOnly() {
 		return nil, status.Error(codes.InvalidArgument, "keys_only and count_only must not be set at the same time")
-	} else if req.GetMinModRevision() > 0 {
-		return nil, status.Error(codes.Unimplemented, "min_mod_revision not implemented")
-	} else if req.GetMaxModRevision() > 0 {
-		return nil, status.Error(codes.Unimplemented, "max_mod_revision not implemented")
+	} else if err := validateModificationRevisionBounds(req.GetMinModRevision(), req.GetMaxModRevision()); err != nil {
+		return nil, err
 	} else if err := validateCreationRevisionBounds(req.GetMinCreateRevision(), req.GetMaxCreateRevision()); err != nil {
 		return nil, err
 	}
@@ -163,10 +177,8 @@ func (s *KVServer) IterateRange(req *armadapb.RangeRequest, srv armadapb.KV_Iter
 		return status.Errorf(codes.InvalidArgument, "limit must be a positive number")
 	} else if req.GetKeysOnly() && req.GetCountOnly() {
 		return status.Error(codes.InvalidArgument, "keys_only and count_only must not be set at the same time")
-	} else if req.GetMinModRevision() > 0 {
-		return status.Error(codes.Unimplemented, "min_mod_revision not implemented")
-	} else if req.GetMaxModRevision() > 0 {
-		return status.Error(codes.Unimplemented, "max_mod_revision not implemented")
+	} else if err := validateModificationRevisionBounds(req.GetMinModRevision(), req.GetMaxModRevision()); err != nil {
+		return err
 	} else if err := validateCreationRevisionBounds(req.GetMinCreateRevision(), req.GetMaxCreateRevision()); err != nil {
 		return err
 	}
