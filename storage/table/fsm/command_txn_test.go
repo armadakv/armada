@@ -213,6 +213,43 @@ func Test_txnCompare(t *testing.T) {
 	}
 }
 
+func TestTxnValidatesAllPredicates(t *testing.T) {
+	db, err := rp.OpenDB("/", rp.WithFS(vfs.NewMem()))
+	require.NoError(t, err)
+	defer func() { require.NoError(t, db.Close()) }()
+
+	for _, testCase := range []struct {
+		name    string
+		compare *armadapb.Compare
+		wantErr string
+	}{
+		{"nil comparison", nil, "compare must be set"},
+		{"invalid target", &armadapb.Compare{Target: 99}, "invalid compare target"},
+		{"invalid result", &armadapb.Compare{Result: 99}, "invalid compare result"},
+		{"mismatched operand", &armadapb.Compare{
+			Target: armadapb.Compare_CREATE, TargetUnion: &armadapb.Compare_Value{},
+		}, "compare target does not match target_union"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			compare := []*armadapb.Compare{{Key: []byte("missing")}, testCase.compare}
+			_, err := txnCompare(errorReader{}, compare)
+			require.ErrorContains(t, err, testCase.wantErr, "validate before opening any iterators")
+
+			ctx := &updateContext{batch: db.NewBatch(), db: db, index: 1}
+			defer func() { require.NoError(t, ctx.Close()) }()
+			succeeded, responses, err := handleTxn(ctx, compare, nil, []*armadapb.RequestOp{{
+				Request: &armadapb.RequestOp_RequestPut{
+					RequestPut: &armadapb.RequestOp_Put{Key: []byte("failure"), Value: []byte("must not be written")},
+				},
+			}})
+			require.ErrorContains(t, err, testCase.wantErr)
+			require.False(t, succeeded)
+			require.Nil(t, responses)
+			require.Empty(t, liveUserKeys(t, ctx.batch))
+		})
+	}
+}
+
 func TestTxnRevisionComparisons(t *testing.T) {
 	p := emptySM()
 	defer func() { require.NoError(t, p.Close()) }()

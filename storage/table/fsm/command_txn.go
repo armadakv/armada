@@ -72,12 +72,14 @@ func handleTxnOps(ctx *updateContext, req []*armadapb.RequestOp) ([]*armadapb.Re
 }
 
 func txnCompare(reader pebble.Reader, compare []*armadapb.Compare) (bool, error) {
-	keyBuf := bufferPool.Get()
-	defer bufferPool.Put(keyBuf)
 	for _, cmp := range compare {
 		if err := cmp.Validate(); err != nil {
 			return false, err
 		}
+	}
+	keyBuf := bufferPool.Get()
+	defer bufferPool.Put(keyBuf)
+	for _, cmp := range compare {
 		var (
 			res bool
 			err error
