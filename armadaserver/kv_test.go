@@ -136,22 +136,62 @@ func TestKVServer_RangeUnimplemented(t *testing.T) {
 		MaxModRevision: 1,
 	})
 	r.EqualError(err, status.Errorf(codes.Unimplemented, "max_mod_revision not implemented").Error())
+}
 
-	t.Log("Get kv with unimplemented min_create_revision")
-	_, err = kv.Range(context.Background(), &armadapb.RangeRequest{
+func TestKVServer_RangeCreationRevisionBounds(t *testing.T) {
+	r := require.New(t)
+	request := &armadapb.RangeRequest{
 		Table:             table1Name,
 		Key:               key1Name,
-		MinCreateRevision: 1,
-	})
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "min_create_revision not implemented").Error())
+		MinCreateRevision: 2,
+		MaxCreateRevision: 5,
+	}
 
-	t.Log("Get kv with unimplemented max_create_revision")
-	_, err = kv.Range(context.Background(), &armadapb.RangeRequest{
+	storage := &mockKVService{}
+	storage.On("Range", mock.Anything, request).Return(&armadapb.RangeResponse{}, nil).Once()
+	kv := KVServer{Storage: storage}
+
+	_, err := kv.Range(context.Background(), request)
+	r.NoError(err)
+	storage.AssertExpectations(t)
+
+	for _, test := range []struct {
+		request *armadapb.RangeRequest
+		message string
+	}{
+		{request: &armadapb.RangeRequest{Table: table1Name, Key: key1Name, MinCreateRevision: -1}, message: "creation revision bounds must be non-negative"},
+		{request: &armadapb.RangeRequest{Table: table1Name, Key: key1Name, MaxCreateRevision: -1}, message: "creation revision bounds must be non-negative"},
+		{request: &armadapb.RangeRequest{Table: table1Name, Key: key1Name, MinCreateRevision: 3, MaxCreateRevision: 2}, message: "min_create_revision must not exceed max_create_revision"},
+	} {
+		_, err := kv.Range(context.Background(), test.request)
+		r.EqualError(err, status.Error(codes.InvalidArgument, test.message).Error())
+	}
+}
+
+func TestKVServer_IterateRangeInvalidCreationRevisionBounds(t *testing.T) {
+	r := require.New(t)
+	kv := KVServer{Storage: &mockKVService{}}
+	err := kv.IterateRange(&armadapb.RangeRequest{
 		Table:             table1Name,
 		Key:               key1Name,
-		MaxCreateRevision: 1,
+		MinCreateRevision: 3,
+		MaxCreateRevision: 2,
+	}, nil)
+	r.EqualError(err, status.Error(codes.InvalidArgument, "min_create_revision must not exceed max_create_revision").Error())
+}
+
+func TestKVServer_TxnInvalidCreationRevisionBounds(t *testing.T) {
+	r := require.New(t)
+	kv := KVServer{Storage: &mockKVService{}}
+	_, err := kv.Txn(context.Background(), &armadapb.TxnRequest{
+		Table: table1Name,
+		Success: []*armadapb.RequestOp{{
+			Request: &armadapb.RequestOp_RequestRange{RequestRange: &armadapb.RequestOp_Range{
+				Key: []byte("key"), MinCreateRevision: -1,
+			}},
+		}},
 	})
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "max_create_revision not implemented").Error())
+	r.EqualError(err, status.Error(codes.InvalidArgument, "creation revision bounds must be non-negative").Error())
 }
 
 func TestKVServer_IterateRangeError(t *testing.T) {
@@ -258,22 +298,6 @@ func TestKVServer_IterateRangeUnimplemented(t *testing.T) {
 		MaxModRevision: 1,
 	}, nil)
 	r.EqualError(err, status.Errorf(codes.Unimplemented, "max_mod_revision not implemented").Error())
-
-	t.Log("Get kv with unimplemented min_create_revision")
-	err = kv.IterateRange(&armadapb.RangeRequest{
-		Table:             table1Name,
-		Key:               key1Name,
-		MinCreateRevision: 1,
-	}, nil)
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "min_create_revision not implemented").Error())
-
-	t.Log("Get kv with unimplemented max_create_revision")
-	err = kv.IterateRange(&armadapb.RangeRequest{
-		Table:             table1Name,
-		Key:               key1Name,
-		MaxCreateRevision: 1,
-	}, nil)
-	r.EqualError(err, status.Errorf(codes.Unimplemented, "max_create_revision not implemented").Error())
 }
 
 func TestKVServer_IterateRange(t *testing.T) {

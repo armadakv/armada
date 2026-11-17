@@ -471,7 +471,16 @@ func generateFiles(t *testing.T, version int, inputCommands []*armadapb.Command)
 	var outputs []outputRecord
 	iter, _ := db.NewIter(nil)
 	defer iter.Close()
-	for iter.First(); iter.Valid(); iter.Next() {
+	for iter.First(); iter.Valid(); {
+		decoded, err := key.DecodeBytes(iter.Key())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if decoded.KeyType == key.TypeUser && isTombstone(decoded) {
+			currentKey := append([]byte(nil), iter.Key()...)
+			iterNextUserKey(iter, currentKey)
+			continue
+		}
 		record := outputRecord{
 			Key:   make([]byte, len(iter.Key())),
 			Value: make([]byte, len(iter.Value())),
@@ -479,6 +488,7 @@ func generateFiles(t *testing.T, version int, inputCommands []*armadapb.Command)
 		copy(record.Key, iter.Key())
 		copy(record.Value, iter.Value())
 		outputs = append(outputs, record)
+		iter.Next()
 	}
 
 	oe := json.NewEncoder(outFile)
@@ -584,7 +594,7 @@ func testConsistency(t *testing.T, version int) {
 			// Peek at the latest version (current position = highest seqno).
 			// If it is a tombstone the key is logically deleted — skip the
 			// entire prefix including any older data versions that follow.
-			if isTombstone(iter.Value()) {
+			if isTombstone(k) {
 				currentKey := make([]byte, len(rawKey))
 				copy(currentKey, rawKey)
 				iterNextUserKey(iter, currentKey)

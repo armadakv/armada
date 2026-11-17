@@ -75,14 +75,14 @@ records:
 			// a prefix, iter.First() / SeekGE always lands on the latest version,
 			// so the very first key we see for this user-key prefix is the one
 			// we need to inspect.
-			seqno := key.DecodeV2Seqno(iter.Key())
+			seqno := k.Seqno
 
 			if seqno > baseIndex {
 				// This key changed after the effective base — emit it.
-				if isTombstone(iter.Value()) {
-					buffer, err = writeDeleteCommand(tableName, k.Key, seqno, buffer)
+				if isTombstone(k) {
+					buffer, err = writeDeleteCommand(tableName, k.Key, k.CreateSeqno, seqno, buffer)
 				} else {
-					buffer, err = writeCommand(tableName, k.Key, iter.Value(), seqno, buffer)
+					buffer, err = writeCommand(tableName, k.Key, iter.Value(), k.CreateSeqno, seqno, buffer)
 				}
 				if err != nil {
 					return nil, err
@@ -107,14 +107,22 @@ records:
 }
 
 // writeDeleteCommand writes a DELETE proto.Command for key into (optionally provided) buffer.
-func writeDeleteCommand(tableName string, userKey []byte, leaderIndex uint64, buffer []byte) ([]byte, error) {
+func writeDeleteCommand(tableName string, userKey []byte, createSeqno, leaderIndex uint64, buffer []byte) ([]byte, error) {
+	if err := validateRevision(createSeqno); err != nil {
+		return nil, err
+	}
+	if err := validateRevision(leaderIndex); err != nil {
+		return nil, err
+	}
 	cmd := armadapb.CommandFromVTPool()
 	defer cmd.ReturnToVTPool()
 	cmd.Table = []byte(tableName)
 	cmd.Type = armadapb.Command_DELETE
 	cmd.LeaderIndex = &leaderIndex
 	cmd.Kv = &armadapb.KeyValue{
-		Key: userKey,
+		Key:            userKey,
+		CreateRevision: int64(createSeqno),
+		ModRevision:    int64(leaderIndex),
 	}
 	size := cmd.SizeVT()
 	if cap(buffer) < size {
@@ -155,11 +163,11 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 				// Skip tombstoned keys — they have been deleted and must not appear in snapshots.
 				currentKey := make([]byte, len(iter.Key()))
 				copy(currentKey, iter.Key())
-				if isTombstone(iter.Value()) {
+				if isTombstone(k) {
 					iterNextUserKey(iter, currentKey)
 					continue
 				}
-				buffer, err = writeCommand(tableName, k.Key, iter.Value(), k.Seqno, buffer)
+				buffer, err = writeCommand(tableName, k.Key, iter.Value(), k.CreateSeqno, k.Seqno, buffer)
 				if err != nil {
 					return 0, err
 				}
@@ -179,15 +187,23 @@ func commandSnapshot(reader pebble.Reader, tableName string, w io.Writer, stopc 
 }
 
 // writeCommand writes KV pair as PUT proto.Command into (optionally provided) buffer.
-func writeCommand(tableName string, key []byte, val []byte, leaderIndex uint64, buffer []byte) ([]byte, error) {
+func writeCommand(tableName string, key []byte, val []byte, createSeqno, leaderIndex uint64, buffer []byte) ([]byte, error) {
+	if err := validateRevision(createSeqno); err != nil {
+		return nil, err
+	}
+	if err := validateRevision(leaderIndex); err != nil {
+		return nil, err
+	}
 	cmd := armadapb.CommandFromVTPool()
 	defer cmd.ReturnToVTPool()
 	cmd.Table = []byte(tableName)
 	cmd.Type = armadapb.Command_PUT
 	cmd.LeaderIndex = &leaderIndex
 	cmd.Kv = &armadapb.KeyValue{
-		Key:   key,
-		Value: val,
+		Key:            key,
+		Value:          val,
+		CreateRevision: int64(createSeqno),
+		ModRevision:    int64(leaderIndex),
 	}
 	size := cmd.SizeVT()
 	if cap(buffer) < size {
@@ -217,6 +233,9 @@ func readLocalIndex(db pebble.Reader, indexKey []byte) (idx uint64, err error) {
 }
 
 func lookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb.ResponseOp_Range, error) {
+	if err := validateCreationRevisionBounds(req.MinCreateRevision, req.MaxCreateRevision); err != nil {
+		return nil, err
+	}
 	if req.RangeEnd != nil {
 		return rangeLookup(reader, req)
 	}
@@ -232,10 +251,13 @@ func rangeLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb
 }
 
 func singleLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadapb.ResponseOp_Range, error) {
+	if err := validateCreationRevisionBounds(req.MinCreateRevision, req.MaxCreateRevision); err != nil {
+		return nil, err
+	}
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
 
-	err := encodeUserKey(keyBuf, req.Key, ^uint64(0))
+	err := encodeUserKeyPrefix(keyBuf, req.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -255,13 +277,33 @@ func singleLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadap
 	}
 
 	// If the latest version is a tombstone the key has been deleted.
-	if isTombstone(iter.Value()) {
+	k, err := key.DecodeBytes(iter.Key())
+	if err != nil {
+		return nil, err
+	}
+	if isTombstone(k) {
+		return &armadapb.ResponseOp_Range{}, nil
+	}
+	if err := validateRevision(k.CreateSeqno); err != nil {
+		return nil, err
+	}
+	if err := validateRevision(k.Seqno); err != nil {
+		return nil, err
+	}
+	if !matchesCreationRevision(k, req) {
 		return &armadapb.ResponseOp_Range{}, nil
 	}
 
-	kv := &armadapb.KeyValue{Key: req.Key}
-	value := iter.Value()
-	if !req.KeysOnly && !req.CountOnly && len(value) > 0 {
+	kv := &armadapb.KeyValue{
+		Key:            req.Key,
+		CreateRevision: int64(k.CreateSeqno),
+		ModRevision:    int64(k.Seqno),
+	}
+	if !req.KeysOnly && !req.CountOnly {
+		value, err := iter.ValueAndErr()
+		if err != nil {
+			return nil, err
+		}
 		kv.Value = make([]byte, len(value))
 		copy(kv.Value, value)
 	}
@@ -275,6 +317,23 @@ func singleLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (*armadap
 		Kvs:   kvs,
 		Count: 1,
 	}, nil
+}
+
+func validateCreationRevisionBounds(min, max int64) error {
+	if min < 0 || max < 0 || min != 0 && max != 0 && min > max {
+		return errors.New("invalid creation revision bounds")
+	}
+	return nil
+}
+
+func matchesCreationRevision(k key.Key, req *armadapb.RequestOp_Range) bool {
+	if req.MinCreateRevision > 0 && k.CreateSeqno < uint64(req.MinCreateRevision) {
+		return false
+	}
+	if req.MaxCreateRevision > 0 && k.CreateSeqno > uint64(req.MaxCreateRevision) {
+		return false
+	}
+	return true
 }
 
 func iteratorLookup(reader pebble.Reader, req *armadapb.RequestOp_Range) (iter.Seq[*armadapb.ResponseOp_Range], error) {

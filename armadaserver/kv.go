@@ -68,6 +68,16 @@ func validateTxnKeys(req *armadapb.TxnRequest) error {
 	return nil
 }
 
+func validateCreationRevisionBounds(min, max int64) error {
+	if min < 0 || max < 0 {
+		return status.Error(codes.InvalidArgument, "creation revision bounds must be non-negative")
+	}
+	if min != 0 && max != 0 && min > max {
+		return status.Error(codes.InvalidArgument, "min_create_revision must not exceed max_create_revision")
+	}
+	return nil
+}
+
 func validateRequestOpKeys(op *armadapb.RequestOp) error {
 	if r := op.GetRequestRange(); r != nil {
 		if rangeKeyContainsNullByte(r.Key, r.RangeEnd) {
@@ -75,6 +85,9 @@ func validateRequestOpKeys(op *armadapb.RequestOp) error {
 		}
 		if rangeEndContainsNullByte(r.RangeEnd) {
 			return status.Errorf(codes.InvalidArgument, "range_end must not contain null bytes")
+		}
+		if err := validateCreationRevisionBounds(r.GetMinCreateRevision(), r.GetMaxCreateRevision()); err != nil {
+			return err
 		}
 	}
 	if p := op.GetRequestPut(); p != nil {
@@ -111,10 +124,8 @@ func (s *KVServer) Range(ctx context.Context, req *armadapb.RangeRequest) (*arma
 		return nil, status.Error(codes.Unimplemented, "min_mod_revision not implemented")
 	} else if req.GetMaxModRevision() > 0 {
 		return nil, status.Error(codes.Unimplemented, "max_mod_revision not implemented")
-	} else if req.GetMinCreateRevision() > 0 {
-		return nil, status.Error(codes.Unimplemented, "min_create_revision not implemented")
-	} else if req.GetMaxCreateRevision() > 0 {
-		return nil, status.Error(codes.Unimplemented, "max_create_revision not implemented")
+	} else if err := validateCreationRevisionBounds(req.GetMinCreateRevision(), req.GetMaxCreateRevision()); err != nil {
+		return nil, err
 	}
 
 	if len(req.GetTable()) == 0 {
@@ -156,10 +167,8 @@ func (s *KVServer) IterateRange(req *armadapb.RangeRequest, srv armadapb.KV_Iter
 		return status.Error(codes.Unimplemented, "min_mod_revision not implemented")
 	} else if req.GetMaxModRevision() > 0 {
 		return status.Error(codes.Unimplemented, "max_mod_revision not implemented")
-	} else if req.GetMinCreateRevision() > 0 {
-		return status.Error(codes.Unimplemented, "min_create_revision not implemented")
-	} else if req.GetMaxCreateRevision() > 0 {
-		return status.Error(codes.Unimplemented, "max_create_revision not implemented")
+	} else if err := validateCreationRevisionBounds(req.GetMinCreateRevision(), req.GetMaxCreateRevision()); err != nil {
+		return err
 	}
 
 	if len(req.GetTable()) == 0 {

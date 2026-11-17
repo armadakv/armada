@@ -5,7 +5,6 @@ package fsm
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"testing"
 
 	"github.com/armadakv/armada/armadapb"
@@ -21,12 +20,12 @@ import (
 func physicalVersionCount(db *pebble.DB, userKey []byte) int {
 	// Build the prefix: [4B header][TypeUser][userKey][0x00 sep]
 	ref := mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: userKey})
-	prefixLen := len(ref) - key.V2SeqLen
+	prefixLen := len(ref) - key.V2SuffixLen
 	prefix := ref[:prefixLen]
 
 	// Lower bound: prefix + 8 zero bytes → stored seqno = 0 → seqno = MaxUint64
 	// (sorts FIRST within the prefix group, i.e. newest version).
-	lo := make([]byte, len(prefix)+key.V2SeqLen)
+	lo := make([]byte, len(prefix)+key.V2SuffixLen)
 	copy(lo, prefix)
 
 	// Upper bound: replace trailing 0x00 separator with 0x01.
@@ -503,7 +502,7 @@ func TestRunGC_IncreasingHorizon(t *testing.T) {
 func TestGCPrefixUpper(t *testing.T) {
 	r := require.New(t)
 	ref := mustEncodeKey(key.Key{KeyType: key.TypeUser, Key: []byte("foo")})
-	prefixLen := len(ref) - key.V2SeqLen
+	prefixLen := len(ref) - key.V2SuffixLen
 	prefix := ref[:prefixLen]
 
 	upper := gcPrefixUpper(prefix)
@@ -527,20 +526,21 @@ func TestIncrementStoredSeqno(t *testing.T) {
 	// next must be strictly greater than ref and still share the same prefix.
 	r.Greater(string(next), string(ref))
 
-	prefixLen := len(ref) - key.V2SeqLen
+	prefixLen := len(ref) - key.V2SuffixLen
 	r.Equal(ref[:prefixLen], next[:prefixLen])
 
 	// The stored seqno in next must equal stored(42)+1.
 	// stored(42) = ^42; next stored = ^42 + 1.
 	storedRef := uint64(0)
-	for i := prefixLen; i < len(ref); i++ {
+	for i := prefixLen; i < prefixLen+key.V2SeqLen; i++ {
 		storedRef = storedRef<<8 | uint64(ref[i])
 	}
 	storedNext := uint64(0)
-	for i := prefixLen; i < len(next); i++ {
+	for i := prefixLen; i < prefixLen+key.V2SeqLen; i++ {
 		storedNext = storedNext<<8 | uint64(next[i])
 	}
 	r.Equal(storedRef+1, storedNext)
+	r.Equal(make([]byte, key.V2CreateSeqLen+key.V2KindLen), next[prefixLen+key.V2SeqLen:])
 }
 
 // Sanity-check that physicalVersionCount correctly counts entries including
@@ -555,7 +555,7 @@ func TestPhysicalVersionCount_IncludesMaxSeqno(t *testing.T) {
 
 	b := db.NewBatch()
 	buf := bufferPool.Get()
-	require.NoError(t, encodeUserKey(buf, []byte("extreme"), math.MaxUint64))
+	require.NoError(t, encodeUserKeyPrefix(buf, []byte("extreme")))
 	require.NoError(t, b.Set(buf.Bytes(), []byte("vmax"), nil))
 	bufferPool.Put(buf)
 	require.NoError(t, b.Commit(pebble.NoSync))

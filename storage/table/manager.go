@@ -952,13 +952,6 @@ func (m *Manager) readIntoTable(ctx context.Context, id uint64, name string, rea
 	})
 }
 
-// readSnapshot validates a replication command snapshot and proposes its
-// source-indexed data commands in bounded sequences. A final DUMMY command is
-// required to durably advance source progress after every data sequence has applied.
-func readSnapshot(reader io.Reader, tableName string, maxBatchSize uint64, propose func(*armadapb.Command) error) error {
-	return readSnapshotWithTerminal(reader, tableName, maxBatchSize, true, propose)
-}
-
 func readSnapshotWithTerminal(reader io.Reader, tableName string, maxBatchSize uint64, requireTerminal bool, propose func(*armadapb.Command) error) error {
 	const maxSnapshotRecordSize = 4 * 1024 * 1024
 
@@ -1011,6 +1004,11 @@ func readSnapshotWithTerminal(reader io.Reader, tableName string, maxBatchSize u
 			case armadapb.Command_PUT, armadapb.Command_DELETE:
 				if cmd.Kv == nil || len(cmd.Kv.Key) == 0 {
 					return fmt.Errorf("snapshot %s command has no key-value", cmd.Type)
+				}
+				hasRevisionMetadata := cmd.Kv.CreateRevision != 0 || cmd.Kv.ModRevision != 0
+				if (requireTerminal || hasRevisionMetadata) &&
+					(cmd.Kv.CreateRevision <= 0 || cmd.Kv.ModRevision <= 0 || cmd.Kv.CreateRevision > cmd.Kv.ModRevision) {
+					return fmt.Errorf("snapshot %s command has invalid revisions: create=%d mod=%d", cmd.Type, cmd.Kv.CreateRevision, cmd.Kv.ModRevision)
 				}
 				if cmd.LeaderIndex == nil {
 					if requireTerminal {

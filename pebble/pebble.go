@@ -30,14 +30,30 @@ const (
 )
 
 func split(b []byte) int {
-	// For V2 keys, the seqno suffix (last V2SeqLen bytes) is the MVCC version.
-	// The split point is everything before the seqno (the null separator remains
-	// in the prefix), enabling SeekPrefixGE to find the latest version of a user key.
-	// Minimum meaningful V2 key: 4 (header) + 1 (keyType) + 0 (userKey) + 1 (sep) + 8 (seqno) = 14 bytes.
-	if len(b) > key.V2SeqLen+key.V2SepLen+5 && b[0] == key.V2 {
-		return len(b) - key.V2SeqLen
+	if len(b) < 4+1+key.V2SepLen || b[0] != key.V2 || b[4] != byte(key.TypeUser) {
+		return len(b)
+	}
+	// Versioned keys end in [inverted modification seqno][creation seqno][kind].
+	separator := len(b) - key.V2SuffixLen - key.V2SepLen
+	if separator >= 5 && b[separator] == 0 &&
+		(b[len(b)-1] == byte(key.KindValue) || b[len(b)-1] == byte(key.KindTombstone)) {
+		return separator + 1
+	}
+	// Prefix bounds end immediately after the separator.
+	if b[len(b)-1] == 0 {
+		return len(b)
 	}
 	return len(b)
+}
+
+func immediateSuccessor(dst, prefix []byte) []byte {
+	if len(prefix) >= 5 && prefix[0] == key.V2 && prefix[4] == byte(key.TypeUser) &&
+		prefix[len(prefix)-1] == 0 {
+		dst = append(dst, prefix...)
+		dst[len(dst)-1] = 1
+		return dst
+	}
+	return pebble.DefaultComparer.ImmediateSuccessor(dst, prefix)
 }
 
 func DefaultOptions() *pebble.Options {
@@ -50,8 +66,8 @@ func DefaultOptions() *pebble.Options {
 		MemTableStopWritesThreshold: maxWriteBufferNumber,
 		MaxOpenFiles:                maxOpenFiles,
 		Comparer: &pebble.Comparer{
-			// ComparePointSuffixes and CompareRangeSuffixes: suffixes are
-			// 8-byte inverted big-endian seqnos, so plain bytes.Compare
+			// ComparePointSuffixes and CompareRangeSuffixes: suffixes begin with
+			// the inverted big-endian modification seqno, so plain bytes.Compare
 			// provides correct ordering (higher seqno → smaller bytes → sorts first).
 			ComparePointSuffixes: bytes.Compare,
 			CompareRangeSuffixes: bytes.Compare,
@@ -63,8 +79,8 @@ func DefaultOptions() *pebble.Options {
 			Separator:            pebble.DefaultComparer.Separator,
 			Split:                split,
 			Successor:            pebble.DefaultComparer.Successor,
-			ImmediateSuccessor:   pebble.DefaultComparer.ImmediateSuccessor,
-			Name:                 "armada.v2",
+			ImmediateSuccessor:   immediateSuccessor,
+			Name:                 "armada.v2.creation-revision",
 		},
 	}
 	opts.Levels[0] = pebble.LevelOptions{

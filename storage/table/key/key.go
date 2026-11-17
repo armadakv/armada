@@ -44,6 +44,8 @@ var (
 	ErrMissingKeyHeader = errors.New("missing key header")
 	// ErrMalformedKeyHeader key header is malformed.
 	ErrMalformedKeyHeader = errors.New("malformed key header")
+	// ErrMalformedV2Key key V2 suffix or separator is malformed.
+	ErrMalformedV2Key = errors.New("malformed V2 key")
 )
 
 // Key generic internal Key (not that field support might be dependent on the stored key version).
@@ -55,6 +57,10 @@ type Key struct {
 	Key []byte
 	// Seqno sequence number/raft index - supported since V2.
 	Seqno uint64
+	// CreateSeqno is the source sequence that created this key incarnation.
+	CreateSeqno uint64
+	// Kind distinguishes live values from tombstones in V2.
+	Kind RecordKind
 }
 
 func (k *Key) reset() {
@@ -62,6 +68,8 @@ func (k *Key) reset() {
 	k.KeyType = TypeUnknown
 	k.Key = k.Key[0:0]
 	k.Seqno = 0
+	k.CreateSeqno = 0
+	k.Kind = KindValue
 }
 
 // Decoder the Key decoder.
@@ -110,6 +118,8 @@ func (d Decoder) Decode(key *Key) error {
 		key.KeyType = k.keyType
 		key.Key = k.key
 		key.Seqno = k.seqno
+		key.CreateSeqno = k.createSeqno
+		key.Kind = k.kind
 		return nil
 	}
 	return ErrUnknownKeyVersion
@@ -149,9 +159,11 @@ func (e Encoder) Encode(key *Key) (int, error) {
 	}
 	if key.version == V2 {
 		k := keyV2{
-			keyType: key.KeyType,
-			key:     key.Key,
-			seqno:   key.Seqno,
+			keyType:     key.KeyType,
+			key:         key.Key,
+			seqno:       key.Seqno,
+			createSeqno: key.CreateSeqno,
+			kind:        key.Kind,
 		}
 		n, err := k.Encode(e.w)
 		if err != nil {
@@ -176,12 +188,17 @@ func DecodeBytes(raw []byte) (Key, error) {
 		}, nil
 	}
 	if raw[keyVersionHeaderPos] == V2 {
-		k := v2DecodeRaw(raw[keyHeaderLen:])
+		k, err := decodeV2Raw(raw[keyHeaderLen:])
+		if err != nil {
+			return Key{}, err
+		}
 		return Key{
-			version: V2,
-			KeyType: k.keyType,
-			Key:     k.key,
-			Seqno:   k.seqno,
+			version:     V2,
+			KeyType:     k.keyType,
+			Key:         k.key,
+			Seqno:       k.seqno,
+			CreateSeqno: k.createSeqno,
+			Kind:        k.kind,
 		}, nil
 	}
 	return Key{}, ErrUnknownKeyVersion

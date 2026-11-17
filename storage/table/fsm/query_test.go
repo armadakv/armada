@@ -53,6 +53,9 @@ func TestCommandSnapshotPreservesSourceIndexes(t *testing.T) {
 		r.NoError(cmd.UnmarshalVT(writer.records[i]))
 		r.NotNil(cmd.LeaderIndex)
 		r.Equal(want, *cmd.LeaderIndex)
+		r.NotNil(cmd.Kv)
+		r.Equal(int64(want), cmd.Kv.CreateRevision)
+		r.Equal(int64(want), cmd.Kv.ModRevision)
 	}
 }
 
@@ -107,8 +110,10 @@ func TestFSM_Lookup(t *testing.T) {
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
 					{
-						Key:   []byte(fmt.Sprintf(testKeyFormat, 0)),
-						Value: []byte(testValue),
+						Key:            []byte(fmt.Sprintf(testKeyFormat, 0)),
+						CreateRevision: 0,
+						ModRevision:    0,
+						Value:          []byte(testValue),
 					},
 				},
 				Count: 1,
@@ -126,8 +131,10 @@ func TestFSM_Lookup(t *testing.T) {
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
 					{
-						Key:   []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
-						Value: []byte(largeValues[0]),
+						Key:            []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
+						CreateRevision: 0,
+						ModRevision:    0,
+						Value:          []byte(largeValues[0]),
 					},
 				},
 				Count: 1,
@@ -480,12 +487,16 @@ func TestFSM_Lookup_Range(t *testing.T) {
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
 					{
-						Key:   []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
-						Value: []byte(largeValues[0]),
+						Key:            []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
+						CreateRevision: 0,
+						ModRevision:    0,
+						Value:          []byte(largeValues[0]),
 					},
 					{
-						Key:   []byte(fmt.Sprintf(testLargeKeyFormat, 1)),
-						Value: []byte(largeValues[1]),
+						Key:            []byte(fmt.Sprintf(testLargeKeyFormat, 1)),
+						CreateRevision: 1,
+						ModRevision:    1,
+						Value:          []byte(largeValues[1]),
 					},
 				},
 				Count: 2,
@@ -504,8 +515,10 @@ func TestFSM_Lookup_Range(t *testing.T) {
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
 					{
-						Key:   []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
-						Value: []byte(largeValues[0]),
+						Key:            []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
+						CreateRevision: 0,
+						ModRevision:    0,
+						Value:          []byte(largeValues[0]),
 					},
 				},
 				Count: 1,
@@ -525,16 +538,22 @@ func TestFSM_Lookup_Range(t *testing.T) {
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
 					{
-						Key:   []byte(fmt.Sprintf(testKeyFormat, 0)),
-						Value: []byte(testValue),
+						Key:            []byte(fmt.Sprintf(testKeyFormat, 0)),
+						CreateRevision: 0,
+						ModRevision:    0,
+						Value:          []byte(testValue),
 					},
 					{
-						Key:   []byte(fmt.Sprintf(testKeyFormat, 1)),
-						Value: []byte(testValue),
+						Key:            []byte(fmt.Sprintf(testKeyFormat, 1)),
+						CreateRevision: 1,
+						ModRevision:    1,
+						Value:          []byte(testValue),
 					},
 					{
-						Key:   []byte(fmt.Sprintf(testKeyFormat, 10)),
-						Value: []byte(testValue),
+						Key:            []byte(fmt.Sprintf(testKeyFormat, 10)),
+						CreateRevision: 10,
+						ModRevision:    10,
+						Value:          []byte(testValue),
 					},
 				},
 				Count: 3,
@@ -554,16 +573,22 @@ func TestFSM_Lookup_Range(t *testing.T) {
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
 					{
-						Key:   []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
-						Value: []byte(largeValues[0]),
+						Key:            []byte(fmt.Sprintf(testLargeKeyFormat, 0)),
+						CreateRevision: 0,
+						ModRevision:    0,
+						Value:          []byte(largeValues[0]),
 					},
 					{
-						Key:   []byte(fmt.Sprintf(testLargeKeyFormat, 1)),
-						Value: []byte(largeValues[1]),
+						Key:            []byte(fmt.Sprintf(testLargeKeyFormat, 1)),
+						CreateRevision: 1,
+						ModRevision:    1,
+						Value:          []byte(largeValues[1]),
 					},
 					{
-						Key:   []byte(fmt.Sprintf(testLargeKeyFormat, 2)),
-						Value: []byte(largeValues[2]),
+						Key:            []byte(fmt.Sprintf(testLargeKeyFormat, 2)),
+						CreateRevision: 2,
+						ModRevision:    2,
+						Value:          []byte(largeValues[2]),
 					},
 				},
 				Count: 3,
@@ -597,9 +622,9 @@ func TestFSM_Lookup_Range(t *testing.T) {
 			},
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
-					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 0))},
-					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 1))},
-					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 2))},
+					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 0)), CreateRevision: 0, ModRevision: 0},
+					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 1)), CreateRevision: 1, ModRevision: 1},
+					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 2)), CreateRevision: 2, ModRevision: 2},
 				},
 				Count: 3,
 				More:  true,
@@ -618,9 +643,9 @@ func TestFSM_Lookup_Range(t *testing.T) {
 			},
 			want: &armadapb.ResponseOp_Range{
 				Kvs: []*armadapb.KeyValue{
-					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 0))},
-					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 1))},
-					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 2))},
+					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 0)), CreateRevision: 0, ModRevision: 0},
+					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 1)), CreateRevision: 1, ModRevision: 1},
+					{Key: []byte(fmt.Sprintf(testLargeKeyFormat, 2)), CreateRevision: 2, ModRevision: 2},
 				},
 				Count: 3,
 			},

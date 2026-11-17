@@ -151,3 +151,24 @@ grpcurl -insecure "-d={
     \"count_only\": true}" \
     127.0.0.1:8443 regatta.v1.KV/Range
 ```
+
+## Filter by creation revision
+
+Use `min_create_revision` and `max_create_revision` to filter the current live
+incarnation of each key by its inclusive creation-revision bounds. A value of
+`0` leaves that bound unbounded. Updates keep the incarnation's creation
+revision; deleting and recreating a key assigns a new one. The response
+includes both `create_revision` and `mod_revision`, including for key-only and
+previous-key responses. Creation filters also apply to transaction Range
+operations.
+
+```bash
+grpcurl -insecure "-d={
+    \"table\": \"$(echo -n "armada-test" | base64)\",
+    \"key\": \"$(echo -n "key_1" | base64)\",
+    \"range_end\": \"$(echo -n "key_20" | base64)\",
+    \"min_create_revision\": 100,
+    \"max_create_revision\": 200,
+    \"keys_only\": true}" \
+    127.0.0.1:8443 regatta.v1.KV/Range
+```

@@ -103,9 +103,12 @@ func TestUpdateContext_Commit(t *testing.T) {
 // allKeysOpts returns *pebble.IterOptions for iterating over
 // all the user keys.
 func allUserKeysOpts() *pebble.IterOptions {
+	lower := append([]byte(nil), minEncodedUserKey[:len(minEncodedUserKey)-key.V2SuffixLen]...)
+	upper := append([]byte(nil), maxEncodedUserKey[:len(maxEncodedUserKey)-key.V2SuffixLen]...)
+	upper[len(upper)-1] = 1
 	return &pebble.IterOptions{
-		LowerBound: append([]byte(nil), minEncodedUserKey...),
-		UpperBound: incrementRightmostByte(append([]byte(nil), maxEncodedUserKey...)),
+		LowerBound: lower,
+		UpperBound: upper,
 	}
 }
 
@@ -134,15 +137,13 @@ func liveUserKeys(t *testing.T, db pebble.Reader) []liveUserKey {
 		copy(rawKey, iter.Key())
 
 		val := iter.Value()
-		if isTombstone(val) {
-			// This key is logically deleted — skip the entire user-key prefix.
-			iterNextUserKey(iter, rawKey)
-			continue
-		}
-
 		k, decErr := key.DecodeBytes(rawKey)
 		if decErr != nil {
 			t.Fatalf("liveUserKeys: could not decode key: %v", decErr)
+		}
+		if isTombstone(k) {
+			iterNextUserKey(iter, rawKey)
+			continue
 		}
 		userKey := make([]byte, len(k.Key))
 		copy(userKey, k.Key)
