@@ -52,7 +52,7 @@ func handlePutWithMetadata(ctx *updateContext, put *armadapb.RequestOp_Put, sour
 	if err := ctx.EnsureIndexed(); err != nil {
 		return nil, err
 	}
-	current, value, physicalKey, found, err := currentRecord(ctx.batch, put.Key)
+	current, value, physicalKey, found, err := currentRecord(ctx.batch, put.Key, put.PrevKv)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func handlePutWithMetadata(ctx *updateContext, put *armadapb.RequestOp_Put, sour
 	return resp, nil
 }
 
-func currentRecord(reader pebble.Reader, userKey []byte) (key.Key, []byte, []byte, bool, error) {
+func currentRecord(reader pebble.Reader, userKey []byte, withValue bool) (key.Key, []byte, []byte, bool, error) {
 	keyBuf := bufferPool.Get()
 	defer bufferPool.Put(keyBuf)
 	if err := encodeUserKeyPrefix(keyBuf, userKey); err != nil {
@@ -103,13 +103,20 @@ func currentRecord(reader pebble.Reader, userKey []byte) (key.Key, []byte, []byt
 	}
 	defer func() { _ = iter.Close() }()
 	if !iter.SeekPrefixGE(keyBuf.Bytes()) {
-		return key.Key{}, nil, nil, false, nil
+		return key.Key{}, nil, nil, false, iter.Error()
 	}
 	decoded, err := key.DecodeBytes(iter.Key())
 	if err != nil {
 		return key.Key{}, nil, nil, false, err
 	}
-	value := append([]byte(nil), iter.Value()...)
+	var value []byte
+	if withValue && !isTombstone(decoded) {
+		v, err := iter.ValueAndErr()
+		if err != nil {
+			return key.Key{}, nil, nil, false, err
+		}
+		value = append([]byte(nil), v...)
+	}
 	physicalKey := append([]byte(nil), iter.Key()...)
 	return decoded, value, physicalKey, true, nil
 }
