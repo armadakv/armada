@@ -3,14 +3,56 @@
 package fsm
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/armadakv/armada/armadapb"
 	rp "github.com/armadakv/armada/pebble"
+	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2/vfs"
 	"github.com/stretchr/testify/require"
 )
+
+func TestCurrentRecordOptionalValue(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+	userKey := []byte("key")
+	value := bytes.Repeat([]byte("value"), 16*1024)
+	_, err := p.Update([]sm.Entry{
+		putEntry(10, userKey, []byte("old")),
+		putEntry(20, userKey, value),
+	})
+	require.NoError(t, err)
+
+	for _, withValue := range []bool{false, true} {
+		record, gotValue, physicalKey, found, err := currentRecord(p.pebble.Load(), userKey, withValue)
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, uint64(10), record.CreateSeqno)
+		require.Equal(t, uint64(20), record.Seqno)
+		decoded, err := key.DecodeBytes(physicalKey)
+		require.NoError(t, err)
+		require.Equal(t, userKey, decoded.Key)
+		require.Equal(t, record.CreateSeqno, decoded.CreateSeqno)
+		require.Equal(t, record.Seqno, decoded.Seqno)
+		if withValue {
+			require.Equal(t, value, gotValue)
+		} else {
+			require.Nil(t, gotValue)
+		}
+	}
+
+	_, err = p.Update([]sm.Entry{{Index: 30, Cmd: mustMarshallProto(&armadapb.Command{
+		Type: armadapb.Command_DELETE, Kv: &armadapb.KeyValue{Key: userKey},
+	})}})
+	require.NoError(t, err)
+	record, gotValue, _, found, err := currentRecord(p.pebble.Load(), userKey, true)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.True(t, isTombstone(record))
+	require.Nil(t, gotValue)
+}
 
 func Test_handlePut(t *testing.T) {
 	r := require.New(t)

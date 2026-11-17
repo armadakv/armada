@@ -1011,11 +1011,16 @@ func readSnapshotWithTerminal(reader io.Reader, tableName string, maxBatchSize u
 					return fmt.Errorf("snapshot %s command has invalid revisions: create=%d mod=%d", cmd.Type, cmd.Kv.CreateRevision, cmd.Kv.ModRevision)
 				}
 				if cmd.LeaderIndex == nil {
-					if requireTerminal {
+					if requireTerminal || hasRevisionMetadata {
 						return fmt.Errorf("snapshot %s command has no leader index", cmd.Type)
 					}
-				} else if *cmd.LeaderIndex > maxDataLeaderIndex {
-					maxDataLeaderIndex = *cmd.LeaderIndex
+				} else {
+					if hasRevisionMetadata && uint64(cmd.Kv.ModRevision) != *cmd.LeaderIndex {
+						return fmt.Errorf("snapshot %s command modification revision %d differs from leader index %d", cmd.Type, cmd.Kv.ModRevision, *cmd.LeaderIndex)
+					}
+					if *cmd.LeaderIndex > maxDataLeaderIndex {
+						maxDataLeaderIndex = *cmd.LeaderIndex
+					}
 				}
 				batch.Sequence = append(batch.Sequence, cmd)
 				if maxBatchSize > 0 && uint64(batch.SizeVT()) >= maxBatchSize {

@@ -399,7 +399,7 @@ func TestReadSnapshot(t *testing.T) {
 	}{
 		{
 			name:     "missing terminal marker",
-			commands: []*armadapb.Command{{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("key"), CreateRevision: 1, ModRevision: 1}}},
+			commands: []*armadapb.Command{{Table: []byte(tableName), Type: armadapb.Command_PUT, LeaderIndex: &first, Kv: &armadapb.KeyValue{Key: []byte("key"), CreateRevision: 1, ModRevision: 10}}},
 			wantErr:  "missing its terminal marker",
 		},
 		{
@@ -464,6 +464,49 @@ func TestReadSnapshotRejectsInvalidRevisions(t *testing.T) {
 			require.ErrorContains(t, err, "invalid revisions")
 			require.False(t, proposed)
 		})
+	}
+}
+
+func TestReadSnapshotRevisionLeaderIndexConsistency(t *testing.T) {
+	const tableName = "test"
+	leaderIndex := uint64(10)
+
+	for _, commandType := range []armadapb.Command_CommandType{armadapb.Command_PUT, armadapb.Command_DELETE} {
+		for _, requireTerminal := range []bool{false, true} {
+			for _, testCase := range []struct {
+				name        string
+				leaderIndex *uint64
+				modRevision int64
+				wantErr     string
+			}{
+				{"matching", &leaderIndex, 10, ""},
+				{"modification ahead", &leaderIndex, 1000, "differs from leader index"},
+				{"modification behind", &leaderIndex, 5, "differs from leader index"},
+				{"missing leader index", nil, 10, "has no leader index"},
+			} {
+				t.Run(fmt.Sprintf("%s/terminal=%t/%s", commandType, requireTerminal, testCase.name), func(t *testing.T) {
+					commands := marshalSnapshotCommands(t,
+						&armadapb.Command{
+							Table: []byte(tableName), Type: commandType, LeaderIndex: testCase.leaderIndex,
+							Kv: &armadapb.KeyValue{Key: []byte("key"), CreateRevision: 1, ModRevision: testCase.modRevision},
+						},
+						&armadapb.Command{Table: []byte(tableName), Type: armadapb.Command_DUMMY, LeaderIndex: &leaderIndex},
+					)
+					proposed := 0
+					err := readSnapshotWithTerminal(&snapshotCommandReader{records: commands}, tableName, 1, requireTerminal, func(*armadapb.Command) error {
+						proposed++
+						return nil
+					})
+					if testCase.wantErr != "" {
+						require.ErrorContains(t, err, testCase.wantErr)
+						require.Zero(t, proposed)
+						return
+					}
+					require.NoError(t, err)
+					require.Equal(t, 2, proposed)
+				})
+			}
+		}
 	}
 }
 

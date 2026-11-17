@@ -92,7 +92,6 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 			}
 
 			if k.KeyType == key.TypeUser {
-				val := iter.Value()
 				if !isTombstone(k) {
 					userKey := append([]byte(nil), k.Key...)
 					physicalKey := append([]byte(nil), iter.Key()...)
@@ -101,6 +100,11 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 					})
 
 					if del.PrevKv {
+						val, err := iter.ValueAndErr()
+						if err != nil {
+							_ = iter.Close()
+							return nil, err
+						}
 						prevKv, err := makeKeyValue(userKey, val, k.CreateSeqno, k.Seqno)
 						if err != nil {
 							_ = iter.Close()
@@ -156,7 +160,7 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 		if err := ctx.EnsureIndexed(); err != nil {
 			return nil, err
 		}
-		current, value, physicalKey, found, err := currentRecord(ctx.batch, del.Key)
+		current, value, physicalKey, found, err := currentRecord(ctx.batch, del.Key, del.PrevKv)
 		if err != nil {
 			return nil, err
 		}
