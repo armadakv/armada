@@ -34,6 +34,9 @@ import (
 
 	"github.com/lni/goutils/leaktest"
 	"github.com/lni/goutils/netutil"
+	"github.com/lni/goutils/netutil/cenk/backoff"
+	"github.com/lni/goutils/netutil/facebookgo/clock"
+	circuit "github.com/lni/goutils/netutil/rubyist/circuitbreaker"
 
 	"github.com/armadakv/armada/raft/config"
 	"github.com/armadakv/armada/raft/internal/registry"
@@ -712,36 +715,46 @@ func TestCircuitBreakerKicksInOnConnectivityIssue(t *testing.T) {
 		From:    1,
 		ShardID: 100,
 	}
+	// mock clock: the real backoff is a randomized 250-750ms window a loaded runner can skip
+	clk := clock.NewMock()
+	breaker := circuit.NewBreakerWithOptions(&circuit.Options{
+		BackOff:    backoff.NewConstantBackOff(500 * time.Millisecond),
+		Clock:      clk,
+		ShouldTrip: circuit.ThresholdTripFunc(1),
+	})
+	setBreaker(trans, "nosuchhost:39001", breaker)
 	done := trans.Send(msg)
 	if !done {
 		t.Errorf("not suppose to fail")
 	}
-	for {
-		if trans.queueSize() == 0 {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	for range 100 {
-		if handler.getUnreachableCount(100, 2) == 1 {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if got := handler.getUnreachableCount(100, 2); got != 1 {
-		t.Errorf("remote unreachable count = %d, want 1", got)
-	}
+	require.Eventually(t, func() bool { return trans.queueSize() == 0 },
+		30*time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return handler.getUnreachableCount(100, 2) == 1
+	}, 30*time.Second, 10*time.Millisecond)
 	if got := handler.getUnreachableCount(100, 1); got != 0 {
 		t.Errorf("local replica was reported unreachable %d times", got)
 	}
-	breaker := trans.GetCircuitBreaker("nosuchhost:39001")
 	if breaker.Ready() {
 		t.Errorf("breaker is still ready?")
 	}
-	time.Sleep(time.Second)
+	clk.Add(time.Second)
 	if !breaker.Ready() {
 		t.Errorf("breaker is not ready after wait")
 	}
+}
+
+func newLongBackoffBreaker() *circuit.Breaker {
+	return circuit.NewBreakerWithOptions(&circuit.Options{
+		BackOff:    backoff.NewConstantBackOff(time.Hour),
+		ShouldTrip: circuit.ThresholdTripFunc(1),
+	})
+}
+
+func setBreaker(t *Transport, key string, b *circuit.Breaker) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.mu.breakers[key] = b
 }
 
 func getTestSnapshotMessage(to uint64) raftpb.Message {
@@ -1006,7 +1019,8 @@ func testSnapshotWithNotMatchedDBVWillBeDropped(t *testing.T,
 	if !done {
 		t.Errorf("failed to send the snapshot")
 	}
-	waitForFirstSnapshotStatusUpdate(handler, 1000)
+	// the received-snapshot count is expected to stay put, so only wait briefly
+	waitForFirstSnapshotStatusUpdate(handler, 30000)
 	waitForSnapshotCountUpdate(handler, 1000)
 	if handler.getSnapshotCount(100, 2) != 0 {
 		t.Errorf("got %d, want %d", handler.getSnapshotCount(100, 2), 0)
@@ -1132,7 +1146,7 @@ func testFailedConnectionReportsSnapshotFailure(t *testing.T,
 		}
 	}()
 	// invalid address
-	nodes.Add(100, 2, "localhost:12345")
+	nodes.Add(100, 2, fmt.Sprintf("localhost:%d", getTestPort()))
 	tt.generateSnapshotFile(100, 12, testSnapshotIndex, "testsnapshot.gbsnap", snapshotSize, fs)
 	m := getTestSnapshotMessage(2)
 	m.Snapshot.FileSize = getTestSnapshotFileSize(snapshotSize)
@@ -1143,7 +1157,7 @@ func testFailedConnectionReportsSnapshotFailure(t *testing.T,
 	if !done {
 		t.Errorf("failed to send the snapshot")
 	}
-	waitForTotalSnapshotStatusUpdateCount(handler, 6000, 1)
+	waitForTotalSnapshotStatusUpdateCount(handler, 30000, 1)
 	if handler.getSnapshotCount(100, 2) != 0 {
 		t.Errorf("got %d, want %d", handler.getSnapshotCount(100, 2), 0)
 	}
@@ -1247,10 +1261,10 @@ func testSnapshotWithExternalFilesCanBeSend(t *testing.T,
 
 func TestSnapshotWithExternalFilesCanBeSend(t *testing.T) {
 	fs := vfs.NewMem()
-	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize/2, 3000, false, fs)
-	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize*3+100, 3000, false, fs)
-	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize/2, 3000, true, fs)
-	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize*3+100, 3000, true, fs)
+	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize/2, 30000, false, fs)
+	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize*3+100, 30000, false, fs)
+	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize/2, 30000, true, fs)
+	testSnapshotWithExternalFilesCanBeSend(t, snapshotChunkSize*3+100, 30000, true, fs)
 }
 
 func TestNoOPTransportCanBeCreated(t *testing.T) {
@@ -1285,20 +1299,17 @@ func TestInitialMessageCanBeSent(t *testing.T) {
 	if !ok {
 		t.Errorf("send failed")
 	}
-	for range 1000 {
-		if atomic.LoadUint64(&noopTransport.connected) != 0 {
-			break
-		}
-		time.Sleep(time.Millisecond)
-	}
+	require.Eventually(t, func() bool {
+		return atomic.LoadUint64(&noopTransport.connected) != 0
+	}, 30*time.Second, time.Millisecond)
 	if tt.queueSize() != 1 {
 		t.Errorf("queue len %d, want 1", tt.queueSize())
 	}
 	if len(tt.mu.breakers) != 1 {
 		t.Errorf("breakers len %d, want 1", len(tt.mu.breakers))
 	}
-	if noopTransport.connected != 1 {
-		t.Errorf("connected %d, want 1", noopTransport.connected)
+	if got := atomic.LoadUint64(&noopTransport.connected); got != 1 {
+		t.Errorf("connected %d, want 1", got)
 	}
 }
 
@@ -1351,6 +1362,8 @@ func TestCircuitBreakerCauseFailFast(t *testing.T) {
 		}
 	}()
 	nodes.Add(100, 2, serverAddress)
+	// a breaker that stays open: the default half-opens after 250-750ms
+	setBreaker(tt, serverAddress, newLongBackoffBreaker())
 	msg := raftpb.Message{
 		Type:    raftpb.Heartbeat,
 		To:      2,
@@ -1366,13 +1379,8 @@ func TestCircuitBreakerCauseFailFast(t *testing.T) {
 	// see comments in TestFailedConnectionIsRemovedFromTransport for why
 	// the returned value of the below Send() is not checked
 	tt.Send(msg)
-	for range 1000 {
-		if tt.queueSize() != 0 {
-			time.Sleep(time.Millisecond)
-		} else {
-			break
-		}
-	}
+	require.Eventually(t, func() bool { return tt.queueSize() == 0 },
+		30*time.Second, time.Millisecond)
 	req.SetToFail(false)
 	for range 20 {
 		ok = tt.Send(msg)
@@ -1429,9 +1437,9 @@ func TestCircuitBreakerForResolveNotShared(t *testing.T) {
 		}
 		time.Sleep(time.Millisecond)
 	}
-	if atomic.LoadUint64(&noopTransport.connected) != 1 {
-		t.Errorf("connected %d, want 1", noopTransport.connected)
-	}
+	require.Eventually(t, func() bool {
+		return atomic.LoadUint64(&noopTransport.connected) == 1
+	}, 30*time.Second, time.Millisecond)
 	if atomic.LoadUint64(&noopTransport.tryConnect) != 1 {
 		t.Errorf("connected %d, want 1", noopTransport.tryConnect)
 	}

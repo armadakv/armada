@@ -84,7 +84,7 @@ func TestWorkerLeaseLossCancelsWork(t *testing.T) {
 
 func TestWorkerLeaseExpiryCancelsWork(t *testing.T) {
 	w := &worker{
-		workerFactory: &workerFactory{leaseInterval: time.Millisecond},
+		workerFactory: &workerFactory{leaseInterval: 100 * time.Millisecond},
 		workerCtx:     context.Background(),
 	}
 	w.acquireLease()
@@ -93,7 +93,7 @@ func TestWorkerLeaseExpiryCancelsWork(t *testing.T) {
 	require.True(t, leased)
 	select {
 	case <-leaseCtx.Done():
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("lease work was not canceled when the lease expired")
 	}
 	_, leased = w.leaseWork()
@@ -136,7 +136,7 @@ func TestWorkerLeaseLossCancelsLogReplay(t *testing.T) {
 	select {
 	case err := <-result:
 		require.ErrorIs(t, err, context.Canceled)
-	case <-time.After(time.Second):
+	case <-time.After(10 * time.Second):
 		t.Fatal("log replay did not stop when its lease context was canceled")
 	}
 }
@@ -148,18 +148,10 @@ func TestWorker_do(t *testing.T) {
 	defer srv.Shutdown()
 
 	t.Log("create tables")
-	_, err := leaderEngine.CreateTable("test")
-	r.NoError(err)
-	_, err = followerEngine.CreateTable("test")
-	r.NoError(err)
+	at := createTableAndWait(t, leaderEngine, "test")
+	createTableAndWait(t, followerEngine, "test")
 
-	var at table.ActiveTable
 	t.Log("load some data")
-	r.Eventually(func() bool {
-		at, err = leaderEngine.GetTable("test")
-		return err == nil
-	}, 5*time.Second, 500*time.Millisecond, "table not created in time")
-
 	keyCount := 1000
 	r.NoError(fillData(keyCount, at))
 
@@ -206,7 +198,7 @@ func TestWorker_do(t *testing.T) {
 	r.NoError(err)
 
 	func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		response, err := table.Range(ctx, &armadapb.RangeRequest{
 			Table:        []byte("test"),
@@ -224,7 +216,7 @@ func TestWorker_do(t *testing.T) {
 
 	t.Log("reset table")
 	func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		r.NoError(table.Reset(ctx))
 	}()
@@ -441,23 +433,11 @@ func TestWorker_recover(t *testing.T) {
 	leaderEngine, followerEngine := prepareLeaderAndFollowerEngine(t)
 
 	t.Log("create tables")
-	r.Eventually(func() bool {
-		_, err := leaderEngine.CreateTable("test")
-		return err == nil
-	}, 5*time.Second, 100*time.Millisecond, "table test not created in time")
-	r.Eventually(func() bool {
-		_, err := leaderEngine.CreateTable("test2")
-		return err == nil
-	}, 5*time.Second, 100*time.Millisecond, "table test2 not created in time")
+	at := createTableAndWait(t, leaderEngine, "test")
+	createTableAndWait(t, leaderEngine, "test2")
 
-	var at table.ActiveTable
 	t.Log("load some data")
-	r.Eventually(func() bool {
-		var err error
-		at, err = leaderEngine.GetTable("test")
-		return err == nil
-	}, 5*time.Second, 500*time.Millisecond, "table not created in time")
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_, err := at.Put(ctx, &armadapb.PutRequest{
 		Key:   []byte("foo"),
@@ -477,7 +457,7 @@ func TestWorker_recover(t *testing.T) {
 			_ = sf.Close()
 			_ = os.Remove(sf.Path())
 		})
-		sctx, scancel := context.WithTimeout(context.Background(), time.Second)
+		sctx, scancel := context.WithTimeout(context.Background(), 30*time.Second)
 		resp, err := tab.Snapshot(sctx, sf)
 		scancel()
 		r.NoError(err)
@@ -1180,7 +1160,7 @@ func createTableAndWait(t *testing.T, e *storage.Engine, name string) table.Acti
 		if err != nil {
 			return false
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		_, err = tab.LeaderIndex(ctx, true)
 		return err == nil

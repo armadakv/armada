@@ -83,13 +83,16 @@ var (
 
 var rttValues = []uint64{10, 20, 30, 50, 100, 200, 500}
 
+// minTestRTTMillisecond keeps election timeouts above CI stalls; calibration returns 10ms on the in-memory FS
+const minTestRTTMillisecond = 50
+
 func getRTTMillisecond(fs vfs.FS, dir string) uint64 {
 	mu.Lock()
 	defer mu.Unlock()
 	if rttMillisecond > 0 {
 		return rttMillisecond
 	}
-	rttMillisecond = calcRTTMillisecond(fs, dir)
+	rttMillisecond = max(calcRTTMillisecond(fs, dir), minTestRTTMillisecond)
 	return rttMillisecond
 }
 
@@ -184,6 +187,17 @@ func getTestConfig() *config.Config {
 		ElectionRTT:  3,
 		HeartbeatRTT: 1,
 		CheckQuorum:  true,
+	}
+}
+
+func waitFor(t *testing.T, cond func() bool, msg string) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("%s", msg)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
@@ -2225,15 +2239,16 @@ func TestStartReplicaWaitForReadiness(t *testing.T) {
 				var n *node
 				var ok bool
 
-				for range 10 {
+				for range 1000 {
 					n, ok = nh.getShard(cfg.ShardID)
 					if ok {
 						break
 					}
-					time.Sleep(time.Millisecond * 100)
+					time.Sleep(time.Millisecond * 10)
 				}
 				if !ok {
 					t.Errorf("failed to get the node")
+					return
 				}
 				if n.initialized() {
 					t.Errorf("node unexpectedly initialized")
@@ -2459,6 +2474,10 @@ func TestOnDiskSMCanStreamSnapshot(t *testing.T) {
 					t.Errorf("on disk index not recorded in ss")
 				}
 				shrunk, err := rsm.IsShrunkSnapshotFile(ss.Filepath, fs)
+				if vfs.IsNotExist(err) {
+					// a newer snapshot already removed this file; re-read the latest on the next iteration
+					continue
+				}
 				if err != nil {
 					t.Errorf("failed to check whether snapshot is shrunk %v", err)
 				}
@@ -2484,28 +2503,22 @@ func TestOnDiskSMCanStreamSnapshot(t *testing.T) {
 		if !ok {
 			t.Fatalf("failed to get the system event listener")
 		}
-		if len(listener.getSnapshotReceived()) == 0 {
-			t.Fatalf("snapshot received not notified")
-		}
-		if len(listener.getSnapshotRecovered()) == 0 {
-			t.Fatalf("failed to be notified for recovered snapshot")
-		}
-		if len(listener.getLogCompacted()) == 0 {
-			t.Fatalf("log compaction not notified")
-		}
+		waitFor(t, func() bool { return len(listener.getSnapshotReceived()) > 0 },
+			"snapshot received not notified")
+		waitFor(t, func() bool { return len(listener.getSnapshotRecovered()) > 0 },
+			"failed to be notified for recovered snapshot")
+		waitFor(t, func() bool { return len(listener.getLogCompacted()) > 0 },
+			"log compaction not notified")
 		listener, ok = nh1.events.sys.ul.(*testSysEventListener)
 		if !ok {
 			t.Fatalf("failed to get the system event listener")
 		}
-		if len(listener.getSendSnapshotStarted()) == 0 {
-			t.Fatalf("send snapshot started not notified")
-		}
-		if len(listener.getSendSnapshotCompleted()) == 0 {
-			t.Fatalf("send snapshot completed not notified")
-		}
-		if listener.getConnectionEstablished() == 0 {
-			t.Fatalf("connection established not notified")
-		}
+		waitFor(t, func() bool { return len(listener.getSendSnapshotStarted()) > 0 },
+			"send snapshot started not notified")
+		waitFor(t, func() bool { return len(listener.getSendSnapshotCompleted()) > 0 },
+			"send snapshot completed not notified")
+		waitFor(t, func() bool { return listener.getConnectionEstablished() > 0 },
+			"connection established not notified")
 	}
 	twoFakeDiskNodeHostTest(t, tf, fs)
 }

@@ -111,7 +111,7 @@ func TestOnDiskFull_File(t *testing.T) {
 
 func TestOnDiskFull_Concurrent(t *testing.T) {
 	innerFS := &enospcMockFS{
-		opDelay: 10 * time.Millisecond,
+		waitForInvocations: 10,
 	}
 	innerFS.enospcs.Store(10)
 	var callbackInvocations atomic.Int32
@@ -135,19 +135,23 @@ func TestOnDiskFull_Concurrent(t *testing.T) {
 
 type enospcMockFS struct {
 	FS
-	opDelay      time.Duration
-	bytesWritten int
-	enospcs      atomic.Int32
-	invocations  atomic.Uint32
+	waitForInvocations uint32
+	bytesWritten       int
+	enospcs            atomic.Int32
+	invocations        atomic.Uint32
 }
 
 func (fs *enospcMockFS) maybeENOSPC() error {
-	fs.invocations.Add(1)
+	// Allocate the ENOSPC before arriving at the barrier, so all initial errors are
+	// handed out before any caller can be released and retry.
 	v := fs.enospcs.Add(-1)
+	fs.invocations.Add(1)
 
-	// Sleep before returning so that tests may issue concurrent writes that
-	// fall into the same write generation.
-	time.Sleep(fs.opDelay)
+	// hold callers until all have started so they land in the same write generation
+	deadline := time.Now().Add(30 * time.Second)
+	for fs.invocations.Load() < fs.waitForInvocations && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
 
 	if v >= 0 {
 		// Wrap the error to test error unwrapping.

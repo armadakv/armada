@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -151,14 +152,17 @@ func TestBackup_Backup(t *testing.T) {
 			defer e.Close()
 
 			for name, data := range tt.tableData {
-				_, err := e.CreateTable(name)
+				created, err := e.CreateTable(name)
 				r.NoError(err)
-				time.Sleep(1 * time.Second)
+				r.Eventually(func() bool {
+					_, _, ok, err := e.GetLeaderID(created.ClusterID)
+					return err == nil && ok
+				}, 30*time.Second, 10*time.Millisecond, "table leader not elected in time")
 				for _, req := range data {
 					tbl, err := e.GetTable(name)
 					r.NoError(err)
 					func() {
-						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 						defer cancel()
 						_, err := tbl.Put(ctx, req)
 						r.NoError(err)
@@ -166,9 +170,10 @@ func TestBackup_Backup(t *testing.T) {
 				}
 			}
 
-			srv := startBackupServer(e)
+			srv := startBackupServer(t, e)
 			conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 			r.NoError(err)
+			t.Cleanup(func() { _ = conn.Close() })
 
 			path := filepath.Join(t.TempDir(), strings.ReplaceAll(tt.name, " ", "_"))
 			r.NoError(os.MkdirAll(path, 0o777))
@@ -254,9 +259,10 @@ func TestBackup_Restore(t *testing.T) {
 			e := newTestEngine(t)
 			defer e.Close()
 
-			srv := startBackupServer(e)
+			srv := startBackupServer(t, e)
 			conn, err := grpc.NewClient(srv.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
 			r.NoError(err)
+			t.Cleanup(func() { _ = conn.Close() })
 
 			b := &Backup{
 				Conn:    conn,
@@ -351,7 +357,21 @@ func newTestConfig(t *testing.T) storage.Config {
 }
 
 func newTestEngine(t *testing.T) *storage.Engine {
-	e, err := storage.New(newTestConfig(t))
+	// probing a port and binding it are separate steps; retry on collision
+	var (
+		e   *storage.Engine
+		err error
+	)
+	for attempt := range 5 {
+		e, err = storage.New(newTestConfig(t))
+		if err == nil {
+			break
+		}
+		if !strings.Contains(err.Error(), "address already in use") {
+			break
+		}
+		t.Logf("port collision on attempt %d, retrying: %v", attempt+1, err)
+	}
 	require.NoError(t, err)
 	require.NoError(t, e.Start())
 	require.NoError(t, e.WaitUntilReady(context.Background()))
@@ -362,31 +382,35 @@ func newTestEngine(t *testing.T) *storage.Engine {
 	return e
 }
 
-func startBackupServer(manager *storage.Engine) *armadaserver.Server {
-	testNodeAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
-	l, _ := net.Listen("tcp", testNodeAddress)
+func startBackupServer(t *testing.T, manager *storage.Engine) *armadaserver.Server {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
 	server := armadaserver.NewServer(l, zap.NewNop().Sugar())
 	armadapb.RegisterClusterServer(server, &armadaserver.ClusterServer{Cluster: manager})
 	armadapb.RegisterMaintenanceServer(server, &armadaserver.BackupServer{AuthFunc: func(ctx context.Context) (context.Context, error) {
 		return ctx, nil
 	}, Tables: manager})
-	go func() {
-		err := server.Serve()
-		if err != nil {
-			panic(err)
+	served := make(chan error, 1)
+	go func() { served <- server.Serve() }()
+	t.Cleanup(func() {
+		server.Shutdown()
+		if err := <-served; !errors.Is(err, grpc.ErrServerStopped) {
+			require.NoError(t, err)
 		}
-	}()
-	// Let the server start.
-	time.Sleep(100 * time.Millisecond)
+	})
 	return server
 }
 
+// the engine binds QUIC (UDP), so probe UDP.
 func getTestPort() int {
-	l, _ := net.Listen("tcp", "127.0.0.1:0")
+	c, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
 	defer func() {
-		_ = l.Close()
+		_ = c.Close()
 	}()
-	return l.Addr().(*net.TCPAddr).Port
+	return c.LocalAddr().(*net.UDPAddr).Port
 }
 
 // wrapFS creates a new pebble/vfs.FS instance.

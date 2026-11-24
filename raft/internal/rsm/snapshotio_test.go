@@ -140,16 +140,27 @@ func makeTestSnapshotFile(t *testing.T, ssz uint64,
 
 func corruptSnapshotPayload(t *testing.T, fs vfs.FS) {
 	tmpFp := "testsnapshot.writing"
+	offset := int64(HeaderSize + (testSessionSize+testPayloadSize)/2)
+	// flip the byte: a constant may equal the existing one and corrupt nothing
+	data := make([]byte, 1)
+	func() {
+		rf, err := fs.Open(testSnapshotFilename)
+		if err != nil {
+			t.Fatalf("%v", err)
+		}
+		defer rf.Close()
+		if _, err := rf.ReadAt(data, offset); err != nil {
+			t.Fatalf("%v", err)
+		}
+	}()
+	data[0] ^= 0xff
 	func() {
 		f, err := fs.ReuseForWrite(testSnapshotFilename, tmpFp, "")
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
 		defer f.Close()
-		s := (testSessionSize + testPayloadSize) / 2
-		data := make([]byte, 1)
-		data[0] = 128
-		if _, err := f.WriteAt(data, int64(HeaderSize+s)); err != nil {
+		if _, err := f.WriteAt(data, offset); err != nil {
 			t.Fatalf("%v", err)
 		}
 	}()

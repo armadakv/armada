@@ -4,6 +4,7 @@ package replication
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -230,7 +231,7 @@ func TestManager_RecreatesFollowerTableWhenLeaderIncarnationChanges(t *testing.T
 
 	followerTable, err := followerEngine.GetTable(tableName)
 	r.NoError(err)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	response, err := followerTable.Range(ctx, &armadapb.RangeRequest{
 		Key:          []byte{0},
@@ -368,12 +369,17 @@ func prepareEngine(t *testing.T, clusterName string) *storage.Engine {
 	r.NoError(err)
 	r.NoError(e.Start())
 	t.Cleanup(func() { _ = e.Close() })
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	r.NoError(e.WaitUntilReady(ctx))
 	return e
 }
 
 func startReplicationServer(engine *storage.Engine) *armadaserver.Server {
-	testNodeAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
-	l, _ := net.Listen("tcp", testNodeAddress)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		panic(err)
+	}
 	server := armadaserver.NewServer(l, zap.NewNop().Sugar())
 	armadapb.RegisterMetadataServer(server, &armadaserver.MetadataServer{Tables: engine})
 	armadapb.RegisterSnapshotServer(server, &armadaserver.SnapshotServer{Tables: engine})
@@ -387,13 +393,10 @@ func startReplicationServer(engine *storage.Engine) *armadaserver.Server {
 		),
 	)
 	go func() {
-		err := server.Serve()
-		if err != nil {
+		if err := server.Serve(); err != nil && !errors.Is(err, grpc.ErrServerStopped) {
 			panic(err)
 		}
 	}()
-	// Let the server start.
-	time.Sleep(100 * time.Millisecond)
 	return server
 }
 

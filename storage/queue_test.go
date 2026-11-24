@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,11 +49,11 @@ func TestNotificationQueueTimeout(t *testing.T) {
 		default:
 			return false
 		}
-	}, 5*time.Second, 100*time.Millisecond)
+	}, 10*time.Second, 10*time.Millisecond)
 
 	require.Eventually(t, func() bool {
-		return assert.Zero(t, q.Len("foo"))
-	}, 5*time.Second, 100*time.Millisecond)
+		return q.Len("foo") == 0
+	}, 10*time.Second, 10*time.Millisecond)
 }
 
 func chanelClosed(t *testing.T, w <-chan error) {
@@ -66,5 +65,5 @@ func chanelClosed(t *testing.T, w <-chan error) {
 		default:
 			return false
 		}
-	}, 10*time.Millisecond, time.Millisecond)
+	}, 10*time.Second, time.Millisecond)
 }

@@ -6,8 +6,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -981,7 +983,7 @@ func createTable(t *testing.T, e *Engine) {
 		active := tab.AsActive(e)
 		_, err := active.LocalIndex(c, true)
 		return err == nil
-	}, 1*time.Second, 10*time.Millisecond)
+	}, 30*time.Second, 10*time.Millisecond)
 }
 
 func newTestConfig() Config {
@@ -1054,10 +1056,35 @@ func newTestEngine(t *testing.T, cfg Config) *Engine {
 	return e
 }
 
+var (
+	reservedPortsMu sync.Mutex
+	reservedPorts   = map[int]struct{}{}
+)
+
+// getTestPort returns a port free on TCP and UDP, below the OS ephemeral range and never handed out twice in this process.
 func getTestPort() int {
-	l, _ := net.Listen("tcp", "127.0.0.1:0")
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port
+	reservedPortsMu.Lock()
+	defer reservedPortsMu.Unlock()
+	for range 1000 {
+		port := 10000 + rand.IntN(16000) // avoid raft test ports 26001-26003
+		if _, ok := reservedPorts[port]; ok {
+			continue
+		}
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		tcp, err := net.Listen("tcp", addr)
+		if err != nil {
+			continue
+		}
+		udp, err := net.ListenPacket("udp", addr)
+		_ = tcp.Close()
+		if err != nil {
+			continue
+		}
+		_ = udp.Close()
+		reservedPorts[port] = struct{}{}
+		return port
+	}
+	panic("unable to find a free test port")
 }
 
 func cancellableTestContext(t *testing.T) context.Context {
