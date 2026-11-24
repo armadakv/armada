@@ -5,8 +5,10 @@ package kv
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"path"
+	"sync"
 	"testing"
 
 	"github.com/armadakv/armada/raft"
@@ -647,11 +649,6 @@ func TestStore_Delete(t *testing.T) {
 
 func newRaftStore(t *testing.T) *RaftStore {
 	t.Helper()
-	getTestPort := func() int {
-		l, _ := net.Listen("tcp", "127.0.0.1:0")
-		defer l.Close()
-		return l.Addr().(*net.TCPAddr).Port
-	}
 	testNodeAddress := fmt.Sprintf("127.0.0.1:%d", getTestPort())
 
 	startRaftNode := func() *raft.NodeHost {
@@ -685,4 +682,35 @@ func newRaftStore(t *testing.T) *RaftStore {
 	}))
 	require.NoError(t, rs.WaitForLeader(context.Background()))
 	return rs
+}
+
+var (
+	reservedPortsMu sync.Mutex
+	reservedPorts   = map[int]struct{}{}
+)
+
+// getTestPort returns a port free on TCP and UDP, below the OS ephemeral range and never handed out twice in this process.
+func getTestPort() int {
+	reservedPortsMu.Lock()
+	defer reservedPortsMu.Unlock()
+	for range 1000 {
+		port := 10000 + rand.IntN(16000) // avoid raft test ports 26001-26003
+		if _, ok := reservedPorts[port]; ok {
+			continue
+		}
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		tcp, err := net.Listen("tcp", addr)
+		if err != nil {
+			continue
+		}
+		udp, err := net.ListenPacket("udp", addr)
+		_ = tcp.Close()
+		if err != nil {
+			continue
+		}
+		_ = udp.Close()
+		reservedPorts[port] = struct{}{}
+		return port
+	}
+	panic("unable to find a free test port")
 }

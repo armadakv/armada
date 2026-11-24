@@ -42,11 +42,14 @@ func TestCommandContext(t *testing.T) {
 	t.Cleanup(func() { k.Set("command-timeout", original) })
 	k.Set("command-timeout", time.Second)
 
+	before := time.Now()
 	ctx, cancel := commandContext(context.Background())
 	defer cancel()
+	after := time.Now()
 	deadline, ok := ctx.Deadline()
 	require.True(t, ok)
-	require.WithinDuration(t, time.Now().Add(time.Second), deadline, 100*time.Millisecond)
+	require.False(t, deadline.Before(before.Add(time.Second)), "deadline %s earlier than %s", deadline, before.Add(time.Second))
+	require.False(t, deadline.After(after.Add(time.Second)), "deadline %s later than %s", deadline, after.Add(time.Second))
 }
 
 func TestDial(t *testing.T) {

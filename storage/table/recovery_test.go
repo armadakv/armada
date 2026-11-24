@@ -386,13 +386,12 @@ func TestRecoveryLateMemberJoinsRecoveredShard(t *testing.T) {
 	const tableName = "late-member"
 	r := require.New(t)
 
-	cluster := startManagerCluster(t, 3)
-	defer cluster.close()
-	for _, m := range cluster.managers {
+	cluster := startManagerClusterWith(t, 3, func(m *Manager) {
 		m.recoveryInterval = 25 * time.Millisecond
 		m.recoveryStepTimeout = 200 * time.Millisecond
 		m.recoverySeedTimeout = time.Second
-	}
+	})
+	defer cluster.close()
 
 	coordinator := cluster.managers[0]
 	_, err := coordinator.CreateTable(tableName)
@@ -454,14 +453,17 @@ func TestRecoveryLateMemberJoinsRecoveredShard(t *testing.T) {
 	r.NoError(err)
 	r.Equal(restored.ClusterID, lateTable.ClusterID)
 	r.True(lateTable.Recovered)
+	// a read forwarded by a freshly joined follower can be lost without an error; bound each attempt so the poll retries
 	r.Eventually(func() bool {
-		resp, err := lateTable.Range(ctx, &armadapb.RangeRequest{
+		attemptCtx, attemptCancel := context.WithTimeout(ctx, 3*time.Second)
+		defer attemptCancel()
+		resp, err := lateTable.Range(attemptCtx, &armadapb.RangeRequest{
 			Key:          []byte{0},
 			RangeEnd:     []byte{0},
 			Linearizable: true,
 		})
 		return err == nil && len(resp.Kvs) == 4
-	}, 30*time.Second, 100*time.Millisecond, "the late joiner should receive the recovered data")
+	}, 60*time.Second, 100*time.Millisecond, "the late joiner should receive the recovered data")
 }
 
 // TestRecoveryResumesAfterNodeHostRestart closes the NodeHost while a recovery
@@ -809,6 +811,8 @@ func TestRecoverySeedSkipsExistingVoter(t *testing.T) {
 	}
 	r.NoError(coordinator.waitForLeader(ctx, recoveryID))
 
+	// hold the recovery slot so the coordinator's own loop does not advance the record concurrently (never released; the cluster dies with the test)
+	r.True(coordinator.beginRecoveryWork(tableName))
 	rec := RecoveryRecord{
 		Table:       tableName,
 		Phase:       PhaseSeeding,
@@ -1056,6 +1060,11 @@ func (c *managerCluster) waitForShard(t *testing.T, shardOf func(*Manager) uint6
 // for the Raft-replicated table store.
 func startManagerCluster(t *testing.T, n int) *managerCluster {
 	t.Helper()
+	return startManagerClusterWith(t, n, nil)
+}
+
+func startManagerClusterWith(t *testing.T, n int, tune func(*Manager)) *managerCluster {
+	t.Helper()
 
 	members := make(map[uint64]string, n)
 	addrs := make([]string, n)
@@ -1093,6 +1102,9 @@ func startManagerCluster(t *testing.T, n int) *managerCluster {
 		m.reconcileInterval = 200 * time.Millisecond
 		m.recoveryInterval = 100 * time.Millisecond
 		m.recoverySeedTimeout = 30 * time.Second
+		if tune != nil {
+			tune(m)
+		}
 		m.Start()
 		c.managers = append(c.managers, m)
 	}
@@ -1200,6 +1212,8 @@ func TestLearnerRestartAfterPromotion(t *testing.T) {
 	r.Eventually(func() bool {
 		return !peer.shardRunning(shardID)
 	}, 30*time.Second, 50*time.Millisecond)
+	// StopShard can return before the DB is released; restarting earlier panics
+	r.NoError(peer.waitForStateMachineClosed(ctx, shardID))
 	if err := peer.startTable(tableName, shardID); err != nil {
 		r.ErrorIs(err, raft.ErrShardAlreadyExist)
 	}
@@ -1207,16 +1221,20 @@ func TestLearnerRestartAfterPromotion(t *testing.T) {
 		return peer.shardRunning(shardID) && peer.hasNonVotingMarker(shardID)
 	}, 60*time.Second, 100*time.Millisecond, "a restarted promoted learner must retain its restart-safe marker")
 
-	membership, err := coordinator.nh.SyncGetShardMembership(ctx, shardID)
-	r.NoError(err)
-	r.Len(membership.Nodes, 2)
-	r.Empty(membership.NonVotings)
+	r.Eventually(func() bool {
+		membership, err := coordinator.nh.SyncGetShardMembership(ctx, shardID)
+		return err == nil && len(membership.Nodes) == 2 && len(membership.NonVotings) == 0
+	}, 60*time.Second, 100*time.Millisecond, "restarted shard should converge to two voters")
 
-	rangeResp, err := recovered.Range(ctx, &armadapb.RangeRequest{
-		Key:          []byte{0},
-		RangeEnd:     []byte{0},
-		Linearizable: true,
-	})
-	r.NoError(err)
+	var rangeResp *armadapb.RangeResponse
+	r.Eventually(func() bool {
+		var err error
+		rangeResp, err = recovered.Range(ctx, &armadapb.RangeRequest{
+			Key:          []byte{0},
+			RangeEnd:     []byte{0},
+			Linearizable: true,
+		})
+		return err == nil
+	}, 60*time.Second, 100*time.Millisecond, "restarted shard should serve linearizable reads")
 	r.Len(rangeResp.Kvs, 4)
 }

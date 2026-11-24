@@ -84,7 +84,9 @@ func TestMustBeLeaderPanicWhenNotLeader(t *testing.T) {
 		{nonVoting, true},
 	}
 	for idx, tt := range tests {
-		r := raft{state: tt.st}
+
+		r := newTestRaft(1, []uint64{1, 2, 3}, 5, 1, NewTestLogDB())
+		r.state = tt.st
 		func() {
 			defer func() {
 				r := recover()
@@ -2304,7 +2306,9 @@ func TestUnrolledBubbleSortMatchValue(t *testing.T) {
 }
 
 func TestDoubleCheckTermMatched(t *testing.T) {
-	r := raft{term: 10}
+	// a nil log would panic with a nil dereference before doubleCheckTermMatched does
+	r := newTestRaft(1, []uint64{1, 2, 3}, 5, 1, NewTestLogDB())
+	r.term = 10
 	r.doubleCheckTermMatched(0)
 	r.doubleCheckTermMatched(10)
 	tt := func() {

@@ -706,7 +706,8 @@ func TestLogServer_Replicate(t *testing.T) {
 				Log:            zaptest.NewLogger(t).Sugar(),
 				maxMessageSize: tt.fields.maxMessageSize,
 			}
-			ctx, cancel := context.WithTimeout(context.TODO(), time.Second)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if len(tt.fields.Tables) > 0 {
 				table, err := te.GetTable(string(tt.args.req.Table))

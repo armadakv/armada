@@ -3,10 +3,11 @@
 package fsm
 
 import (
+	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
-	"time"
 
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/stretchr/testify/require"
@@ -177,25 +178,28 @@ func TestFSM_SnapshotStopped(t *testing.T) {
 			_, err = snapf.Seek(0, 0)
 			r.NoError(err)
 
-			resultCh := make(chan error)
+			// stop on the first read: recoverers check stopc before each chunk
 			stopc := make(chan struct{})
-			go func() {
-				defer func() {
-					_ = snapf.Close()
-					_ = ep.Close()
-					_ = snapf.Close()
-				}()
-				t.Log("Recover from snapshot routine started")
-				resultCh <- ep.RecoverFromSnapshot(snapf, stopc)
+			defer func() {
+				_ = snapf.Close()
+				_ = ep.Close()
 			}()
-
-			time.Sleep(10 * time.Millisecond)
-			close(stopc)
-
-			err = <-resultCh
+			t.Log("Recover from snapshot started")
+			err = ep.RecoverFromSnapshot(&stopOnReadReader{r: snapf, stop: stopc}, stopc)
 			r.ErrorIs(err, sm.ErrSnapshotStopped)
 
 			t.Log("Recovery stopped")
 		})
 	}
+}
+
+type stopOnReadReader struct {
+	r    io.Reader
+	stop chan struct{}
+	once sync.Once
+}
+
+func (s *stopOnReadReader) Read(p []byte) (int, error) {
+	s.once.Do(func() { close(s.stop) })
+	return s.r.Read(p)
 }

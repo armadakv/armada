@@ -565,7 +565,7 @@ func TestRequestStateRelease(t *testing.T) {
 	exp := RequestState{pool: rs.pool}
 	rs.Release()
 	if !reflect.DeepEqual(&exp, &rs) {
-		t.Errorf("unexpected state, got %+v, want %+v", rs, exp)
+		t.Errorf("unexpected state, got %+v, want %+v", &rs, &exp)
 	}
 }
 

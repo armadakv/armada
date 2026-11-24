@@ -4,22 +4,24 @@ package cluster
 
 import (
 	"fmt"
+	"math/rand/v2"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/armadakv/armada/raft"
 	"github.com/armadakv/armada/util"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/atomic"
 )
 
 func TestSingleNodeCluster(t *testing.T) {
 	address := getTestBindAddress()
 	cluster, err := New(address, "", "", nil, nil, nil, func() Info { return Info{} }, func() NodeMeta { return NodeMeta{} })
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = cluster.Close() })
 	cluster.Start([]string{address})
 	require.Len(t, cluster.Nodes(), 1)
 }
@@ -66,10 +68,34 @@ func TestMultiNodeCluster(t *testing.T) {
 		require.NoError(t, err)
 		clusters[address] = cluster
 		cluster.Start(keys(clusters))
-		require.Len(t, cluster.Nodes(), i+1)
+		require.Eventually(t, func() bool {
+			return len(cluster.Nodes()) == i+1
+		}, 30*time.Second, 50*time.Millisecond)
 	}
+	t.Cleanup(func() {
+		for _, cluster := range clusters {
+			_ = cluster.Close()
+		}
+	})
 
 	t.Log("all members see the others and has the same view of the world")
+	require.Eventually(t, func() bool {
+		for _, cluster1 := range clusters {
+			nodes := cluster1.Nodes()
+			if len(nodes) != len(clusters) {
+				return false
+			}
+			for _, cluster2 := range clusters {
+				if len(cluster2.Nodes()) != len(nodes) {
+					return false
+				}
+			}
+			if cluster1.ShardInfo(1).Term != 5 {
+				return false
+			}
+		}
+		return true
+	}, 30*time.Second, 50*time.Millisecond)
 	for _, cluster1 := range clusters {
 		nodes := cluster1.Nodes()
 		for _, cluster2 := range clusters {
@@ -87,51 +113,99 @@ func TestMultiNodeCluster(t *testing.T) {
 	c2 := values(clusters)[1]
 
 	t.Log("test prefix watch")
-	recvChan := make(chan Message)
+	prefixChan := make(chan Message, 16)
 	c2.WatchPrefix("test-", func(message Message) {
-		recvChan <- message
+		prefixChan <- message
 	})
 	require.NoError(t, c1.SendTo(c2.LocalNode(), Message{Key: "test-foo", Payload: nil}))
-	require.Eventually(t, func() bool {
-		m := <-recvChan
-		return strings.HasPrefix(m.Key, "test-")
-	}, 5*time.Second, 100*time.Millisecond)
+	select {
+	case m := <-prefixChan:
+		require.True(t, strings.HasPrefix(m.Key, "test-"))
+	case <-time.After(30 * time.Second):
+		t.Fatal("timed out waiting for prefix message")
+	}
 
 	t.Log("test key watch")
-	recvChan = make(chan Message)
+	keyChan := make(chan Message, 16)
 	c2.WatchKey("specific-key", func(message Message) {
-		recvChan <- message
+		keyChan <- message
 	})
 	require.NoError(t, c1.SendTo(c2.LocalNode(), Message{Key: "specific-key", Payload: nil}))
-	require.Eventually(t, func() bool {
-		m := <-recvChan
-		return m.Key == "specific-key"
-	}, 5*time.Second, 100*time.Millisecond)
+	select {
+	case m := <-keyChan:
+		require.Equal(t, "specific-key", m.Key)
+	case <-time.After(30 * time.Second):
+		t.Fatal("timed out waiting for key message")
+	}
 
 	t.Log("test broadcast")
-	count := atomic.NewUint32(0)
-	for _, cluster := range clusters {
+	// count distinct receivers: gossip retransmits and never echoes to the sender
+	var received sync.Map
+	for addr, cluster := range clusters {
+		if cluster == c1 {
+			continue
+		}
 		cluster.WatchKey("broadcast", func(message Message) {
-			count.Add(1)
+			received.Store(addr, struct{}{})
 		})
 	}
-	// Wait for cluster stabilisation before broadcasting.
-	time.Sleep(5 * time.Second)
-	c1.Broadcast(Message{Key: "broadcast"})
+	// re-send on every poll: delivery is not guaranteed before gossip converges
 	require.Eventually(t, func() bool {
-		return int(count.Load()) >= len(clusters)
-	}, 10*time.Second, 100*time.Millisecond)
+		c1.Broadcast(Message{Key: "broadcast"})
+		n := 0
+		received.Range(func(_, _ any) bool { n++; return true })
+		return n >= len(clusters)-1
+	}, 60*time.Second, 250*time.Millisecond)
 
 	t.Log("shutdown all members")
-	for _, cluster := range clusters {
+	for addr, cluster := range clusters {
 		require.NoError(t, cluster.Close())
+		delete(clusters, addr)
+		// otherwise the last member may leave while still seeing the departed one as alive, leaving no gossip target for its leave message
+		require.Eventually(t, func() bool {
+			for _, remaining := range clusters {
+				if len(remaining.Nodes()) != len(clusters) {
+					return false
+				}
+			}
+			return true
+		}, 30*time.Second, 10*time.Millisecond)
 	}
 }
 
 func getTestBindAddress() string {
-	conn, _ := net.ListenPacket("udp4", "127.0.0.1:0")
-	defer conn.Close()
-	return conn.LocalAddr().String()
+	return fmt.Sprintf("127.0.0.1:%d", getTestPort())
+}
+
+var (
+	reservedPortsMu sync.Mutex
+	reservedPorts   = map[int]struct{}{}
+)
+
+// getTestPort returns a port free on TCP and UDP, below the OS ephemeral range and never handed out twice in this process.
+func getTestPort() int {
+	reservedPortsMu.Lock()
+	defer reservedPortsMu.Unlock()
+	for range 1000 {
+		port := 10000 + rand.IntN(16000) // avoid raft test ports 26001-26003
+		if _, ok := reservedPorts[port]; ok {
+			continue
+		}
+		addr := fmt.Sprintf("127.0.0.1:%d", port)
+		tcp, err := net.Listen("tcp", addr)
+		if err != nil {
+			continue
+		}
+		udp, err := net.ListenPacket("udp", addr)
+		_ = tcp.Close()
+		if err != nil {
+			continue
+		}
+		_ = udp.Close()
+		reservedPorts[port] = struct{}{}
+		return port
+	}
+	panic("unable to find a free test port")
 }
 
 func keys(m map[string]*Cluster) []string {

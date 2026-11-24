@@ -20,6 +20,18 @@ import (
 
 type mockFile struct {
 	syncAndWriteDuration time.Duration
+	release              <-chan struct{}
+}
+
+func (m mockFile) wait() {
+	if m.release == nil {
+		time.Sleep(m.syncAndWriteDuration)
+		return
+	}
+	select {
+	case <-m.release:
+	case <-time.After(30 * time.Second):
+	}
 }
 
 func (m mockFile) Close() error {
@@ -35,12 +47,12 @@ func (m mockFile) ReadAt(p []byte, off int64) (n int, err error) {
 }
 
 func (m mockFile) Write(p []byte) (n int, err error) {
-	time.Sleep(m.syncAndWriteDuration)
+	m.wait()
 	return len(p), nil
 }
 
 func (m mockFile) WriteAt(p []byte, ofs int64) (n int, err error) {
-	time.Sleep(m.syncAndWriteDuration)
+	m.wait()
 	return len(p), nil
 }
 
@@ -49,7 +61,7 @@ func (m mockFile) Prefetch(offset, length int64) error {
 }
 
 func (m mockFile) Preallocate(int64, int64) error {
-	time.Sleep(m.syncAndWriteDuration)
+	m.wait()
 	return nil
 }
 
@@ -66,17 +78,17 @@ func (m mockFile) Fd() uintptr {
 }
 
 func (m mockFile) Sync() error {
-	time.Sleep(m.syncAndWriteDuration)
+	m.wait()
 	return nil
 }
 
 func (m mockFile) SyncData() error {
-	time.Sleep(m.syncAndWriteDuration)
+	m.wait()
 	return nil
 }
 
 func (m mockFile) SyncTo(int64) (fullSync bool, err error) {
-	time.Sleep(m.syncAndWriteDuration)
+	m.wait()
 	return false, nil
 }
 
@@ -300,32 +312,37 @@ func TestDiskHealthChecking_File(t *testing.T) {
 	testCases := []struct {
 		op               OpType
 		writeSize        int
-		writeDuration    time.Duration
 		fn               func(f File)
 		createWriteDelta time.Duration
 	}{
 		{
-			op:            OpTypeWrite,
-			writeSize:     5 * writeSizePrecision, // five KB
-			writeDuration: 100 * time.Millisecond,
-			fn:            func(f File) { f.Write(fiveKB) },
+			op:        OpTypeWrite,
+			writeSize: 5 * writeSizePrecision, // five KB
+			fn:        func(f File) { f.Write(fiveKB) },
 		},
 		{
-			op:            OpTypeSync,
-			writeSize:     0,
-			writeDuration: 100 * time.Millisecond,
-			fn:            func(f File) { f.Sync() },
+			op:        OpTypeSync,
+			writeSize: 0,
+			fn:        func(f File) { f.Sync() },
 		},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.op.String(), func(t *testing.T) {
-			diskSlow := make(chan DiskSlowInfo, 3)
+			diskSlow := make(chan DiskSlowInfo, 1)
+			// keep the op in flight until the slow-disk event is seen
+			release := make(chan struct{})
+			var releaseOnce sync.Once
+			releaseOp := func() { releaseOnce.Do(func() { close(release) }) }
+			defer releaseOp()
 			mockFS := &mockFS{create: func(name string, category DiskWriteCategory) (File, error) {
-				return mockFile{syncAndWriteDuration: tc.writeDuration}, nil
+				return mockFile{release: release}, nil
 			}}
 			fs, closer := WithDiskHealthChecks(mockFS, slowThreshold, nil,
 				func(info DiskSlowInfo) {
-					diskSlow <- info
+					select {
+					case diskSlow <- info:
+					default:
+					}
 				})
 			defer closer.Close()
 			dhFile, _ := fs.Create("test", WriteCategoryUnspecified)
@@ -335,10 +352,19 @@ func TestDiskHealthChecking_File(t *testing.T) {
 			// creation time & write time.
 			time.Sleep(tc.createWriteDelta)
 
-			tc.fn(dhFile)
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				tc.fn(dhFile)
+			}()
+			defer func() {
+				releaseOp()
+				<-done
+			}()
 
 			select {
 			case i := <-diskSlow:
+				releaseOp()
 				d := i.Duration
 				if d.Seconds() < slowThreshold.Seconds() {
 					t.Fatalf("expected %0.1f to be greater than threshold %0.1f", d.Seconds(), slowThreshold.Seconds())

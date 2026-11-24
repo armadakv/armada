@@ -80,7 +80,12 @@ func TestManager_DeleteTable(t *testing.T) {
 	r.NoError(err)
 	r.NoError(tm.reconcile())
 
-	time.Sleep(1 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	r.Eventually(func() bool {
+		_, err := tab.LocalIndex(ctx, false)
+		return err == nil
+	}, 30*time.Second, 50*time.Millisecond, "table should be ready")
 	t.Log("delete table")
 	r.NoError(tm.DeleteTable(testTableName))
 	r.NoError(tm.reconcile())
@@ -560,12 +565,16 @@ func TestManager_reconcile(t *testing.T) {
 
 	tm.Start()
 	defer tm.Close()
-	_, err := tm.createTable(testTableName)
+	tab, err := tm.createTable(testTableName)
 	r.NoError(err)
-	time.Sleep(reconcileInterval * 3)
+	r.Eventually(func() bool {
+		return tm.shardRunning(tab.ClusterID)
+	}, 30*time.Second, 50*time.Millisecond, "reconcile should start the table")
 
 	r.NoError(tm.DeleteTable(testTableName))
-	time.Sleep(reconcileInterval * 3)
+	r.Eventually(func() bool {
+		return !tm.shardRunning(tab.ClusterID)
+	}, 30*time.Second, 50*time.Millisecond, "reconcile should stop the deleted table")
 	_, err = tm.GetTable(testTableName)
 	r.ErrorIs(err, serrors.ErrTableNotFound)
 }

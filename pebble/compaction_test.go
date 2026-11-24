@@ -72,6 +72,11 @@ func TestConcurrencyLimitSchedulerCoordinatesDBs(t *testing.T) {
 	grantedHandle := waitForScheduled(t, secondDB.scheduled)
 	require.NotNil(t, grantedHandle)
 
+	require.Eventually(t, func() bool {
+		coordinator.mu.Lock()
+		defer coordinator.mu.Unlock()
+		return second.runningCompactions == 1
+	}, 30*time.Second, time.Millisecond)
 	coordinator.mu.Lock()
 	require.Equal(t, 1, coordinator.mu.runningCompactions)
 	require.Equal(t, 0, first.runningCompactions)
@@ -120,7 +125,7 @@ func waitForScheduled(t *testing.T, scheduled <-chan cpebble.CompactionGrantHand
 	select {
 	case handle := <-scheduled:
 		return handle
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timed out waiting for scheduled compaction")
 		return nil
 	}

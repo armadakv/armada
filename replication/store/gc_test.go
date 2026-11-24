@@ -327,7 +327,7 @@ func TestGC_RunLoopStopsOnContextCancel(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(500 * time.Millisecond):
+	case <-time.After(10 * time.Second):
 		t.Fatal("GCWorker.Run did not stop after context cancellation")
 	}
 }

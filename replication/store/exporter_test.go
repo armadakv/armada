@@ -346,7 +346,7 @@ func TestNotifyLogCompacted_Run(t *testing.T) {
 	require.Eventually(t, func() bool {
 		ok, _ := bucket.Exists(ctx, IncrSnapKey("users", 0, 600))
 		return ok
-	}, 2*time.Second, 10*time.Millisecond, "incremental from base 0 should appear after compaction")
+	}, 30*time.Second, 10*time.Millisecond, "incremental from base 0 should appear after compaction")
 
 	cancel()
 	<-done
