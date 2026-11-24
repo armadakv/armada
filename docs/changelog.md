@@ -11,7 +11,7 @@ Release sections are generated from merged pull request titles when a release is
 [Contributing](contributing.md#release-notes). The same notes become the body of the GitHub release,
 where the maintainer adds the highlights and upgrade notes by hand.
 
-## Unreleased
+## v0.3.0 - 2026-11-24
 
 ### Features
 
@@ -21,6 +21,7 @@ where the maintainer adds the highlights and upgrade notes by hand.
 - define key creation revision query contract ([#175](https://github.com/armadakv/armada/pull/175))
 - expose creation revision filters in the KV API ([#177](https://github.com/armadakv/armada/pull/177))
 - compare creation and modification revisions in transactions ([#180](https://github.com/armadakv/armada/pull/180))
+- automated release notes ([#185](https://github.com/armadakv/armada/pull/185))
 
 ### Bug fixes
 
