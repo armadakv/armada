@@ -1,10 +1,9 @@
 # Armada
 
-[![tag](https://img.shields.io/github/tag/armadakv/armada.svg)](https://github.com/armadakv/armada/releases)
+[![tag](https://img.shields.io/github/v/tag/armadakv/armada)](https://github.com/armadakv/armada/releases)
 ![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/armadakv/armada)
-![Build Status](https://github.com/armadakv/armada/actions/workflows/test.yml/badge.svg)
-[![Coverage Status](https://coveralls.io/repos/github/armadakv/armada/badge.svg)](https://coveralls.io/github/armadakv/armada)
-[![Go report](https://goreportcard.com/badge/github.com/armadakv/armada)](https://goreportcard.com/report/github.com/armadakv/armada)
+[![Build Status](https://github.com/armadakv/armada/actions/workflows/test.yml/badge.svg?branch=master)](https://github.com/armadakv/armada/actions/workflows/test.yml)
+[![Coverage Status](https://img.shields.io/coverallsCoverage/github/armadakv/armada?branch=master)](https://coveralls.io/github/armadakv/armada)
 [![Contributors](https://img.shields.io/github/contributors/armadakv/armada)](https://github.com/armadakv/armada/graphs/contributors)
 [![License](https://img.shields.io/github/license/armadakv/armada)](LICENSE)
 
