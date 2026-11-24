@@ -1,0 +1,96 @@
+# git-cliff configuration, see docs/contributing.md#release-notes.
+# One entry per merged PR, built from "Merge pull request #N" commits (body = PR title).
+
+[changelog]
+body = """
+{%- macro link(commit) -%}
+{% if commit.message is not matching("pull/\\d+\\)\\)$") %} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/armadakv/armada/commit/{{ commit.id }})){% endif %}
+{%- endmacro -%}
+
+{%- macro entry(commit) -%}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{{ commit.message | split(pat="\n") | first | trim_end }}{{ self::link(commit=commit) }}
+{%- endmacro -%}
+
+{% if version %}\
+## {{ version }} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## Unreleased
+{% endif %}\
+{% set breaking = commits | filter(attribute="breaking", value=true) %}\
+{% if breaking | length > 0 %}
+### Breaking changes
+{% for commit in breaking %}
+{{ self::entry(commit=commit) }}
+{%- if commit.breaking_description and not commit.message is starting_with(commit.breaking_description | trim) %}
+{{ "  " }}{{ commit.breaking_description | trim | replace(from="\n", to=" ") }}
+{%- endif %}
+{%- endfor %}
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}\
+{% if group is not matching("Dependencies|Commits") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+{{ self::entry(commit=commit) }}
+{%- endfor %}
+{% endif %}\
+{% endfor %}\
+{% set commit_list = commits | filter(attribute="group", value="<!-- 8 -->Commits") %}\
+{% set_global unlisted = [] %}\
+{% for commit in commit_list %}\
+{% set_global covered = false %}\
+{% for pr in commits %}\
+{% if pr.message is matching("pull/\\d+\\)\\)$") and pr.message is starting_with(commit.message | split(pat="\n") | first | trim) %}{% set_global covered = true %}{% endif %}\
+{% endfor %}\
+{% if not covered %}{% set_global unlisted = unlisted | concat(with=commit) %}{% endif %}\
+{% endfor %}\
+{% if unlisted | length > 0 %}
+<details markdown="1">
+<summary>Other commits ({{ unlisted | length }})</summary>
+
+Commits that are part of a merged PR but not named by its title, for example commits of stacked PRs.
+{% for commit in unlisted %}
+{{ self::entry(commit=commit) }}
+{%- endfor %}
+
+</details>
+{% endif %}\
+{% set deps = commits | filter(attribute="group", value="<!-- 9 -->Dependencies") %}\
+{% if deps | length > 0 %}
+<details markdown="1">
+<summary>Dependency updates ({{ deps | length }})</summary>
+{% for commit in deps %}
+{{ self::entry(commit=commit) }}
+{%- endfor %}
+
+</details>
+{% endif %}
+"""
+footer = ""
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = false
+commit_preprocessors = [
+  { pattern = '(?s)^Merge pull request #(\d+) from \S+\s+([^\n]*?)\s*(?:\n.*)?$', replace = "$2 ([#$1](https://github.com/armadakv/armada/pull/$1))" },
+]
+protect_breaking_commits = true
+sort_commits = "oldest"
+# Stable tags only, so --latest and --unreleased skip pre-releases such as v0.3.0-rc.1.
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+$"
+# Only messages rewritten from a merge commit end in a PR link. Other conventional commits go to "Commits"
+# (shown only if no PR title names them, see the template); everything else is skipped.
+commit_parsers = [
+  { message = '^docs: changelog for', skip = true },
+  { message = '(?i)(\bsecurity\b|CVE-\d{4}-\d+|GHSA-|^fix\(deps).*pull/\d+\)\)$', group = "<!-- 0 -->Security" },
+  { message = '^build\(deps.*pull/\d+\)\)$', group = "<!-- 9 -->Dependencies" },
+  { message = '^feat.*pull/\d+\)\)$', group = "<!-- 1 -->Features" },
+  { message = '^fix.*pull/\d+\)\)$', group = "<!-- 2 -->Bug fixes" },
+  { message = '^perf.*pull/\d+\)\)$', group = "<!-- 3 -->Performance" },
+  { message = '^refactor.*pull/\d+\)\)$', group = "<!-- 4 -->Refactoring" },
+  { message = '^docs.*pull/\d+\)\)$', group = "<!-- 5 -->Documentation" },
+  { message = '^(test|ci|build|chore|style).*pull/\d+\)\)$', group = "<!-- 6 -->Internal" },
+  { message = 'pull/\d+\)\)$', group = "<!-- 7 -->Other changes" },
+  { message = '^(feat|fix|perf|refactor)', group = "<!-- 8 -->Commits" },
+  { message = '.*', skip = true },
+]
