@@ -11,6 +11,12 @@ Release sections are generated from merged pull request titles when a release is
 [Contributing](contributing.md#release-notes). The same notes become the body of the GitHub release,
 where the maintainer adds the highlights and upgrade notes by hand.
 
+## v0.3.2 - 2026-11-25
+
+### Bug fixes
+
+- do not write GC tombstones for unchanged keys ([#189](https://github.com/armadakv/armada/pull/189))
+
 ## v0.3.1 - 2026-11-25
 
 ### Bug fixes
