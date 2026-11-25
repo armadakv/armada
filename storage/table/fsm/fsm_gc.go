@@ -35,6 +35,12 @@ func gcPrefixUpper(prefix []byte) []byte {
 	return upper
 }
 
+// hasPhysicalPrefix reports whether physKey is a version of the user key whose
+// physical prefix (everything except the trailing seqno suffix) is prefix.
+func hasPhysicalPrefix(physKey, prefix []byte) bool {
+	return len(physKey) == len(prefix)+key.V2SuffixLen && bytes.Equal(physKey[:len(prefix)], prefix)
+}
+
 // incrementStoredSeqno returns a new physical key identical to physKey except
 // that the 8-byte big-endian stored seqno in the tail is incremented by one.
 // Because stored seqno = ^seqno, incrementing it corresponds to decrementing
@@ -73,12 +79,11 @@ func incrementStoredSeqno(physKey []byte) []byte {
 //     DeleteRange(firstOld, upper).
 //  3. No version >= gcIndex and the newest old version is a live value: this is
 //     the current live version of the key — keep it; delete any older versions
-//     → DeleteRange(firstOld+1, upper).  A no-op when there are no older ones.
+//     → DeleteRange(firstOld+1, upper), written only when an older version
+//     exists.
 //
 // Deletions are batched; when the batch reaches maxBatchSize it is committed
-// and a new one is opened. After all obsolete versions are removed, pebble's
-// Compact is called over the full user keyspace so the deleted entries are
-// physically reclaimed from disk.
+// and a new one is opened.
 func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 	if gcIndex == 0 {
 		return nil
@@ -170,7 +175,15 @@ func (p *FSM) runGC(db *pebble.DB, gcIndex uint64) error {
 				continue
 			}
 			// Case 3: keep the current (live) version; delete any older ones.
+			// A DeleteRange is a physical tombstone even when it covers nothing,
+			// so only write one if an older version of this key actually exists.
+			// Otherwise every sweep would add a tombstone for every unchanged key.
 			rangeLo = incrementStoredSeqno(physKey)
+			valid = iter.Next()
+			if !valid || !hasPhysicalPrefix(iter.Key(), lastPrefix) {
+				// No older version: the iterator already sits on the next prefix.
+				continue
+			}
 		}
 
 		if err := batch.DeleteRange(rangeLo, prefixUpper, nil); err != nil {
