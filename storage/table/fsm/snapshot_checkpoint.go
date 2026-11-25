@@ -34,7 +34,7 @@ type checkpoint struct {
 
 func (c *checkpoint) getHeader() snapshotHeader {
 	h := snapshotHeader{}
-	h.setSnapshotType(RecoveryTypeCheckpoint)
+	h.setFormat(snapshotFormatCheckpoint)
 	return h
 }
 

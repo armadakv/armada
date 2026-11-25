@@ -22,7 +22,6 @@ import (
 	rl "github.com/armadakv/armada/log"
 	dbl "github.com/armadakv/armada/raft/logger"
 	"github.com/armadakv/armada/security"
-	"github.com/armadakv/armada/storage/table"
 	grpcprom "github.com/grpc-ecosystem/go-grpc-middleware/providers/prometheus"
 	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"github.com/knadh/koanf/parsers/json"
@@ -189,20 +188,6 @@ func resolveURL(urlStr string) (addr string, secure bool, network string) {
 	}
 	secure = u.Scheme == "https" || u.Scheme == "unixs"
 	return addr, secure, network
-}
-
-func toRecoveryType(str string) table.SnapshotRecoveryType {
-	switch str {
-	case "snapshot":
-		return table.RecoveryTypeSnapshot
-	case "checkpoint":
-		return table.RecoveryTypeCheckpoint
-	default:
-		if runtime.GOOS == "windows" {
-			return table.RecoveryTypeSnapshot
-		}
-		return table.RecoveryTypeCheckpoint
-	}
 }
 
 func authFunc(token string) func(ctx context.Context) (context.Context, error) {

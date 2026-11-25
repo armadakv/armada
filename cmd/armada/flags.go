@@ -49,8 +49,6 @@ It is recommended to use low latency storage such as NVME SSD with power loss pr
 Leave WALDir to have zero value will have everything stored in NodeHostDir.`},
 		&cli.StringFlag{Name: "raft.node-host-dir", Value: "/tmp/armada/raft", Usage: "NodeHostDir raft internal storage"},
 		&cli.StringFlag{Name: "raft.state-machine-dir", Value: "/tmp/armada/state-machine", Usage: "StateMachineDir persistent storage for the state machine."},
-		&cli.StringFlag{Name: "raft.snapshot-recovery-type", Value: "", Usage: `Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
-Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.`},
 		&cli.StringFlag{Name: "raft.address", Value: "", Usage: `RaftAddress is a hostname:port or IP:port address used by the Raft RPC module for exchanging Raft messages and snapshots.
 This is also the identifier for a Storage instance. RaftAddress should be set to the public address that can be accessed from remote Storage instances.`},
 		&cli.StringFlag{Name: "raft.listen-address", Value: "", Usage: `ListenAddress is a hostname:port or IP:port address used by the Raft RPC module to listen on for Raft message and snapshots.

@@ -3,6 +3,7 @@
 package fsm
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	sm "github.com/armadakv/armada/raft/statemachine"
+	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,42 +19,16 @@ func TestFSM_Snapshot(t *testing.T) {
 	type args struct {
 		producingSMFactory func() *FSM
 		receivingSMFactory func() *FSM
-		snapshotType       SnapshotRecoveryType
 	}
 	tests := []struct {
 		name string
 		args args
 	}{
 		{
-			"recover using snapshot (small DB)",
-			args{
-				producingSMFactory: filledSM,
-				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeSnapshot,
-			},
-		},
-		{
-			"recover using snapshot (large DB)",
-			args{
-				producingSMFactory: filledLargeValuesSM,
-				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeSnapshot,
-			},
-		},
-		{
-			"recover using snapshot (empty DB)",
-			args{
-				producingSMFactory: filledIndexOnlySM,
-				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeSnapshot,
-			},
-		},
-		{
 			"recover using checkpoint (small DB)",
 			args{
 				producingSMFactory: filledSM,
 				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeCheckpoint,
 			},
 		},
 		{
@@ -60,7 +36,6 @@ func TestFSM_Snapshot(t *testing.T) {
 			args{
 				producingSMFactory: filledLargeValuesSM,
 				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeCheckpoint,
 			},
 		},
 		{
@@ -68,7 +43,6 @@ func TestFSM_Snapshot(t *testing.T) {
 			args{
 				producingSMFactory: filledIndexOnlySM,
 				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeCheckpoint,
 			},
 		},
 	}
@@ -77,7 +51,6 @@ func TestFSM_Snapshot(t *testing.T) {
 			r := require.New(t)
 
 			p := tt.args.producingSMFactory()
-			p.recoveryType = tt.args.snapshotType
 			defer p.Close()
 
 			want, err := p.GetHash()
@@ -87,7 +60,6 @@ func TestFSM_Snapshot(t *testing.T) {
 			r.NoError(err)
 
 			ep := tt.args.receivingSMFactory()
-			ep.recoveryType = tt.args.snapshotType
 			defer ep.Close()
 
 			snapf, err := os.Create(filepath.Join(t.TempDir(), "snapshot-file"))
@@ -134,26 +106,16 @@ func TestFSM_SnapshotStopped(t *testing.T) {
 	type args struct {
 		producingSMFactory func() *FSM
 		receivingSMFactory func() *FSM
-		snapshotType       SnapshotRecoveryType
 	}
 	tests := []struct {
 		name string
 		args args
 	}{
 		{
-			"stop recovery using snapshot",
-			args{
-				producingSMFactory: filledLargeValuesSM,
-				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeSnapshot,
-			},
-		},
-		{
 			"stop recovery using checkpoint",
 			args{
 				producingSMFactory: filledLargeValuesSM,
 				receivingSMFactory: emptySM,
-				snapshotType:       RecoveryTypeCheckpoint,
 			},
 		},
 	}
@@ -161,14 +123,12 @@ func TestFSM_SnapshotStopped(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			r := require.New(t)
 			p := tt.args.producingSMFactory()
-			p.recoveryType = tt.args.snapshotType
 			defer p.Close()
 
 			snp, err := p.PrepareSnapshot()
 			r.NoError(err)
 
 			ep := tt.args.receivingSMFactory()
-			ep.recoveryType = tt.args.snapshotType
 
 			snapf, err := os.Create(filepath.Join(t.TempDir(), "snapshot-file"))
 			r.NoError(err)
@@ -191,6 +151,28 @@ func TestFSM_SnapshotStopped(t *testing.T) {
 			t.Log("Recovery stopped")
 		})
 	}
+}
+
+// TestFSM_RecoverFromLegacySnapshot checks that a snapshot in the removed SST
+// format is refused before the state machine is touched.
+func TestFSM_RecoverFromLegacySnapshot(t *testing.T) {
+	r := require.New(t)
+
+	ep := filledSM()
+	defer ep.Close()
+	want, err := ep.GetHash()
+	r.NoError(err)
+
+	header := snapshotHeader{}
+	header.setFormat(snapshotFormatLegacy)
+	payload := append(header[:], []byte("legacy sst payload")...)
+
+	err = ep.RecoverFromSnapshot(bytes.NewReader(payload), make(chan struct{}))
+	r.ErrorIs(err, serrors.ErrUnsupportedSnapshotFormat)
+
+	got, err := ep.GetHash()
+	r.NoError(err)
+	r.Equal(want, got, "a rejected snapshot must leave the DB untouched")
 }
 
 type stopOnReadReader struct {

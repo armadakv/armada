@@ -139,9 +139,6 @@ Note that RTTMillisecond is the combined delays between two NodeHost instances i
 It is defined in terms of the number of applied Raft log entries.
 SnapshotEntries can be set to 0 to disable such automatic snapshotting. (default: 10000)
 
-**--raft.snapshot-recovery-type**="": Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
-Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.
-
 **--raft.state-machine-dir**="": StateMachineDir persistent storage for the state machine. (default: "/tmp/armada/state-machine")
 
 **--raft.tls-ca-file**="": Path to the CA certificate file used to verify raft peer certificates.
@@ -310,9 +307,6 @@ Note that RTTMillisecond is the combined delays between two NodeHost instances i
 **--raft.snapshot-entries**="": SnapshotEntries defines how often the state machine should be snapshot automatically.
 It is defined in terms of the number of applied Raft log entries.
 SnapshotEntries can be set to 0 to disable such automatic snapshotting. (default: 10000)
-
-**--raft.snapshot-recovery-type**="": Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
-Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.
 
 **--raft.state-machine-dir**="": StateMachineDir persistent storage for the state machine. (default: "/tmp/armada/state-machine")
 

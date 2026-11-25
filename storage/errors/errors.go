@@ -47,4 +47,6 @@ var (
 	ErrLogAhead = errors.New("queried log is ahead")
 	// ErrCompacted returned when a read is requested at a revision that has been compacted away.
 	ErrCompacted = errors.New("requested revision has been compacted")
+	// ErrUnsupportedSnapshotFormat returned when recovering from a Raft snapshot in a format this version cannot read.
+	ErrUnsupportedSnapshotFormat = errors.New("unsupported snapshot format")
 )
