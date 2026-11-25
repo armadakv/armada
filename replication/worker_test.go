@@ -914,6 +914,43 @@ func TestWorker_fetchArtifact(t *testing.T) {
 		require.Equal(t, int32(1), leaseDeletes.Load())
 	})
 
+	t.Run("a live snapshot downloads without a lease from a leader without a shared store", func(t *testing.T) {
+		live := bytes.Repeat([]byte("live"), 64)
+		var leaseRequests, liveRequests atomic.Int32
+		leader := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/" + LiveSnapshotObjectKey("test"):
+				liveRequests.Add(1)
+				_, _ = w.Write(live)
+			case "/snapshot-leases/test":
+				// What a leader with shared-store.backend=none answers.
+				leaseRequests.Add(1)
+				http.Error(w, "Shared snapshot store is not configured", http.StatusServiceUnavailable)
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+		defer leader.Close()
+
+		getter := NewHTTPSnapshotObjectGetter(leader.Client(), leader.URL)
+		w := newDownloadWorker(t, &rangeAwareGetter{payload: live, honour: true})
+		w.snapshotAccess = SnapshotAccess{
+			Objects: getter,
+			Live:    getter,
+			Leases:  getter.LeaseKeeper("follower.example:5012"),
+		}
+
+		rec := newRecord(w)
+		rec.Artifact = table.RecoveryArtifact{Type: table.ArtifactLive}
+		path, err := w.fetchArtifact(context.Background(), rec)
+		require.NoError(t, err)
+		require.Equal(t, int32(1), liveRequests.Load())
+		require.Zero(t, leaseRequests.Load(), "a live snapshot is not a shared-store artefact and must not take a lease")
+		got, err := os.ReadFile(path)
+		require.NoError(t, err)
+		require.Equal(t, live, got)
+	})
+
 	t.Run("a mismatched Content-Range never appends to the staged prefix", func(t *testing.T) {
 		getter := &rangeAwareGetter{payload: payload, honour: true}
 		w := newDownloadWorker(t, getter)
