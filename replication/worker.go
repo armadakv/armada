@@ -874,7 +874,11 @@ func (w *worker) fetchArtifact(ctx context.Context, rec table.RecoveryRecord) (s
 
 	transferCtx := ctx
 	var stopLeaseRefresh func()
-	if w.snapshotAccess.Leases != nil {
+	// The download lease only protects shared-store artefacts from GC while they
+	// are being fetched. A live snapshot is generated on demand by the leader and
+	// never lives in the shared store, so it needs no lease — and a leader without
+	// a shared store cannot grant one, which would block recovery forever.
+	if w.snapshotAccess.Leases != nil && rec.Artifact.Type != table.ArtifactLive {
 		if err := w.snapshotAccess.Leases.AcquireLease(ctx, w.table); err != nil {
 			return "", fmt.Errorf("acquire download lease: %w", err)
 		}
