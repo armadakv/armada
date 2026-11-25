@@ -4,6 +4,7 @@ package fsm
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	sm "github.com/armadakv/armada/raft/statemachine"
 	"github.com/armadakv/armada/storage/table/key"
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/cockroachdb/pebble/v2/sstable/block"
 	"github.com/stretchr/testify/require"
 )
 
@@ -561,4 +563,48 @@ func TestPhysicalVersionCount_IncludesMaxSeqno(t *testing.T) {
 	require.NoError(t, b.Commit(pebble.NoSync))
 
 	require.Equal(t, 1, physicalVersionCount(db, []byte("extreme")))
+}
+
+// rangeDelCount returns the number of range-deletion fragments in db.
+func rangeDelCount(t *testing.T, db *pebble.DB) int {
+	t.Helper()
+	n := 0
+	require.NoError(t, db.ScanInternal(context.Background(), block.CategoryUnknown,
+		minEncodedUserKey, incrementRightmostByte(append([]byte(nil), maxEncodedUserKey...)),
+		nil,
+		func(_, _ []byte, _ pebble.SeqNum) error { n++; return nil },
+		nil, nil, nil))
+	return n
+}
+
+// Case 3 with no older version must not write a tombstone: a DeleteRange that
+// covers nothing is still a physical range tombstone, and writing one for every
+// unchanged key on every sweep floods pebble with tombstones (and the
+// delete-compaction hints it keeps in memory for each of them).
+func TestRunGC_DoesNotTombstoneUnchangedKeys(t *testing.T) {
+	p := emptySM()
+	defer func() { require.NoError(t, p.Close()) }()
+
+	// "a" and "c" have a single live version; "b" has an older version that
+	// must be removed. "a" sorts directly before "b", so the sweep must not
+	// skip "b" after finding nothing to delete for "a".
+	applyEntries(p,
+		putEntry(1, []byte("a"), []byte("a1")),
+		putEntry(2, []byte("b"), []byte("b2")),
+		putEntry(3, []byte("b"), []byte("b3")),
+		putEntry(4, []byte("c"), []byte("c4")),
+	)
+	db := p.pebble.Load()
+	require.Zero(t, rangeDelCount(t, db))
+
+	require.NoError(t, p.runGC(db, 10))
+	require.Equal(t, 1, rangeDelCount(t, db), "only the older version of \"b\" needs a tombstone")
+	for k, v := range map[string]string{"a": "a1", "b": "b3", "c": "c4"} {
+		require.Equal(t, []byte(v), lookupVisible(t, p, []byte(k)))
+		require.Equal(t, 1, physicalVersionCount(db, []byte(k)))
+	}
+
+	// Nothing changed, so a second sweep must not write any tombstone.
+	require.NoError(t, p.runGC(db, 10))
+	require.Equal(t, 1, rangeDelCount(t, db))
 }
