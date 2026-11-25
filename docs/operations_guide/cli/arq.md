@@ -38,7 +38,7 @@ arq [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 
 # GLOBAL OPTIONS
 
-**--address**="": Armada API address. The scheme selects the transport (http/https/unix/unixs). (default: "http://127.0.0.1:8443")
+**--address**="": Armada API address. The scheme selects the transport (http/https/unix/unixs). (default: http://127.0.0.1:8443)
 
 **--ca**="": Path to the CA certificate used to verify the server (TLS addresses only).
 
@@ -46,9 +46,9 @@ arq [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 
 **--command-timeout**="": Timeout for an Armada API request; zero disables the timeout. (default: 30s)
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
-**--insecure-skip-verify**: Skips verification of the server certificate chain and host name (TLS addresses only).
+**--insecure-skip-verify**: Skips verification of the server certificate chain and host name (TLS addresses only). (default: false)
 
 **--key**="": Path to the client private key for mutual TLS (TLS addresses only).
 
@@ -58,7 +58,7 @@ arq [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 
 **--token**="": The access token to use for authentication.
 
-**--write-out, -w**="": Output format: simple or json. (default: "simple")
+**--write-out, -w**="": Output format: simple or json. (default: simple)
 
 
 # COMMANDS
@@ -67,25 +67,25 @@ arq [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 
 Get a key or range of keys.
 
-**--all**: Get all keys in the table; no key argument is accepted.
+**--all**: Get all keys in the table; no key argument is accepted. (default: false)
 
-**--count-only**: Return only the number of matching keys.
+**--count-only**: Return only the number of matching keys. (default: false)
 
-**--from-key**: Get all keys greater than or equal to the supplied key.
+**--from-key**: Get all keys greater than or equal to the supplied key. (default: false)
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
-**--keys-only**: Return keys without values.
+**--keys-only**: Return keys without values. (default: false)
 
 **--limit**="": Maximum number of keys to return; zero means no limit. (default: 0)
 
-**--linearizable**: Use a linearizable read instead of the default serializable read.
+**--linearizable**: Use a linearizable read instead of the default serializable read. (default: false)
 
-**--prefix**: Get all keys with the supplied key prefix.
+**--prefix**: Get all keys with the supplied key prefix. (default: false)
 
-**--stream**: Stream range results for large result sets.
+**--stream**: Stream range results for large result sets. (default: false)
 
-**--value-only**: Print values without keys in simple output.
+**--value-only**: Print values without keys in simple output. (default: false)
 
 ### help, h
 
@@ -95,9 +95,9 @@ Shows a list of commands or help for one command
 
 Put a key-value pair.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
-**--prev-kv**: Return the key's previous value, if present.
+**--prev-kv**: Return the key's previous value, if present. (default: false)
 
 ### help, h
 
@@ -107,17 +107,17 @@ Shows a list of commands or help for one command
 
 Delete a key or range of keys.
 
-**--all**: Delete all keys in the table; no key argument is accepted.
+**--all**: Delete all keys in the table; no key argument is accepted. (default: false)
 
-**--count**: Count and return the number of deleted keys.
+**--count**: Count and return the number of deleted keys. (default: false)
 
-**--from-key**: Delete all keys greater than or equal to the supplied key.
+**--from-key**: Delete all keys greater than or equal to the supplied key. (default: false)
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
-**--prefix**: Delete all keys with the supplied key prefix.
+**--prefix**: Delete all keys with the supplied key prefix. (default: false)
 
-**--prev-kv**: Return deleted key-value pairs.
+**--prev-kv**: Return deleted key-value pairs. (default: false)
 
 ### help, h
 
@@ -129,7 +129,7 @@ Execute an atomic transaction.
 
 **--file, -f**="": Read the transaction from a file instead of stdin; use - for stdin.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 ### help, h
 
@@ -139,7 +139,7 @@ Shows a list of commands or help for one command
 
 Print current version.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 ### help, h
 
