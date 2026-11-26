@@ -101,7 +101,6 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 			CompactionOverhead:   uint64(k.Int64("raft.compaction-overhead")),
 			MaxInMemLogSize:      uint64(k.Int64("raft.max-in-mem-log-size")),
 			DataDir:              k.String("raft.state-machine-dir"),
-			RecoveryType:         toRecoveryType(k.String("raft.snapshot-recovery-type")),
 			BlockCacheSize:       k.Int64("storage.block-cache-size"),
 			TableCacheSize:       k.Int("storage.table-cache-size"),
 			AppliedIndexListener: appliedIndexListener,

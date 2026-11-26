@@ -601,7 +601,7 @@ func diffTables(tables map[string]Table, raftInfo []raft.ShardInfo) (toStart map
 // machine's directory while the DB is still open makes Pebble report a fatal
 // error, and a fatal error from Pebble terminates the process.
 func (m *Manager) tableFSM(name string) sm.CreateOnDiskStateMachineFunc {
-	create := fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.scheduler, fsm.SnapshotRecoveryType(m.cfg.Table.RecoveryType), func(applied uint64) {
+	create := fsm.New(name, m.cfg.Table.DataDir, m.cfg.Table.FS, m.blockCache, m.scheduler, func(applied uint64) {
 		if m.cfg.Table.AppliedIndexListener != nil {
 			m.cfg.Table.AppliedIndexListener(name, applied)
 		}

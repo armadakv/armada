@@ -7,47 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/armadakv/armada/storage/table"
-
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 )
-
-func TestToRecoveryType(t *testing.T) {
-	tests := []struct {
-		name string
-		str  string
-		want table.SnapshotRecoveryType
-	}{
-		{
-			name: "snapshot",
-			str:  "snapshot",
-			want: table.RecoveryTypeSnapshot,
-		},
-		{
-			name: "checkpoint",
-			str:  "checkpoint",
-			want: table.RecoveryTypeCheckpoint,
-		},
-		{
-			name: "empty",
-			str:  "",
-			want: table.RecoveryTypeCheckpoint, // Default for non-Windows
-		},
-		{
-			name: "unknown",
-			str:  "unknown",
-			want: table.RecoveryTypeCheckpoint, // Default for non-Windows
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := toRecoveryType(tt.str)
-			require.Equal(t, tt.want, got)
-		})
-	}
-}
 
 func TestResolveURL(t *testing.T) {
 	tests := []struct {
@@ -230,7 +192,6 @@ func TestCreateEngineConfig(t *testing.T) {
 		"raft.compaction-overhead":     k.Get("raft.compaction-overhead"),
 		"raft.max-in-mem-log-size":     k.Get("raft.max-in-mem-log-size"),
 		"raft.state-machine-dir":       k.Get("raft.state-machine-dir"),
-		"raft.snapshot-recovery-type":  k.Get("raft.snapshot-recovery-type"),
 		"storage.block-cache-size":     k.Get("storage.block-cache-size"),
 		"storage.table-cache-size":     k.Get("storage.table-cache-size"),
 	}
@@ -261,7 +222,6 @@ func TestCreateEngineConfig(t *testing.T) {
 	k.Set("raft.compaction-overhead", uint64(5000))
 	k.Set("raft.max-in-mem-log-size", uint64(6*1024*1024))
 	k.Set("raft.state-machine-dir", "/tmp/state-machine")
-	k.Set("raft.snapshot-recovery-type", "checkpoint")
 	k.Set("storage.block-cache-size", int64(16*1024*1024))
 	k.Set("storage.table-cache-size", 1024)
 
@@ -302,7 +262,6 @@ func TestCreateEngineConfig(t *testing.T) {
 	require.Equal(t, uint64(5000), config.Table.CompactionOverhead)
 	require.Equal(t, uint64(6*1024*1024), config.Table.MaxInMemLogSize)
 	require.Equal(t, "/tmp/state-machine", config.Table.DataDir)
-	require.Equal(t, table.RecoveryTypeCheckpoint, config.Table.RecoveryType)
 	require.Equal(t, int64(16*1024*1024), config.Table.BlockCacheSize)
 	require.Equal(t, 1024, config.Table.TableCacheSize)
 	require.NotNil(t, config.Table.AppliedIndexListener)

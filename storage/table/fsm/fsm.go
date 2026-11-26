@@ -66,19 +66,18 @@ const (
 	ResultGC
 )
 
-type SnapshotRecoveryType uint8
+// snapshotFormat identifies the wire format of an intra-cluster Raft snapshot.
+// The values are part of the snapshot header and must not be renumbered.
+type snapshotFormat uint8
 
 const (
-	RecoveryTypeSnapshot SnapshotRecoveryType = iota
-	RecoveryTypeCheckpoint
+	// snapshotFormatLegacy re-encoded the key space into SSTs. It is no longer
+	// produced or accepted; the value stays reserved so that such a snapshot is
+	// rejected instead of being misread.
+	snapshotFormatLegacy snapshotFormat = iota
+	// snapshotFormatCheckpoint is a tarball of a Pebble checkpoint.
+	snapshotFormatCheckpoint
 )
-
-type snapshotRecoverer interface {
-	prepare() (any, error)
-	getHeader() snapshotHeader
-	save(ctx any, w io.Writer, stopc <-chan struct{}) error
-	recover(r io.Reader, stopc <-chan struct{}) error
-}
 
 // snapshotHeader first 8 bytes of a snapshot is this header.
 // layout:
@@ -87,15 +86,15 @@ type snapshotRecoverer interface {
 // 7 sentinel byte.
 type snapshotHeader [8]byte
 
-func (s *snapshotHeader) setSnapshotType(recoveryType SnapshotRecoveryType) {
-	s[6] = byte(recoveryType)
+func (s *snapshotHeader) setFormat(format snapshotFormat) {
+	s[6] = byte(format)
 }
 
-func (s *snapshotHeader) snapshotType() SnapshotRecoveryType {
-	return SnapshotRecoveryType(s[6])
+func (s *snapshotHeader) format() snapshotFormat {
+	return snapshotFormat(s[6])
 }
 
-func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, compactionScheduler *rp.ConcurrencyLimitScheduler, srt SnapshotRecoveryType, af func(applied uint64)) sm.CreateOnDiskStateMachineFunc {
+func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, compactionScheduler *rp.ConcurrencyLimitScheduler, af func(applied uint64)) sm.CreateOnDiskStateMachineFunc {
 	if fs == nil {
 		fs = vfs.Default
 	}
@@ -116,7 +115,6 @@ func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache,
 			compactionScheduler: compactionScheduler,
 			log:                 zap.S().Named("table").Named(tableName),
 			metrics:             newMetrics(tableName, clusterID),
-			recoveryType:        srt,
 			appliedFunc:         af,
 		}
 	}
@@ -135,7 +133,6 @@ type FSM struct {
 	blockCache          *pebble.Cache
 	compactionScheduler *rp.ConcurrencyLimitScheduler
 	metrics             *metrics
-	recoveryType        SnapshotRecoveryType
 	appliedFunc         func(applied uint64)
 
 	// gcHorizon is the highest leaderIndex up to which MVCC GC is safe.
@@ -454,16 +451,16 @@ func (p *FSM) GetHash() (uint64, error) {
 // PrepareSnapshot prepares the snapshot to be concurrently captured and
 // streamed.
 func (p *FSM) PrepareSnapshot() (any, error) {
-	return p.getRecoverer(p.recoveryType).prepare()
+	return (&checkpoint{p}).prepare()
 }
 
 // SaveSnapshot saves the state of the object to the provided io.Writer object.
 func (p *FSM) SaveSnapshot(ctx any, w io.Writer, stopc <-chan struct{}) error {
-	r := p.getRecoverer(p.recoveryType)
-	if err := binary.Write(w, binary.LittleEndian, r.getHeader()); err != nil {
+	c := &checkpoint{p}
+	if err := binary.Write(w, binary.LittleEndian, c.getHeader()); err != nil {
 		return err
 	}
-	return r.save(ctx, w, stopc)
+	return c.save(ctx, w, stopc)
 }
 
 // RecoverFromSnapshot recovers the state machine state from snapshot specified by
@@ -475,7 +472,10 @@ func (p *FSM) RecoverFromSnapshot(r io.Reader, stopc <-chan struct{}) error {
 	if err != nil {
 		return err
 	}
-	return p.getRecoverer(header.snapshotType()).recover(r, stopc)
+	if format := header.format(); format != snapshotFormatCheckpoint {
+		return fmt.Errorf("%w: %d", errors.ErrUnsupportedSnapshotFormat, format)
+	}
+	return (&checkpoint{p}).recover(r, stopc)
 }
 
 func (p *FSM) Collect(ch chan<- prometheus.Metric) {
@@ -495,17 +495,6 @@ func (p *FSM) Describe(ch chan<- *prometheus.Desc) {
 		return
 	}
 	p.metrics.Describe(ch)
-}
-
-func (p *FSM) getRecoverer(recoveryType SnapshotRecoveryType) snapshotRecoverer {
-	switch recoveryType {
-	case RecoveryTypeSnapshot:
-		return &snapshot{p}
-	case RecoveryTypeCheckpoint:
-		return &checkpoint{p}
-	default:
-		panic(fmt.Sprintf("unknown recoverer type: %d", p.recoveryType))
-	}
 }
 
 // encodeUserKeyPrefix writes the upper-bound user key used to scan all versions of a key.

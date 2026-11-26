@@ -36,17 +36,17 @@ arctl [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 
 # GLOBAL OPTIONS
 
-**--address**="": Armada API address. The scheme selects the transport (http/https/unix/unixs). (default: "http://127.0.0.1:8443")
+**--address**="": Armada API address. The scheme selects the transport (http/https/unix/unixs). (default: http://127.0.0.1:8443)
 
 **--ca**="": Path to the CA certificate used to verify the server (TLS addresses only).
 
 **--cert**="": Path to the client certificate to present for mutual TLS (TLS addresses only).
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
-**--insecure-skip-verify**: Skips verification of the server certificate chain and host name (TLS addresses only).
+**--insecure-skip-verify**: Skips verification of the server certificate chain and host name (TLS addresses only). (default: false)
 
-**--json**: Enables JSON logging.
+**--json**: Enables JSON logging. (default: false)
 
 **--key**="": Path to the client private key for mutual TLS (TLS addresses only).
 
@@ -63,7 +63,7 @@ Backup Armada to local files.
 
 **--dir**="": Target directory (current directory if empty).
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 ### help, h
 
@@ -75,7 +75,7 @@ Restore Armada from local files.
 
 **--dir**="": Directory containing the backups (current directory if empty)
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 ### help, h
 
@@ -85,15 +85,15 @@ Shows a list of commands or help for one command
 
 Manage Armada tables.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 ### list, ls
 
 List all tables present in the cluster.
 
-**--format, -o**="": Output format: "table" or "json". (default: "table")
+**--format, -o**="": Output format: "table" or "json". (default: table)
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 #### help, h
 
@@ -103,7 +103,7 @@ Shows a list of commands or help for one command
 
 Create a table.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 #### help, h
 
@@ -113,7 +113,7 @@ Shows a list of commands or help for one command
 
 Delete a table.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 #### help, h
 
@@ -127,7 +127,7 @@ Shows a list of commands or help for one command
 
 Print current version.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 ### help, h
 

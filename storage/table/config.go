@@ -3,7 +3,6 @@
 package table
 
 import (
-	"github.com/armadakv/armada/storage/table/fsm"
 	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
@@ -15,13 +14,6 @@ type Config struct {
 	// Meta is a configuration for metadata inmemory state machine.
 	Meta MetaConfig
 }
-
-type SnapshotRecoveryType fsm.SnapshotRecoveryType
-
-const (
-	RecoveryTypeSnapshot SnapshotRecoveryType = iota
-	RecoveryTypeCheckpoint
-)
 
 type TableConfig struct {
 	// ElectionRTT is the minimum number of message RTT between elections. Message
@@ -101,9 +93,7 @@ type TableConfig struct {
 	// BlockCacheSize shared block cache size in bytes, the cache is used to hold uncompressed blocks of data in memory.
 	BlockCacheSize int64
 	// TableCacheSize shared table cache size, the cache is used to hold handles to open SSTs.
-	TableCacheSize int
-	// RecoveryType the in-cluster snapshot recovery type.
-	RecoveryType         SnapshotRecoveryType
+	TableCacheSize       int
 	AppliedIndexListener func(table string, rev uint64)
 	// GCHorizonListener is called when the Raft log for the given shard is
 	// compacted up to index. The FSM should advance its GC horizon to this index.

@@ -31,7 +31,7 @@ armada [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 
 # GLOBAL OPTIONS
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 
 # COMMANDS
@@ -40,9 +40,9 @@ armada [GLOBAL OPTIONS] [command [COMMAND OPTIONS]] [ARGUMENTS...]
 
 Start Armada in leader mode.
 
-**--api.address**="": API server address. The address the server listens on. (default: "http://0.0.0.0:8443")
+**--api.address**="": API server address. The address the server listens on. (default: http://0.0.0.0:8443)
 
-**--api.advertise-address**="": Advertise API server address, used for NAT traversal. (default: "http://127.0.0.1:8443")
+**--api.advertise-address**="": Advertise API server address, used for NAT traversal. (default: http://127.0.0.1:8443)
 
 **--api.allowed-cn**="": AllowedCN is a CN which must be provided by a client.
 
@@ -52,7 +52,7 @@ Start Armada in leader mode.
 
 **--api.cert-filename**="": Path to the API server certificate.
 
-**--api.client-cert-auth**: API server client certificate auth enabled. If set to true the api.ca-filename should be provided as well.
+**--api.client-cert-auth**: API server client certificate auth enabled. If set to true the api.ca-filename should be provided as well. (default: false)
 
 **--api.key-filename**="": Path to the API server private key file.
 
@@ -64,13 +64,13 @@ Start Armada in leader mode.
 
 **--config**="": Path to a configuration file (.yaml, .yml, .json or .toml). Values are overridden by environment variables and command-line flags.
 
-**--dev-mode**: Development mode enabled (verbose logging, human-friendly log format).
+**--dev-mode**: Development mode enabled (verbose logging, human-friendly log format). (default: false)
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
-**--log-level**="": Log level: DEBUG/INFO/WARN/ERROR. (default: "INFO")
+**--log-level**="": Log level: DEBUG/INFO/WARN/ERROR. (default: INFO)
 
-**--maintenance.enabled**: Whether maintenance API is enabled.
+**--maintenance.enabled**: Whether maintenance API is enabled. (default: true)
 
 **--maintenance.token**="": Token to check for maintenance API access, if left empty (default) no token is checked.
 
@@ -79,7 +79,7 @@ Gossip services running on remote Armada instances will use AdvertiseAddress to 
 When not set, the raft.address value is used (gossip shares the raft UDP port).
 
 **--memberlist.cluster-name**="": Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.
-All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value. (default: "default")
+All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value. (default: default)
 
 **--memberlist.members**="": Seed is a list of addresses of remote Armada instances to bootstrap the gossip service.
 Each address should be the raft address (IP:Port) of a peer — gossip shares the same UDP port as raft via ALPN multiplexing.
@@ -125,7 +125,7 @@ dropped to restrict memory usage. When set to 0, it means the queue size is unli
 **--raft.max-send-queue-size**="": MaxSendQueueSize is the maximum size in bytes of each send queue. Once the maximum size is reached, further replication messages will be
 dropped to restrict memory usage. When set to 0, it means the send queue size is unlimited. (default: 0)
 
-**--raft.node-host-dir**="": NodeHostDir raft internal storage (default: "/tmp/armada/raft")
+**--raft.node-host-dir**="": NodeHostDir raft internal storage (default: /tmp/armada/raft)
 
 **--raft.quic-udp-buffer-size**="": QUICUDPBufferSize is the UDP socket receive/send buffer size in bytes requested for the QUIC transport.
 When set to a positive value the QUIC library's buffer requests are capped at this value, preventing log warnings on systems
@@ -139,10 +139,7 @@ Note that RTTMillisecond is the combined delays between two NodeHost instances i
 It is defined in terms of the number of applied Raft log entries.
 SnapshotEntries can be set to 0 to disable such automatic snapshotting. (default: 10000)
 
-**--raft.snapshot-recovery-type**="": Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
-Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.
-
-**--raft.state-machine-dir**="": StateMachineDir persistent storage for the state machine. (default: "/tmp/armada/state-machine")
+**--raft.state-machine-dir**="": StateMachineDir persistent storage for the state machine. (default: /tmp/armada/state-machine)
 
 **--raft.tls-ca-file**="": Path to the CA certificate file used to verify raft peer certificates.
 
@@ -154,15 +151,15 @@ Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Typ
 It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data.
 Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
-**--replication.address**="": Replication API server address. The address the server listens on. (default: "http://0.0.0.0:8444")
+**--replication.address**="": Replication API server address. The address the server listens on. (default: http://0.0.0.0:8444)
 
 **--replication.ca-filename**="": Path to the API server CA cert file.
 
 **--replication.cert-filename**="": Path to the API server certificate.
 
-**--replication.client-cert-auth**: Replication server client certificate auth enabled. If set to true the `replication.ca-filename` should be provided as well.
+**--replication.client-cert-auth**: Replication server client certificate auth enabled. If set to true the `replication.ca-filename` should be provided as well. (default: false)
 
-**--replication.enabled**: Whether replication API is enabled.
+**--replication.enabled**: Whether replication API is enabled. (default: true)
 
 **--replication.key-filename**="": Path to the API server private key file.
 
@@ -170,7 +167,7 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--replication.snapshot-timeout**="": Timeout for a single incremental snapshot export triggered by log compaction. (default: 10m0s)
 
-**--rest.address**="": REST API server address. (default: "http://127.0.0.1:8079")
+**--rest.address**="": REST API server address. (default: http://127.0.0.1:8079)
 
 **--rest.read-timeout**="": Maximum duration for reading the entire request. (default: 5s)
 
@@ -180,13 +177,17 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--shared-store.azure.key**="": Key to use for the Azure shared-store backend.
 
-**--shared-store.backend**="": Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob. (default: "none")
+**--shared-store.backend**="": Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob. (default: none)
 
 **--shared-store.filesystem.directory**="": Directory path to use for the filesystem backend.
+
+**--shared-store.full-interval**="": How often a full snapshot of every led table is exported to the shared store. Followers need a full snapshot as the base of any incremental chain. (default: 6h0m0s)
 
 **--shared-store.gc-interval**="": How often the GC worker runs to delete expired artefacts from the shared store. (default: 1h0m0s)
 
 **--shared-store.gcs.bucket**="": Bucket name to use for the GCS shared-store backend.
+
+**--shared-store.incr-max-chain**="": Maximum number of incremental snapshots chained off the newest full snapshot before the next export is forced to be a full one. (default: 8)
 
 **--shared-store.retention**="": Maximum age of artefacts in the shared store. Older artefacts are eligible for GC. (default: 48h0m0s)
 
@@ -198,7 +199,7 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--tables.delete**="": Delete Armada tables with given names.
 
-**--tables.enabled**: Whether tables API is enabled.
+**--tables.enabled**: Whether tables API is enabled. (default: true)
 
 **--tables.names**="": Create Armada tables with given names.
 
@@ -212,9 +213,9 @@ Shows a list of commands or help for one command
 
 Start Armada in follower mode.
 
-**--api.address**="": API server address. The address the server listens on. (default: "http://0.0.0.0:8443")
+**--api.address**="": API server address. The address the server listens on. (default: http://0.0.0.0:8443)
 
-**--api.advertise-address**="": Advertise API server address, used for NAT traversal. (default: "http://127.0.0.1:8443")
+**--api.advertise-address**="": Advertise API server address, used for NAT traversal. (default: http://127.0.0.1:8443)
 
 **--api.allowed-cn**="": AllowedCN is a CN which must be provided by a client.
 
@@ -224,7 +225,7 @@ Start Armada in follower mode.
 
 **--api.cert-filename**="": Path to the API server certificate.
 
-**--api.client-cert-auth**: API server client certificate auth enabled. If set to true the api.ca-filename should be provided as well.
+**--api.client-cert-auth**: API server client certificate auth enabled. If set to true the api.ca-filename should be provided as well. (default: false)
 
 **--api.key-filename**="": Path to the API server private key file.
 
@@ -236,13 +237,13 @@ Start Armada in follower mode.
 
 **--config**="": Path to a configuration file (.yaml, .yml, .json or .toml). Values are overridden by environment variables and command-line flags.
 
-**--dev-mode**: Development mode enabled (verbose logging, human-friendly log format).
+**--dev-mode**: Development mode enabled (verbose logging, human-friendly log format). (default: false)
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
-**--log-level**="": Log level: DEBUG/INFO/WARN/ERROR. (default: "INFO")
+**--log-level**="": Log level: DEBUG/INFO/WARN/ERROR. (default: INFO)
 
-**--maintenance.enabled**: Whether maintenance API is enabled.
+**--maintenance.enabled**: Whether maintenance API is enabled. (default: true)
 
 **--maintenance.token**="": Token to check for maintenance API access, if left empty (default) no token is checked.
 
@@ -251,7 +252,7 @@ Gossip services running on remote Armada instances will use AdvertiseAddress to 
 When not set, the raft.address value is used (gossip shares the raft UDP port).
 
 **--memberlist.cluster-name**="": Cluster name, propagated in Memberlist API responses as well as used as used as a label when forming the gossip cluster.
-All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value. (default: "default")
+All nodes of the cluster MUST set this to the same value. If changing it is advisable to turn off all the nodes and then startup with the new value. (default: default)
 
 **--memberlist.members**="": Seed is a list of addresses of remote Armada instances to bootstrap the gossip service.
 Each address should be the raft address (IP:Port) of a peer — gossip shares the same UDP port as raft via ALPN multiplexing.
@@ -297,7 +298,7 @@ dropped to restrict memory usage. When set to 0, it means the queue size is unli
 **--raft.max-send-queue-size**="": MaxSendQueueSize is the maximum size in bytes of each send queue. Once the maximum size is reached, further replication messages will be
 dropped to restrict memory usage. When set to 0, it means the send queue size is unlimited. (default: 0)
 
-**--raft.node-host-dir**="": NodeHostDir raft internal storage (default: "/tmp/armada/raft")
+**--raft.node-host-dir**="": NodeHostDir raft internal storage (default: /tmp/armada/raft)
 
 **--raft.quic-udp-buffer-size**="": QUICUDPBufferSize is the UDP socket receive/send buffer size in bytes requested for the QUIC transport.
 When set to a positive value the QUIC library's buffer requests are capped at this value, preventing log warnings on systems
@@ -311,10 +312,7 @@ Note that RTTMillisecond is the combined delays between two NodeHost instances i
 It is defined in terms of the number of applied Raft log entries.
 SnapshotEntries can be set to 0 to disable such automatic snapshotting. (default: 10000)
 
-**--raft.snapshot-recovery-type**="": Specifies the way how the snapshots should be shared between nodes within the cluster. Options: snapshot, checkpoint, default: checkpoint for non Windows systems.
-Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Type 'checkpoint'' uses hardlinks on FS a sends DB in tarball over wire. Checkpoint is thus much more memory and compute efficient at the potential expense of disk space, it is not advisable to use on OS/FS which does not support hardlinks.
-
-**--raft.state-machine-dir**="": StateMachineDir persistent storage for the state machine. (default: "/tmp/armada/state-machine")
+**--raft.state-machine-dir**="": StateMachineDir persistent storage for the state machine. (default: /tmp/armada/state-machine)
 
 **--raft.tls-ca-file**="": Path to the CA certificate file used to verify raft peer certificates.
 
@@ -326,19 +324,19 @@ Type 'snapshot' uses in-memory snapshot of DB to send over wire to the peer. Typ
 It is recommended to use low latency storage such as NVME SSD with power loss protection to store such WAL data.
 Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
-**--replication.ca-filename**="": Path to the client CA cert file. The CA file is used to verify server authority. (default: "hack/replication/ca.crt")
+**--replication.ca-filename**="": Path to the client CA cert file. The CA file is used to verify server authority. (default: hack/replication/ca.crt)
 
-**--replication.cert-filename**="": Path to the client certificate. (default: "hack/replication/client.crt")
+**--replication.cert-filename**="": Path to the client certificate. (default: hack/replication/client.crt)
 
-**--replication.insecure-skip-verify**: InsecureSkipVerify controls whether a client verifies the server's certificate chain and host name. If InsecureSkipVerify is true, crypto/tls accepts any certificate presented by the server and any host name in that certificate.
+**--replication.insecure-skip-verify**: InsecureSkipVerify controls whether a client verifies the server's certificate chain and host name. If InsecureSkipVerify is true, crypto/tls accepts any certificate presented by the server and any host name in that certificate. (default: false)
 
 **--replication.keepalive-time**="": After a duration of this time if the replication client doesn't see any activity it pings the server to see if the transport is still alive. If set below 10s, a minimum value of 10s will be used instead. (default: 1m0s)
 
 **--replication.keepalive-timeout**="": After having pinged for keepalive check, the replication client waits for a duration of Timeout and if no activity is seen even after that the connection is closed. (default: 10s)
 
-**--replication.key-filename**="": Path to the client private key file. (default: "hack/replication/client.key")
+**--replication.key-filename**="": Path to the client private key file. (default: hack/replication/client.key)
 
-**--replication.leader-address**="": Address of the leader replication API to connect to. (default: "localhost:8444")
+**--replication.leader-address**="": Address of the leader replication API to connect to. (default: localhost:8444)
 
 **--replication.lease-interval**="": Interval in which the workers re-new their table leases. (default: 15s)
 
@@ -356,11 +354,11 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--replication.snapshot-rpc-timeout**="": The snapshot RPC timeout. (default: 1h0m0s)
 
-**--replication.snapshot-source**="": Snapshot object source: auto, direct, or proxy. direct uses shared-store backend from follower config; proxy uses leader HTTP endpoint. (default: "auto")
+**--replication.snapshot-source**="": Snapshot object source: auto, direct, or proxy. direct uses shared-store backend from follower config; proxy uses leader HTTP endpoint. (default: auto)
 
 **--replication.snapshot-timeout**="": Timeout for a single incremental snapshot export triggered by log compaction. (default: 10m0s)
 
-**--rest.address**="": REST API server address. (default: "http://127.0.0.1:8079")
+**--rest.address**="": REST API server address. (default: http://127.0.0.1:8079)
 
 **--rest.read-timeout**="": Maximum duration for reading the entire request. (default: 5s)
 
@@ -370,13 +368,17 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--shared-store.azure.key**="": Key to use for the Azure shared-store backend.
 
-**--shared-store.backend**="": Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob. (default: "none")
+**--shared-store.backend**="": Blob store backend. Supported values: none (disabled), filesystem, s3, gcs, azblob. (default: none)
 
 **--shared-store.filesystem.directory**="": Directory path to use for the filesystem backend.
+
+**--shared-store.full-interval**="": How often a full snapshot of every led table is exported to the shared store. Followers need a full snapshot as the base of any incremental chain. (default: 6h0m0s)
 
 **--shared-store.gc-interval**="": How often the GC worker runs to delete expired artefacts from the shared store. (default: 1h0m0s)
 
 **--shared-store.gcs.bucket**="": Bucket name to use for the GCS shared-store backend.
+
+**--shared-store.incr-max-chain**="": Maximum number of incremental snapshots chained off the newest full snapshot before the next export is forced to be a full one. (default: 8)
 
 **--shared-store.retention**="": Maximum age of artefacts in the shared store. Older artefacts are eligible for GC. (default: 48h0m0s)
 
@@ -386,7 +388,7 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--storage.table-cache-size**="": Shared table cache size, the cache is used to hold handles to open SSTs. (default: 1024)
 
-**--tables.enabled**: Whether tables API is enabled.
+**--tables.enabled**: Whether tables API is enabled. (default: true)
 
 **--tables.token**="": Token to check for tables API access, if left empty (default) no token is checked.
 
@@ -398,7 +400,7 @@ Shows a list of commands or help for one command
 
 Print current version.
 
-**--help, -h**: show help
+**--help, -h**: show help (default: false)
 
 ### help, h
 

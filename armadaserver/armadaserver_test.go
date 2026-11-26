@@ -93,7 +93,6 @@ func newInMemTestEngine(t *testing.T, tables ...string) *storage.Engine {
 				DataDir:            "/data",
 				BlockCacheSize:     1024,
 				TableCacheSize:     64,
-				RecoveryType:       table.RecoveryTypeCheckpoint,
 			},
 			Meta: storage.MetaConfig{
 				ElectionRTT:        10,

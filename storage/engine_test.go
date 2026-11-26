@@ -47,26 +47,6 @@ func TestEngine_Start(t *testing.T) {
 			wantErr:     require.NoError,
 		},
 		{
-			name: "start test node checkpoint snapshot",
-			fields: fields{cfg: func() Config {
-				cfg := newTestConfig()
-				cfg.Table.RecoveryType = table.RecoveryTypeCheckpoint
-				return cfg
-			}()},
-			wantStarted: true,
-			wantErr:     require.NoError,
-		},
-		{
-			name: "start test node snapshot snapshot",
-			fields: fields{cfg: func() Config {
-				cfg := newTestConfig()
-				cfg.Table.RecoveryType = table.RecoveryTypeSnapshot
-				return cfg
-			}()},
-			wantStarted: true,
-			wantErr:     require.NoError,
-		},
-		{
 			name: "start tmp fs",
 			fields: fields{cfg: func() Config {
 				raftPort := getTestPort()
