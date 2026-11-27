@@ -305,8 +305,18 @@ func TestManager_Restore(t *testing.T) {
 		// The restored shard's own log assigns the revisions.
 		require.Equal(t, kv.CreateRevision, kv.ModRevision)
 	}
-	// An operator restore makes a new shard of this cluster, not a replica of
-	// the backup's source, so it records no source index.
+	// The restored shard applied the backup: its local index covers every
+	// record and the terminal marker, which is applied last.
+	localIndex, err := tab2.LocalIndex(ctx, true)
+	require.NoError(t, err)
+	for _, kv := range rangeResp.Kvs {
+		require.Less(t, uint64(kv.ModRevision), localIndex.Index)
+	}
+	// It is a new shard of the leader cluster, not a replica of the backup's
+	// source: like every leader-cluster table it records no leader index. The
+	// backup's tip, an index of the old shard's log, would make every snapshot
+	// exported from this shard fail a follower's check that the terminal index
+	// is not behind the data.
 	leaderIndex, err := tab2.LeaderIndex(ctx, true)
 	require.NoError(t, err)
 	require.Zero(t, leaderIndex.Index)
@@ -788,13 +798,18 @@ func TestAsFreshWrites(t *testing.T) {
 		{Type: armadapb.Command_PUT, LeaderIndex: li(50), Kv: &armadapb.KeyValue{Key: []byte("k"), Value: []byte("v"), CreateRevision: 40, ModRevision: 50}},
 		{Type: armadapb.Command_DELETE, LeaderIndex: li(60), Kv: &armadapb.KeyValue{Key: []byte("d"), CreateRevision: 10, ModRevision: 60}},
 	}}
-	got := asFreshWrites(seq)
-	require.NotNil(t, got)
-	for _, child := range got.Sequence {
+	asFreshWrites(seq)
+	for _, child := range seq.Sequence {
 		require.Nil(t, child.LeaderIndex)
 		require.Zero(t, child.Kv.CreateRevision)
 		require.Zero(t, child.Kv.ModRevision)
 	}
-	require.Equal(t, []byte("v"), got.Sequence[0].Kv.Value, "values are kept")
-	require.Nil(t, asFreshWrites(&armadapb.Command{Type: armadapb.Command_DUMMY, LeaderIndex: li(70)}), "the terminal marker is dropped")
+	require.Equal(t, []byte("v"), seq.Sequence[0].Kv.Value, "values are kept")
+
+	// The terminal marker is kept as a no-op: no leader index, which also
+	// keeps it from reading as a maintenance reset (leader index zero).
+	terminal := &armadapb.Command{Type: armadapb.Command_DUMMY, LeaderIndex: li(70)}
+	asFreshWrites(terminal)
+	require.Equal(t, armadapb.Command_DUMMY, terminal.Type)
+	require.Nil(t, terminal.LeaderIndex)
 }

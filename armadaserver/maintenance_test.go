@@ -168,6 +168,11 @@ func TestBackupServer_RestoreThenUpdate(t *testing.T) {
 	leaderIndex, err := restored.LeaderIndex(ctx, true)
 	r.NoError(err)
 	r.Zero(leaderIndex.Index, "a restore does not make the shard a replica of the backup's source")
+	localIndex, err := restored.LocalIndex(ctx, true)
+	r.NoError(err)
+	for _, kv := range before.Kvs {
+		r.Less(uint64(kv.ModRevision), localIndex.Index, "the terminal marker is applied after %s", kv.Key)
+	}
 
 	put, err := restored.Put(ctx, &armadapb.PutRequest{Table: []byte("orders"), Key: []byte("k"), Value: []byte("after-restore")})
 	r.NoError(err)
@@ -181,6 +186,50 @@ func TestBackupServer_RestoreThenUpdate(t *testing.T) {
 	r.Equal("after-restore", string(got.Kvs[0].Value), "a write after the restore is visible")
 	r.Equal(int64(put.Header.Revision), got.Kvs[0].ModRevision)
 	r.Equal("kept", string(got.Kvs[1].Value))
+}
+
+// TestBackupServer_RestoreEmptyBackup restores a backup of an empty table,
+// which holds nothing but its terminal marker. The marker is still applied, so
+// the restored shard ends at a known applied index: recovery seeds learners up
+// to that index, and with nothing applied every learner would count as caught
+// up, even one that never joined.
+func TestBackupServer_RestoreEmptyBackup(t *testing.T) {
+	r := require.New(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	engine := newInMemTestEngine(t, "orders")
+	srv := &BackupServer{Tables: engine, AuthFunc: func(c context.Context) (context.Context, error) { return c, nil }}
+	tab, err := engine.GetTable("orders")
+	r.NoError(err)
+
+	collector := &backupCollector{ctx: ctx}
+	r.NoError(srv.Backup(&armadapb.BackupRequest{Table: []byte("orders")}, collector))
+	messages := []*armadapb.RestoreMessage{{Data: &armadapb.RestoreMessage_Info{Info: &armadapb.RestoreInfo{Table: []byte("orders"), Format: "armada-command-v2"}}}}
+	for _, c := range collector.chunks {
+		messages = append(messages, &armadapb.RestoreMessage{Data: &armadapb.RestoreMessage_Chunk{Chunk: c}})
+	}
+	r.NoError(srv.Restore(&restoreStream{ctx: ctx, messages: messages}))
+
+	restored, err := engine.GetTable("orders")
+	r.NoError(err)
+	r.Greater(restored.ClusterID, tab.ClusterID)
+	localIndex, err := restored.LocalIndex(ctx, true)
+	r.NoError(err)
+	r.Positive(localIndex.Index, "the terminal marker is applied")
+	leaderIndex, err := restored.LeaderIndex(ctx, true)
+	r.NoError(err)
+	r.Zero(leaderIndex.Index)
+
+	empty, err := restored.Range(ctx, &armadapb.RangeRequest{Table: []byte("orders"), Key: []byte{0}, RangeEnd: []byte{0}, Linearizable: true})
+	r.NoError(err)
+	r.Empty(empty.Kvs)
+	put, err := restored.Put(ctx, &armadapb.PutRequest{Table: []byte("orders"), Key: []byte("k"), Value: []byte("v")})
+	r.NoError(err)
+	r.Greater(put.Header.Revision, localIndex.Index)
+	got, err := restored.Range(ctx, &armadapb.RangeRequest{Table: []byte("orders"), Key: []byte("k"), Linearizable: true})
+	r.NoError(err)
+	r.Equal("v", string(got.Kvs[0].Value))
 }
 
 // TestBackupServer_RestoreRejectsUnknownFormat guards the format check that
