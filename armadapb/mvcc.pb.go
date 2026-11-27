@@ -225,7 +225,11 @@ type Command struct {
 	// sequence is the sequence of commands to be applied as a single FSM step.
 	Sequence []*Command `protobuf:"bytes,10,rep,name=sequence,proto3" json:"sequence,omitempty"`
 	// count if to count number of records affected by a command.
-	Count         bool `protobuf:"varint,11,opt,name=count,proto3" json:"count,omitempty"`
+	Count bool `protobuf:"varint,11,opt,name=count,proto3" json:"count,omitempty"`
+	// gc_horizon is the GC horizon of a GC command: the compacted Raft log index of the cluster that
+	// proposed it. leader_index cannot carry it across clusters, because replication sets leader_index
+	// to the index of the replicated entry. When unset, the command's sequence is the horizon.
+	GcHorizon     *uint64 `protobuf:"varint,12,opt,name=gc_horizon,json=gcHorizon,proto3,oneof" json:"gc_horizon,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -328,6 +332,13 @@ func (x *Command) GetCount() bool {
 		return x.Count
 	}
 	return false
+}
+
+func (x *Command) GetGcHorizon() uint64 {
+	if x != nil && x.GcHorizon != nil {
+		return *x.GcHorizon
+	}
+	return 0
 }
 
 type CommandResult struct {
@@ -1310,7 +1321,7 @@ var File_mvcc_proto protoreflect.FileDescriptor
 const file_mvcc_proto_rawDesc = "" +
 	"\n" +
 	"\n" +
-	"mvcc.proto\x12\amvcc.v1\"\x87\x04\n" +
+	"mvcc.proto\x12\amvcc.v1\"\xba\x04\n" +
 	"\aCommand\x12\x14\n" +
 	"\x05table\x18\x01 \x01(\fR\x05table\x120\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x1c.mvcc.v1.Command.CommandTypeR\x04type\x12!\n" +
@@ -1322,7 +1333,9 @@ const file_mvcc_proto_rawDesc = "" +
 	"\bprev_kvs\x18\t \x01(\bR\aprevKvs\x12,\n" +
 	"\bsequence\x18\n" +
 	" \x03(\v2\x10.mvcc.v1.CommandR\bsequence\x12\x14\n" +
-	"\x05count\x18\v \x01(\bR\x05count\"m\n" +
+	"\x05count\x18\v \x01(\bR\x05count\x12\"\n" +
+	"\n" +
+	"gc_horizon\x18\f \x01(\x04H\x03R\tgcHorizon\x88\x01\x01\"m\n" +
 	"\vCommandType\x12\a\n" +
 	"\x03PUT\x10\x00\x12\n" +
 	"\n" +
@@ -1336,7 +1349,8 @@ const file_mvcc_proto_rawDesc = "" +
 	"\r_leader_indexB\x06\n" +
 	"\x04_txnB\f\n" +
 	"\n" +
-	"_range_endJ\x04\b\x04\x10\x05\"^\n" +
+	"_range_endB\r\n" +
+	"\v_gc_horizonJ\x04\b\x04\x10\x05\"^\n" +
 	"\rCommandResult\x121\n" +
 	"\tresponses\x18\x01 \x03(\v2\x13.mvcc.v1.ResponseOpR\tresponses\x12\x1a\n" +
 	"\brevision\x18\x02 \x01(\x04R\brevision\"\x8d\x01\n" +

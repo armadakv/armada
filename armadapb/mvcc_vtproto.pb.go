@@ -49,6 +49,11 @@ func (m *Command) MarshalToSizedBufferVT(dAtA []byte) (int, error) {
 		i -= len(m.unknownFields)
 		copy(dAtA[i:], m.unknownFields)
 	}
+	if m.GcHorizon != nil {
+		i = protohelpers.EncodeVarint(dAtA, i, uint64(*m.GcHorizon))
+		i--
+		dAtA[i] = 0x60
+	}
 	if m.Count {
 		i--
 		if m.Count {
@@ -1093,6 +1098,9 @@ func (m *Command) SizeVT() (n int) {
 	if m.Count {
 		n += 2
 	}
+	if m.GcHorizon != nil {
+		n += 1 + protohelpers.SizeOfVarint(uint64(*m.GcHorizon))
+	}
 	n += len(m.unknownFields)
 	return n
 }
@@ -1802,6 +1810,26 @@ func (m *Command) UnmarshalVT(dAtA []byte) error {
 				}
 			}
 			m.Count = bool(v != 0)
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GcHorizon", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.GcHorizon = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])
@@ -4007,6 +4035,26 @@ func (m *Command) UnmarshalVTUnsafe(dAtA []byte) error {
 				}
 			}
 			m.Count = bool(v != 0)
+		case 12:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GcHorizon", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return protohelpers.ErrIntOverflow
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.GcHorizon = &v
 		default:
 			iNdEx = preIndex
 			skippy, err := protohelpers.Skip(dAtA[iNdEx:])

@@ -20,6 +20,29 @@ type updateContext struct {
 	db          *pebble.DB
 	index       uint64
 	leaderIndex *uint64
+	// cmd is the top-level command of the entry being applied.
+	cmd *armadapb.Command
+
+	// sourceIndex is the source index persisted as sysLeaderIndex and reported
+	// as applied: the leader index of the last applied entry that is not a
+	// top-level GC. A GC proposal carries the compacted index of the cluster
+	// that proposed it, which is not a source index, and on a follower cluster
+	// it is in the follower's own index domain.
+	sourceIndex *uint64
+	// dataApplied is set once an entry other than a top-level GC was applied.
+	dataApplied bool
+	// gcHorizon is the GC horizon after the entries applied so far. It never
+	// decreases: versions below an applied horizon may already be swept.
+	gcHorizon        uint64
+	gcHorizonChanged bool
+}
+
+// advanceGCHorizon applies a GC horizon, ignoring one that would move it back.
+func (c *updateContext) advanceGCHorizon(horizon uint64) {
+	if horizon > c.gcHorizon {
+		c.gcHorizon = horizon
+		c.gcHorizonChanged = true
+	}
 }
 
 // seqno returns the sequence number to use when encoding MVCC keys.
@@ -51,10 +74,17 @@ func (c *updateContext) EnsureIndexed() error {
 
 func (c *updateContext) Commit() error {
 	// Set leader index if present in the proposal
-	if c.leaderIndex != nil {
+	if c.sourceIndex != nil {
 		leaderIdx := make([]byte, 8)
-		binary.LittleEndian.PutUint64(leaderIdx, *c.leaderIndex)
+		binary.LittleEndian.PutUint64(leaderIdx, *c.sourceIndex)
 		if err := c.batch.Set(sysLeaderIndex, leaderIdx, nil); err != nil {
+			return err
+		}
+	}
+	if c.gcHorizonChanged {
+		horizon := make([]byte, 8)
+		binary.LittleEndian.PutUint64(horizon, c.gcHorizon)
+		if err := c.batch.Set(sysGCHorizon, horizon, nil); err != nil {
 			return err
 		}
 	}
@@ -81,6 +111,11 @@ func parseCommand(c *updateContext, entry sm.Entry) (command, error) {
 		return commandDummy{}, err
 	}
 	c.leaderIndex = cmd.LeaderIndex
+	c.cmd = cmd
+	if cmd.Type != armadapb.Command_GC {
+		c.sourceIndex = cmd.LeaderIndex
+		c.dataApplied = true
+	}
 	return wrapCommand(cmd), nil
 }
 

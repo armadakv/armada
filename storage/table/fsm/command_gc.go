@@ -3,8 +3,6 @@
 package fsm
 
 import (
-	"encoding/binary"
-
 	"github.com/armadakv/armada/armadapb"
 )
 
@@ -14,10 +12,12 @@ type commandGC struct {
 
 func (c commandGC) handle(ctx *updateContext) (UpdateResult, *armadapb.CommandResult, error) {
 	horizon := ctx.seqno()
-	val := make([]byte, 8)
-	binary.LittleEndian.PutUint64(val, horizon)
-	if err := ctx.batch.Set(sysGCHorizon, val, nil); err != nil {
-		return ResultFailure, nil, err
+	if c.GcHorizon != nil {
+		// Replication sets the leader index of every command it ships to the
+		// index of the replicated entry, so a follower finds the horizon the
+		// leader proposed only here.
+		horizon = *c.GcHorizon
 	}
-	return ResultGC, &armadapb.CommandResult{Revision: horizon}, nil
+	ctx.advanceGCHorizon(horizon)
+	return ResultGC, &armadapb.CommandResult{Revision: ctx.gcHorizon}, nil
 }

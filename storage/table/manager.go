@@ -1101,8 +1101,11 @@ func (m *Manager) NotifyLogCompacted(shardID uint64, index uint64) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		cmd := &armadapb.Command{
-			Type:        armadapb.Command_GC,
+			Type: armadapb.Command_GC,
+			// leader_index keeps older replicas, which read the horizon from
+			// it, working during a rolling upgrade.
 			LeaderIndex: &index,
+			GcHorizon:   &index,
 		}
 		bts, err := cmd.MarshalVT()
 		if err != nil {

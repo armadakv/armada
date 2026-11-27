@@ -323,8 +323,9 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 	db := p.pebble.Load()
 
 	ctx := &updateContext{
-		batch: db.NewBatch(pebble.WithInitialSizeBytes(updatesSize(updates))),
-		db:    db,
+		batch:     db.NewBatch(pebble.WithInitialSizeBytes(updatesSize(updates))),
+		db:        db,
+		gcHorizon: p.gcHorizon.Load(),
 	}
 
 	defer func() {
@@ -332,7 +333,6 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 	}()
 
 	var idx uint64
-	var gcHorizonApplied uint64
 	for i := range updates {
 		cmd, err := parseCommand(ctx, updates[i])
 		if err != nil {
@@ -342,10 +342,6 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 		updateResult, res, err := cmd.handle(ctx)
 		if err != nil {
 			return nil, err
-		}
-
-		if updateResult == ResultGC {
-			gcHorizonApplied = res.Revision
 		}
 
 		bts, err := res.MarshalVT()
@@ -361,16 +357,21 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 		return nil, err
 	}
 
-	// Advance in-memory GC horizon and wake the sweep worker if a GC command was applied.
-	if gcHorizonApplied > 0 {
-		p.gcHorizon.Store(gcHorizonApplied)
+	// Advance the in-memory GC horizon and wake the sweep worker when a GC
+	// command advanced it, including one nested in a replicated SEQUENCE.
+	if ctx.gcHorizonChanged {
+		p.gcHorizon.Store(ctx.gcHorizon)
 		p.signalGCWorker()
 	}
 
 	p.metrics.applied.Store(idx)
-	if ctx.leaderIndex != nil {
-		p.appliedFunc(*ctx.leaderIndex)
-	} else {
+	switch {
+	case !ctx.dataApplied:
+		// Only GC was applied: there is no new source index to report, and
+		// the compacted index a GC carries is not one.
+	case ctx.sourceIndex != nil:
+		p.appliedFunc(*ctx.sourceIndex)
+	default:
 		p.appliedFunc(idx)
 	}
 	return updates, nil
