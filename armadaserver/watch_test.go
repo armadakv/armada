@@ -5,6 +5,7 @@ package armadaserver
 import (
 	"context"
 	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -182,17 +183,17 @@ func TestWatchServer_IDsAndCancel(t *testing.T) {
 // sees every write from its first event on, in order.
 func TestWatchServer_ConcurrentWrites(t *testing.T) {
 	kv, wc := startWatchServer(t, "t")
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := context.Background()
 
-	revs := make(chan int64, 4096)
-	done := make(chan struct{})
+	const writes = 600
+	revs := make(chan int64, writes)
+	errs := make(chan error, 1)
 	go func() {
-		defer close(done)
 		defer close(revs)
-		for i := 0; ctx.Err() == nil && i < 2000; i++ {
+		for range writes {
 			res, err := kv.Put(ctx, &armadapb.PutRequest{Table: []byte("t"), Key: []byte("a"), Value: []byte("v")})
 			if err != nil {
+				errs <- err
 				return
 			}
 			revs <- int64(res.Header.Revision)
@@ -205,8 +206,19 @@ func TestWatchServer_ConcurrentWrites(t *testing.T) {
 	created := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a")})
 	require.False(t, created.Canceled)
 
+	written := []int64{first}
+	for r := range revs {
+		written = append(written, r)
+	}
+	select {
+	case err := <-errs:
+		require.NoError(t, err)
+	default:
+	}
+	last := written[len(written)-1]
+
 	var got []int64
-	for len(got) < 300 {
+	for len(got) == 0 || got[len(got)-1] < last {
 		resp, err := stream.Recv()
 		require.NoError(t, err)
 		require.False(t, resp.Canceled, resp.CancelReason)
@@ -214,22 +226,9 @@ func TestWatchServer_ConcurrentWrites(t *testing.T) {
 			got = append(got, ev.Kv.ModRevision)
 		}
 	}
-	cancel()
-	<-done
 
-	var written []int64
-	written = append(written, first)
-	for r := range revs {
-		written = append(written, r)
-	}
 	// Every write from the first received event on was delivered, in order.
-	start := -1
-	for i, r := range written {
-		if r == got[0] {
-			start = i
-			break
-		}
-	}
+	start := slices.Index(written, got[0])
 	require.NotEqual(t, -1, start, "first event %d is a write", got[0])
-	require.Equal(t, written[start:start+len(got)], got)
+	require.Equal(t, written[start:], got)
 }
