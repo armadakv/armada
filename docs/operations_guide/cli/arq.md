@@ -135,6 +135,32 @@ Execute an atomic transaction.
 
 Shows a list of commands or help for one command
 
+## watch
+
+Watch a key or range of keys for changes.
+
+**--all**: Watch all keys in the table; no key argument is accepted. (default: false)
+
+**--from-key**: Watch all keys greater than or equal to the supplied key. (default: false)
+
+**--help, -h**: show help (default: false)
+
+**--no-delete**: Do not print DELETE events. (default: false)
+
+**--no-put**: Do not print PUT events. (default: false)
+
+**--prefix**: Watch all keys with the supplied key prefix. (default: false)
+
+**--prev-kv**: Print the previous key-value pair of each event, when it is still available. (default: false)
+
+**--progress-notify**: Ask for periodic progress notifications (printed with --write-out=json). (default: false)
+
+**--rev**="": Revision to start watching from; zero means changes after now. (default: 0)
+
+### help, h
+
+Shows a list of commands or help for one command
+
 ## version
 
 Print current version.

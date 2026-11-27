@@ -14,7 +14,9 @@ While Armada maintains many of ETCD features there are some notable differences:
 
 * Armada is designed to store much larger (tens of GB) datasets and also provide iterator-like API to query large
   datasets.
-* Armada prioritize speed and performance over some more advanced ETCD features like Watch API, or Leases.
+* Armada prioritize speed and performance over some more advanced ETCD features like Leases.
+* Armada provides an ETCD-style Watch API whose revisions are the same on every cluster, so a watch can resume on
+  any node, including one in a follower cluster.
 * Armada support multiple separate keyspaces called tables which operate individually.
 
 ## Production readiness
