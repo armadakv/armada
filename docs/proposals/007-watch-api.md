@@ -183,8 +183,9 @@ follow from existing apply behaviour:
 * A replicated command sequence applies several source sequences in one Raft
   entry. Record each child under its own source sequence.
 * Cross-cluster recovery replays snapshot commands that carry explicit source
-  metadata and write at historical sequences. They are **not** events. They
-  are applied to a recovery shard that no watcher is attached to; see
+  metadata and write at historical sequences. They are **not** events. A full
+  recovery applies them to a recovery shard that no watcher is attached to,
+  but an incremental recovery replays them into the live serving shard; see
   [History floor](#history-floor).
 
 `FSM.Update` checks an atomic watcher count for the table once per call. With
@@ -198,9 +199,17 @@ records the revision range as a gap, and watchers that needed it catch up from
 the store. The apply path performs no I/O and takes no lock that a watcher can
 hold.
 
-Replace the `af func(applied uint64)` argument of `fsm.New` with a small
-publisher interface that carries both the applied index and the event batch,
-and keep serving `table.Config.AppliedIndexListener` from it.
+`fsm.New` takes an observer factory next to the existing applied-index
+callback, which keeps serving `table.Config.AppliedIndexListener` unchanged.
+The state machine asks for its observer when it opens, so a shard restarted on
+the same node never reuses the hub of the instance that closed before it.
+
+The revision is persisted as a new `sysRevision` system key, written in the
+same batch as the data. None of the existing index keys can serve: the local
+index differs between clusters, and on the leader cluster `sysLeaderIndex` is
+written by locally proposed GC commands with the compacted index. A top-level
+GC command does not advance the revision, and a maintenance reset (a DUMMY
+with source index zero) sets it back to zero and rewrites history.
 
 ### Catch-up from the MVCC store
 
@@ -300,20 +309,39 @@ per key, so the rebuilt table has no intermediate versions below the artifact
 tip, while its GC horizon may be lower. Without a second floor a historical
 watch there would silently skip events.
 
-Persist a `sysHistoryFloor` system key. Recovery finishes loading an artifact
-by proposing a command to the recovery shard that sets the key to the artifact
-tip. The command goes through Raft, so every replica of the shard, including
-learners seeded later by checkpoint, agrees on the floor. The key only moves
-forward.
+Persist a `sysHistoryFloor` system key. The state machine derives it from the
+replay itself instead of from a separate command:
+
+* a PUT or DELETE that carries source revision metadata is a replayed record,
+  and raises the floor to its modification revision;
+* the replay's terminal marker, a top-level DUMMY with a source index, raises
+  the floor to the artifact tip. Live replication always wraps commands in a
+  SEQUENCE, so this is unambiguous. The tip matters because a full artifact
+  leaves no record at all for a key that was created and deleted before it.
+
+Replayed records go through Raft like any other command, so every replica of
+the shard agrees on the floor, and learners seeded later by checkpoint copy
+the key. The key only moves forward. Deriving the floor needs no new command
+type, which matters during a rolling upgrade: an older state machine panics on
+a command type it does not know.
 
 It cannot be folded into `sysGCHorizon`: the horizon is overwritten by each
 `Command_GC` replicated from the leader cluster, and the first one after
 recovery would carry a lower index than the artifact tip.
 
-When recovery swaps the table to the recovery shard, the hub cancels that
-table's watchers with `compact_revision = floor + 1`. Clients re-list and
-start again, which is the correct response: the node's view of the table was
-replaced.
+A batch with replayed records or a terminal marker is reported to the hub as
+rewritten, and the hub cancels the shard's watchers with
+`compact_revision = floor + 1`. This covers both recovery modes:
+
+* A **full** recovery loads a recovery shard and then swaps the table to it.
+  The serving check cancels the old shard's watchers once the table resolves
+  to the new shard, with the new shard's floor.
+* An **incremental** recovery replays the delta into the live shard. Its
+  watchers are canceled at the first replayed batch, with the floor known at
+  that point; requests made after the terminal marker see the artifact tip.
+
+Clients re-list and start again, which is the correct response: the node's
+view of the table was replaced.
 
 ### Server
 

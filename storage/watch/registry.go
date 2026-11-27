@@ -152,7 +152,15 @@ func (r *Registry) checkServing() {
 		case err != nil:
 			r.log.Debugf("unable to resolve table %s: %v", h.table, err)
 		case shardID != h.shardID:
-			h.cancelAll(reasonReplaced, 0)
+			var compact uint64
+			r.mu.Lock()
+			if cur, ok := r.hubs[shardID]; ok {
+				cur.mu.Lock()
+				compact = cur.floor + 1
+				cur.mu.Unlock()
+			}
+			r.mu.Unlock()
+			h.cancelAll(reasonReplaced, compact)
 		}
 	}
 }

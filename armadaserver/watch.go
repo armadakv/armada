@@ -145,6 +145,11 @@ func (st *watchStream) create(req *armadapb.WatchCreateRequest) {
 	w, err := st.server.Watches.Watch(opts, st.sink)
 	if err != nil {
 		st.release(id)
+		var compacted *watch.CompactedError
+		if errors.As(err, &compacted) {
+			st.sink.Push(watch.Message{WatchID: id, Created: true, Canceled: true, CompactRevision: compacted.CompactRevision, Reason: err.Error()})
+			return
+		}
 		st.reject(id, watchErrorReason(err))
 		return
 	}

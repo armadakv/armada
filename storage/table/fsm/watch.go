@@ -43,6 +43,9 @@ type Commit struct {
 	// source revisions, or a reset of the revision. Events are not recorded
 	// for such writes, and a watcher cannot be continued across them.
 	Rewritten bool
+	// Floor is the highest revision whose events are no longer available:
+	// the larger of the GC horizon and the history floor of snapshot replays.
+	Floor uint64
 }
 
 type noopObserver struct{}

@@ -14,16 +14,32 @@ package watch
 
 import (
 	"errors"
+	"fmt"
+
+	serrors "github.com/armadakv/armada/storage/errors"
 )
 
 var (
 	// ErrNotServed is returned when the table's serving shard does not run on this node.
 	ErrNotServed = errors.New("table is not served by this node")
-	// ErrHistoricalRevision is returned for a start revision that is not after the current revision.
-	ErrHistoricalRevision = errors.New("watching from a past revision is not supported")
 	// ErrClosed is returned once the registry is closed.
 	ErrClosed = errors.New("watch registry is closed")
 )
+
+// CompactedError is returned for a start revision whose events are no longer
+// available. It matches serrors.ErrCompacted.
+type CompactedError struct {
+	// CompactRevision is the first available revision.
+	CompactRevision uint64
+}
+
+func (e *CompactedError) Error() string {
+	return fmt.Sprintf("required revision has been compacted, the first available revision is %d", e.CompactRevision)
+}
+
+func (e *CompactedError) Unwrap() error {
+	return serrors.ErrCompacted
+}
 
 // Cancel reasons reported to clients.
 const (

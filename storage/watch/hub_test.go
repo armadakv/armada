@@ -207,9 +207,58 @@ func TestHub_StartRevision(t *testing.T) {
 	m := next(t, future)
 	require.Len(t, m.Events, 1)
 	require.Equal(t, int64(8), m.Events[0].Kv.ModRevision)
+}
 
-	_, err := r.Watch(Options{Table: testTable, Key: []byte("a"), StartRevision: 8}, NewSink(0))
-	require.ErrorIs(t, err, ErrHistoricalRevision)
+func TestHub_HistoricalStartRevision(t *testing.T) {
+	r, h, _ := newTestHub(t, 1)
+	for rev := uint64(2); rev <= 10; rev++ {
+		commitTo(r, h, true, rev, put("a", "v", 2, int64(rev)))
+	}
+	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return h.revision == 10
+	}, time.Second, time.Millisecond)
+
+	// History is read from the store, then the watcher continues live.
+	_, s := watchOn(t, r, Options{ID: 1, Key: []byte("a"), StartRevision: 4})
+	require.Equal(t, seq(4, 10), collect(t, s, 7))
+	commitTo(r, h, true, 11, put("a", "v", 2, 11))
+	require.Equal(t, []int64{11}, collect(t, s, 1))
+	requireNoMessage(t, s)
+}
+
+func TestHub_CompactedStartRevision(t *testing.T) {
+	r, h, _ := newTestHub(t, 1)
+	h.Committed(fsm.Commit{Revision: 20, Captured: true, Floor: 12})
+	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return h.revision == 20
+	}, time.Second, time.Millisecond)
+
+	_, err := r.Watch(Options{Table: testTable, Key: []byte("a"), StartRevision: 12}, NewSink(0))
+	var compacted *CompactedError
+	require.ErrorAs(t, err, &compacted)
+	require.Equal(t, uint64(13), compacted.CompactRevision)
+	require.ErrorIs(t, err, serrors.ErrCompacted)
+
+	// The store is authoritative: when the revisions are not in memory and
+	// the store's floor moved past them, catch-up cancels the watcher.
+	st := storeOf(r)
+	st.mu.Lock()
+	st.floor = 15
+	st.mu.Unlock()
+	h.Committed(fsm.Commit{Revision: 25, Floor: 12})
+	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return h.revision == 25
+	}, time.Second, time.Millisecond)
+	_, s := watchOn(t, r, Options{ID: 2, Key: []byte("a"), StartRevision: 14})
+	m := next(t, s)
+	require.True(t, m.Canceled)
+	require.Equal(t, uint64(16), m.CompactRevision)
 }
 
 func TestHub_Cancel(t *testing.T) {
@@ -227,10 +276,11 @@ func TestHub_Cancel(t *testing.T) {
 func TestHub_CancelOnRewrite(t *testing.T) {
 	r, h, _ := newTestHub(t, 10)
 	_, s := watchOn(t, r, Options{ID: 1, Key: []byte("a")})
-	h.Committed(fsm.Commit{Revision: 20, Rewritten: true})
+	h.Committed(fsm.Commit{Revision: 20, Rewritten: true, Floor: 20})
 	m := next(t, s)
 	require.True(t, m.Canceled)
 	require.Equal(t, reasonRewritten, m.Reason)
+	require.Equal(t, uint64(21), m.CompactRevision)
 
 	// A revision that goes backwards is a rewrite as well.
 	_, s = watchOn(t, r, Options{ID: 2, Key: []byte("a")})

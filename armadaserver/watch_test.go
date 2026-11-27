@@ -4,12 +4,14 @@ package armadaserver
 
 import (
 	"context"
+	"io"
 	"net"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/armadakv/armada/armadapb"
+	"github.com/armadakv/armada/storage"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -27,6 +29,12 @@ func TestWatchServer_Unimplemented(t *testing.T) {
 // in-memory connection.
 func startWatchServer(t *testing.T, tables ...string) (armadapb.KVClient, armadapb.WatchClient) {
 	t.Helper()
+	kv, wc, _ := startWatchEngine(t, tables...)
+	return kv, wc
+}
+
+func startWatchEngine(t *testing.T, tables ...string) (armadapb.KVClient, armadapb.WatchClient, *storage.Engine) {
+	t.Helper()
 	engine := newInMemTestEngine(t, tables...)
 	lis := bufconn.Listen(1 << 20)
 	srv := grpc.NewServer()
@@ -41,7 +49,7 @@ func startWatchServer(t *testing.T, tables ...string) (armadapb.KVClient, armada
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
-	return armadapb.NewKVClient(conn), armadapb.NewWatchClient(conn)
+	return armadapb.NewKVClient(conn), armadapb.NewWatchClient(conn), engine
 }
 
 func openWatch(t *testing.T, c armadapb.WatchClient) armadapb.Watch_WatchClient {
@@ -138,12 +146,23 @@ func TestWatchServer_StartRevision(t *testing.T) {
 	require.NoError(t, err)
 	rev := int64(put.Header.Revision)
 
-	past := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), StartRevision: rev})
-	require.True(t, past.Canceled)
-	require.Equal(t, "watching from a past revision is not supported", past.CancelReason)
+	_, err = kv.Put(context.Background(), &armadapb.PutRequest{Table: []byte("t"), Key: []byte("a"), Value: []byte("2")})
+	require.NoError(t, err)
 
-	future := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), StartRevision: rev + 1})
-	require.False(t, future.Canceled)
+	// A past revision replays the history from the store.
+	past := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), StartRevision: rev, PrevKv: true})
+	require.False(t, past.Canceled)
+	var events []*armadapb.Event
+	for len(events) < 2 {
+		resp, err := stream.Recv()
+		require.NoError(t, err)
+		require.Equal(t, past.WatchId, resp.WatchId)
+		events = append(events, resp.Events...)
+	}
+	require.Equal(t, "1", string(events[0].Kv.Value))
+	require.Equal(t, rev, events[0].Kv.ModRevision)
+	require.Equal(t, "2", string(events[1].Kv.Value))
+	require.Equal(t, "1", string(events[1].PrevKv.Value))
 }
 
 func TestWatchServer_IDsAndCancel(t *testing.T) {
@@ -231,4 +250,62 @@ func TestWatchServer_ConcurrentWrites(t *testing.T) {
 	start := slices.Index(written, got[0])
 	require.NotEqual(t, -1, start, "first event %d is a write", got[0])
 	require.Equal(t, written[start:], got)
+}
+
+// commandStream is a snapshot stream yielding one command per Read.
+type commandStream struct {
+	records [][]byte
+}
+
+func (r *commandStream) Read(p []byte) (int, error) {
+	if len(r.records) == 0 {
+		return 0, io.EOF
+	}
+	n := copy(p, r.records[0])
+	r.records = r.records[1:]
+	return n, nil
+}
+
+// TestWatchServer_SnapshotReplay replays an incremental snapshot into the live
+// shard, as cross-cluster recovery does. The replay collapses the history up
+// to its tip, so watchers are canceled and older revisions become unavailable.
+func TestWatchServer_SnapshotReplay(t *testing.T) {
+	kv, wc, engine := startWatchEngine(t, "t")
+	ctx := context.Background()
+	_, err := kv.Put(ctx, &armadapb.PutRequest{Table: []byte("t"), Key: []byte("a"), Value: []byte("1")})
+	require.NoError(t, err)
+
+	stream := openWatch(t, wc)
+	live := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a")})
+	require.False(t, live.Canceled)
+
+	tip := uint64(500)
+	data := uint64(450)
+	var records [][]byte
+	for _, cmd := range []*armadapb.Command{
+		{Table: []byte("t"), Type: armadapb.Command_PUT, LeaderIndex: &data, Kv: &armadapb.KeyValue{Key: []byte("a"), Value: []byte("r"), CreateRevision: 400, ModRevision: 450}},
+		{Table: []byte("t"), Type: armadapb.Command_DUMMY, LeaderIndex: &tip},
+	} {
+		b, err := cmd.MarshalVT()
+		require.NoError(t, err)
+		records = append(records, b)
+	}
+	require.NoError(t, engine.ApplySnapshot(ctx, "t", &commandStream{records: records}))
+
+	resp, err := stream.Recv()
+	require.NoError(t, err)
+	require.Equal(t, live.WatchId, resp.WatchId)
+	require.True(t, resp.Canceled)
+	// The replay's records arrive before its terminal marker: the watcher is
+	// canceled at the first of them, with the floor known at that point.
+	require.Equal(t, int64(data+1), resp.CompactRevision)
+
+	// Once the replay completed, revisions up to its tip are gone and later
+	// ones can be watched.
+	old := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), StartRevision: int64(data)})
+	require.True(t, old.Canceled)
+	require.Equal(t, int64(tip+1), old.CompactRevision)
+
+	now := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), StartRevision: int64(tip + 1)})
+	require.False(t, now.Canceled)
 }
