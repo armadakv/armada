@@ -48,6 +48,7 @@ type Sink struct {
 	size   int
 	limit  int
 	ready  chan struct{}
+	room   chan struct{}
 	closed bool
 }
 
@@ -56,7 +57,7 @@ func NewSink(limit int) *Sink {
 	if limit <= 0 {
 		limit = DefaultSinkLimit
 	}
-	return &Sink{limit: limit, ready: make(chan struct{}, 1)}
+	return &Sink{limit: limit, ready: make(chan struct{}, 1), room: make(chan struct{}, 1)}
 }
 
 // offer queues an event message of the given size unless the sink is full.
@@ -88,6 +89,27 @@ func (s *Sink) Push(m Message) {
 	s.signal()
 }
 
+// waitRoom waits until no event bytes are queued. It returns false when the
+// sink closes or stop is closed first.
+func (s *Sink) waitRoom(stop <-chan struct{}) bool {
+	for {
+		s.mu.Lock()
+		closed, empty := s.closed, s.size == 0
+		s.mu.Unlock()
+		switch {
+		case closed:
+			return false
+		case empty:
+			return true
+		}
+		select {
+		case <-stop:
+			return false
+		case <-s.room:
+		}
+	}
+}
+
 func (s *Sink) signal() {
 	select {
 	case s.ready <- struct{}{}:
@@ -104,6 +126,10 @@ func (s *Sink) Next(ctx context.Context) ([]Message, error) {
 			s.queue = nil
 			s.size = 0
 			s.mu.Unlock()
+			select {
+			case s.room <- struct{}{}:
+			default:
+			}
 			return q, nil
 		}
 		closed := s.closed
@@ -127,6 +153,10 @@ func (s *Sink) Close() {
 	s.queue = nil
 	s.size = 0
 	s.signal()
+	select {
+	case s.room <- struct{}{}:
+	default:
+	}
 }
 
 func eventsSize(events []*armadapb.Event) int {

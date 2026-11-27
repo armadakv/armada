@@ -12,16 +12,25 @@ import (
 	"go.uber.org/zap"
 )
 
-// defaultServingInterval is how often the registry checks that the watched
-// tables are still served by the shards their watchers are registered on.
-const defaultServingInterval = time.Second
+const (
+	// defaultServingInterval is how often the registry checks that the watched
+	// tables are still served by the shards their watchers are registered on.
+	defaultServingInterval = time.Second
+	// maxConcurrentScans bounds the catch-up reads running at once on a node.
+	maxConcurrentScans = 16
+)
 
 // Resolver returns the shard currently serving a table.
 type Resolver func(table string) (shardID uint64, err error)
 
+// Scanner reads events back from a shard's store on this node.
+type Scanner func(shardID uint64, req fsm.WatchScanRequest) (*fsm.WatchScanResponse, error)
+
 // Registry owns the hubs of all table shards on a node.
 type Registry struct {
 	resolve  Resolver
+	scanner  Scanner
+	scans    chan struct{}
 	log      *zap.SugaredLogger
 	interval time.Duration
 
@@ -33,10 +42,13 @@ type Registry struct {
 	wg   sync.WaitGroup
 }
 
-// NewRegistry returns a registry resolving tables with resolve.
-func NewRegistry(resolve Resolver) *Registry {
+// NewRegistry returns a registry resolving tables with resolve and reading
+// history with scan.
+func NewRegistry(resolve Resolver, scan Scanner) *Registry {
 	return &Registry{
 		resolve:  resolve,
+		scanner:  scan,
+		scans:    make(chan struct{}, maxConcurrentScans),
 		log:      zap.S().Named("watch"),
 		interval: defaultServingInterval,
 		hubs:     make(map[uint64]*Hub),
@@ -67,6 +79,19 @@ func (r *Registry) remove(h *Hub) {
 	if cur, ok := r.hubs[h.shardID]; ok && cur == h {
 		delete(r.hubs, h.shardID)
 	}
+}
+
+// scan reads history from a shard, waiting for a free scan slot.
+func (r *Registry) scan(stop <-chan struct{}, shardID uint64, req fsm.WatchScanRequest) (*fsm.WatchScanResponse, error) {
+	select {
+	case r.scans <- struct{}{}:
+	case <-stop:
+		return nil, ErrClosed
+	case <-r.stop:
+		return nil, ErrClosed
+	}
+	defer func() { <-r.scans }()
+	return r.scanner(shardID, req)
 }
 
 // Watch registers a watcher whose messages are queued into sink.

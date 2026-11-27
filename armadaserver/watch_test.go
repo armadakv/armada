@@ -5,6 +5,7 @@ package armadaserver
 import (
 	"context"
 	"net"
+	"slices"
 	"testing"
 	"time"
 
@@ -174,4 +175,60 @@ func TestWatchServer_IDsAndCancel(t *testing.T) {
 	// The ID is free again.
 	again := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), WatchId: 7})
 	require.False(t, again.Canceled)
+}
+
+// TestWatchServer_ConcurrentWrites creates a watcher while writes are in
+// flight. Batches applied before the state machine noticed the watcher are
+// not recorded and must be read back from the store, so the watcher still
+// sees every write from its first event on, in order.
+func TestWatchServer_ConcurrentWrites(t *testing.T) {
+	kv, wc := startWatchServer(t, "t")
+	ctx := context.Background()
+
+	const writes = 600
+	revs := make(chan int64, writes)
+	errs := make(chan error, 1)
+	go func() {
+		defer close(revs)
+		for range writes {
+			res, err := kv.Put(ctx, &armadapb.PutRequest{Table: []byte("t"), Key: []byte("a"), Value: []byte("v")})
+			if err != nil {
+				errs <- err
+				return
+			}
+			revs <- int64(res.Header.Revision)
+		}
+	}()
+
+	// Let some writes happen before the watcher exists.
+	first := <-revs
+	stream := openWatch(t, wc)
+	created := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a")})
+	require.False(t, created.Canceled)
+
+	written := []int64{first}
+	for r := range revs {
+		written = append(written, r)
+	}
+	select {
+	case err := <-errs:
+		require.NoError(t, err)
+	default:
+	}
+	last := written[len(written)-1]
+
+	var got []int64
+	for len(got) == 0 || got[len(got)-1] < last {
+		resp, err := stream.Recv()
+		require.NoError(t, err)
+		require.False(t, resp.Canceled, resp.CancelReason)
+		for _, ev := range resp.Events {
+			got = append(got, ev.Kv.ModRevision)
+		}
+	}
+
+	// Every write from the first received event on was delivered, in order.
+	start := slices.Index(written, got[0])
+	require.NotEqual(t, -1, start, "first event %d is a write", got[0])
+	require.Equal(t, written[start:], got)
 }

@@ -28,7 +28,7 @@ var (
 // Cancel reasons reported to clients.
 const (
 	reasonRewritten = "table history was rewritten by a recovery or a reset, re-list and watch again"
-	reasonBehind    = "watcher fell behind the table, resume from the last received revision"
+	reasonCompacted = "required revision has been compacted, re-list and watch again"
 	reasonClosed    = "table is no longer served by this node"
 	reasonDeleted   = "table was deleted"
 	reasonReplaced  = "table was recreated or replaced by a recovery, re-list and watch again"

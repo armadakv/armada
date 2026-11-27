@@ -4,21 +4,43 @@ package watch
 
 import (
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage/table/fsm"
 )
 
-// maxPendingCommits bounds the commits a hub queues before it stops recording
-// them individually and remembers only that revisions were missed.
-const maxPendingCommits = 1024
+const (
+	// maxPendingCommits bounds the commits a hub queues before it stops
+	// recording them individually and remembers only that revisions were missed.
+	maxPendingCommits = 1024
+	// ringSize is the number of recent captured commits a hub keeps, so that a
+	// watcher that caught up from the store can switch to the live path
+	// without reading the store again.
+	ringSize = 64
+	// catchUpBytes bounds the events read from the store per catch-up step.
+	catchUpBytes = 1024 * 1024
+	// catchUpRetry is the delay before a failed catch-up step is retried.
+	catchUpRetry = 100 * time.Millisecond
+)
 
 // Hub delivers the events of one table shard to its watchers. It implements
 // fsm.Observer for the shard's state machine.
+//
+// A watcher is synced while it is fed from the commits the state machine
+// reports. When it cannot be, because events were not recorded, the hub fell
+// behind the state machine, or the watcher's stream is too slow, it becomes
+// unsynced and reads its events back from the store from the first revision
+// it has not received. Once it reaches the revisions the hub still keeps in
+// memory, it is synced again. No event is lost or duplicated on the way.
 type Hub struct {
 	shardID  uint64
 	table    string
 	registry *Registry
+	// count is the number of watchers; the state machine records events only
+	// while it is non-zero.
+	count atomic.Int64
 
 	// The state machine hands commits over through this queue. When the queue
 	// is full, later commits are folded into an overflow marker, so the apply
@@ -38,6 +60,10 @@ type Hub struct {
 	open bool
 	// revision is the revision of the last commit the hub has processed.
 	revision uint64
+	// ring holds the most recent captured commits. Together they cover every
+	// revision in (ringBase, revision].
+	ring     []fsm.Commit
+	ringBase uint64
 	watchers map[*Watcher]struct{}
 	matcher  matcher
 }
@@ -57,11 +83,10 @@ func newHub(r *Registry, shardID uint64, table string) *Hub {
 	return h
 }
 
-// Capturing implements fsm.Observer. Until history can be read back from the
-// store, every batch is captured: a batch that is not captured would leave
-// its watchers without a way to recover the events.
+// Capturing implements fsm.Observer. Batches applied while nobody watches are
+// not recorded; a watcher that needs them reads them from the store.
 func (h *Hub) Capturing() bool {
-	return true
+	return h.count.Load() > 0
 }
 
 // Committed implements fsm.Observer.
@@ -142,22 +167,34 @@ func (h *Hub) applyLocked(c fsm.Commit) {
 	switch {
 	case c.Rewritten || c.Revision < h.revision:
 		h.cancelAllLocked(reasonRewritten, 0)
+		h.resetRingLocked(c.Revision)
 	case !c.Captured:
 		if c.Revision > h.revision {
 			h.missedLocked(c.Revision)
 		}
+		h.resetRingLocked(c.Revision)
 	default:
 		h.dispatchLocked(c)
+		h.ring = append(h.ring, c)
+		if len(h.ring) > ringSize {
+			h.ringBase = h.ring[0].Revision
+			h.ring = h.ring[1:]
+		}
 	}
 	h.revision = c.Revision
 }
 
-// missedLocked handles revisions up to rev whose events were not recorded.
-// Watchers that were waiting for any of them can no longer be served.
+func (h *Hub) resetRingLocked(rev uint64) {
+	h.ring = nil
+	h.ringBase = rev
+}
+
+// missedLocked handles revisions up to rev whose events were not recorded:
+// the synced watchers that were waiting for any of them catch up from the store.
 func (h *Hub) missedLocked(rev uint64) {
 	for w := range h.watchers {
-		if h.positionLocked(w) <= rev {
-			h.cancelLocked(w, reasonBehind, 0)
+		if w.state == stateSynced && h.positionLocked(w) <= rev {
+			h.demoteLocked(w, h.positionLocked(w))
 		}
 	}
 }
@@ -191,9 +228,126 @@ func (h *Hub) dispatchLocked(c fsm.Commit) {
 		evs := byW[w]
 		m := Message{WatchID: w.id, ShardID: h.shardID, Revision: c.Revision, Events: evs}
 		if !w.sink.offer(m, eventsSize(evs)) {
-			h.cancelLocked(w, reasonBehind, 0)
+			// The stream is too slow: the watcher reads this commit and
+			// everything after it back from the store once there is room.
+			h.demoteLocked(w, h.positionLocked(w))
 		}
 	}
+}
+
+// demoteLocked makes a watcher read its events from the store from next on.
+func (h *Hub) demoteLocked(w *Watcher, next uint64) {
+	w.state = stateUnsynced
+	w.next = next
+	if !w.catchingUp {
+		w.catchingUp = true
+		go h.catchUp(w)
+	}
+}
+
+// promoteLocked switches an unsynced watcher to the live path when the
+// commits it still needs are in memory, delivering them from the ring. It
+// reports whether the watcher is synced.
+func (h *Hub) promoteLocked(w *Watcher) bool {
+	if w.next <= h.ringBase {
+		return false
+	}
+	for _, c := range h.ring {
+		if c.Revision < w.next {
+			continue
+		}
+		evs := w.filter(c.Events)
+		if len(evs) == 0 {
+			w.next = c.Revision + 1
+			continue
+		}
+		if !w.sink.offer(Message{WatchID: w.id, ShardID: h.shardID, Revision: c.Revision, Events: evs}, eventsSize(evs)) {
+			return false
+		}
+		w.next = c.Revision + 1
+	}
+	w.state = stateSynced
+	w.catchingUp = false
+	w.minRev = max(w.minRev, w.next)
+	return true
+}
+
+// catchUp reads an unsynced watcher's events from the store until it can be
+// promoted.
+func (h *Hub) catchUp(w *Watcher) {
+	for {
+		h.mu.Lock()
+		if w.state != stateUnsynced {
+			w.catchingUp = false
+			h.mu.Unlock()
+			return
+		}
+		if h.promoteLocked(w) {
+			h.mu.Unlock()
+			return
+		}
+		from, to := w.next, h.revision
+		h.mu.Unlock()
+
+		if !w.sink.waitRoom(w.stop) {
+			h.endCatchUp(w)
+			return
+		}
+		res, err := h.registry.scan(w.stop, h.shardID, fsm.WatchScanRequest{
+			Key:      w.key,
+			RangeEnd: w.rangeEnd,
+			From:     from,
+			To:       to,
+			PrevKV:   w.prevKV,
+			MaxBytes: catchUpBytes,
+		})
+		switch {
+		case err != nil:
+			select {
+			case <-w.stop:
+				h.endCatchUp(w)
+				return
+			case <-time.After(catchUpRetry):
+			}
+			continue
+		case res.Compacted:
+			h.cancel(w, reasonCompacted, res.Floor+1)
+			h.endCatchUp(w)
+			return
+		}
+		if !h.deliverCatchUp(w, from, res) {
+			h.endCatchUp(w)
+			return
+		}
+	}
+}
+
+// deliverCatchUp queues the events of one catch-up step. It reports whether
+// the watcher is still unsynced and catching up.
+func (h *Hub) deliverCatchUp(w *Watcher, from uint64, res *fsm.WatchScanResponse) bool {
+	evs := w.filter(res.Events)
+	for {
+		h.mu.Lock()
+		if w.state != stateUnsynced || w.next != from {
+			h.mu.Unlock()
+			return w.state == stateUnsynced
+		}
+		if len(evs) == 0 || w.sink.offer(Message{WatchID: w.id, ShardID: h.shardID, Revision: res.Through, Events: evs}, eventsSize(evs)) {
+			w.next = res.Through + 1
+			h.mu.Unlock()
+			return true
+		}
+		h.mu.Unlock()
+		if !w.sink.waitRoom(w.stop) {
+			return false
+		}
+	}
+}
+
+func (h *Hub) endCatchUp(w *Watcher) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	w.catchingUp = false
 }
 
 // add registers a watcher.
@@ -213,6 +367,7 @@ func (h *Hub) add(opts Options, sink *Sink) (*Watcher, error) {
 		return nil, ErrHistoricalRevision
 	}
 	h.watchers[w] = struct{}{}
+	h.count.Add(1)
 	h.matcher.add(w)
 	sink.Push(Message{WatchID: w.id, ShardID: h.shardID, Revision: h.revision, Created: true})
 	return w, nil
@@ -229,7 +384,9 @@ func (h *Hub) cancelLocked(w *Watcher, reason string, compact uint64) {
 		return
 	}
 	w.state = stateCanceled
+	close(w.stop)
 	delete(h.watchers, w)
+	h.count.Add(-1)
 	h.matcher.remove(w)
 	w.sink.Push(Message{
 		WatchID:         w.id,
@@ -256,9 +413,7 @@ func (h *Hub) cancelAll(reason string, compact uint64) {
 
 // watching reports whether the hub has watchers.
 func (h *Hub) watching() bool {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	return len(h.watchers) > 0
+	return h.count.Load() > 0
 }
 
 // shutdown stops the hub, canceling its watchers.

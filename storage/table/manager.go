@@ -85,6 +85,12 @@ func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg C
 			return 0, err
 		}
 		return t.ClusterID, nil
+	}, func(shardID uint64, req fsm.WatchScanRequest) (*fsm.WatchScanResponse, error) {
+		res, err := m.nh.StaleRead(shardID, req)
+		if err != nil {
+			return nil, err
+		}
+		return res.(*fsm.WatchScanResponse), nil
 	})
 	return m
 }
