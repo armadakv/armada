@@ -923,7 +923,7 @@ type WatchCreateRequest struct {
 	// then all keys with the prefix (the given key) will be watched.
 	RangeEnd []byte `protobuf:"bytes,3,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"`
 	// start_revision is an optional revision to watch from (inclusive). No start_revision is "now".
-	// A start_revision at or below the first available revision cancels the watch with
+	// A start_revision before the first available revision cancels the watch with
 	// compact_revision set to the first available revision.
 	StartRevision int64 `protobuf:"varint,4,opt,name=start_revision,json=startRevision,proto3" json:"start_revision,omitempty"`
 	// progress_notify is set so that the server will periodically send a WatchResponse with

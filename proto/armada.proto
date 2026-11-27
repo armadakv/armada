@@ -248,7 +248,7 @@ message WatchCreateRequest {
   // then all keys with the prefix (the given key) will be watched.
   bytes range_end = 3;
   // start_revision is an optional revision to watch from (inclusive). No start_revision is "now".
-  // A start_revision at or below the first available revision cancels the watch with
+  // A start_revision before the first available revision cancels the watch with
   // compact_revision set to the first available revision.
   int64 start_revision = 4;
   // progress_notify is set so that the server will periodically send a WatchResponse with

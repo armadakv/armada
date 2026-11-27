@@ -308,7 +308,7 @@ if guard evaluates to true.
 | `table` | [bytes](#bytes) |  | table name of the table to watch. |
 | `key` | [bytes](#bytes) |  | key is the key to register for watching. |
 | `range_end` | [bytes](#bytes) |  | range_end is the end of the range [key, range_end) to watch. If range_end is not given, only the key argument is watched. If range_end is equal to '\0', all keys greater than or equal to the key argument are watched. If the range_end is one bit larger than the given key, then all keys with the prefix (the given key) will be watched. |
-| `start_revision` | [int64](#int64) |  | start_revision is an optional revision to watch from (inclusive). No start_revision is "now". A start_revision at or below the first available revision cancels the watch with compact_revision set to the first available revision. |
+| `start_revision` | [int64](#int64) |  | start_revision is an optional revision to watch from (inclusive). No start_revision is "now". A start_revision before the first available revision cancels the watch with compact_revision set to the first available revision. |
 | `progress_notify` | [bool](#bool) |  | progress_notify is set so that the server will periodically send a WatchResponse with no events to the new watcher if there are no recent events. It is useful when clients wish to recover a disconnected watcher starting from a recent known revision. |
 | `filters` | [WatchCreateRequest.FilterType](#watchcreaterequestfiltertype) | repeated | filters filter the events at server side before it sends back to the watcher. |
 | `prev_kv` | [bool](#bool) |  | If prev_kv is set, created watcher gets the previous KV before the event happens. If the previous KV is already garbage collected, nothing will be returned. |
