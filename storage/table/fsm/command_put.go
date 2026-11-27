@@ -52,7 +52,7 @@ func handlePutWithMetadata(ctx *updateContext, put *armadapb.RequestOp_Put, sour
 	if err := ctx.EnsureIndexed(); err != nil {
 		return nil, err
 	}
-	current, value, physicalKey, found, err := currentRecord(ctx.batch, put.Key, put.PrevKv)
+	current, value, physicalKey, found, err := currentRecord(ctx.batch, put.Key, put.PrevKv || ctx.capturing())
 	if err != nil {
 		return nil, err
 	}
@@ -70,15 +70,17 @@ func handlePutWithMetadata(ctx *updateContext, put *armadapb.RequestOp_Put, sour
 	if err := encodeUserRecord(keyBuf, put.Key, modSeqno, createSeqno, key.KindValue); err != nil {
 		return nil, err
 	}
-	if put.PrevKv {
-		if found && !isTombstone(current) {
-			kv, err := makeKeyValue(put.Key, value, current.CreateSeqno, current.Seqno)
-			if err != nil {
-				return nil, err
-			}
-			resp.PrevKv = kv
+	var prevKv *armadapb.KeyValue
+	if found && !isTombstone(current) && (put.PrevKv || ctx.capturing()) {
+		prevKv, err = makeKeyValue(put.Key, value, current.CreateSeqno, current.Seqno)
+		if err != nil {
+			return nil, err
 		}
 	}
+	if put.PrevKv {
+		resp.PrevKv = prevKv
+	}
+	ctx.recordEvent(armadapb.Event_PUT, put.Key, put.Value, createSeqno, modSeqno, prevKv, hasSourceMetadata)
 	if found && current.Seqno == modSeqno {
 		if err := ctx.batch.Delete(physicalKey, nil); err != nil {
 			return nil, err

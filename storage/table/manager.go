@@ -26,6 +26,7 @@ import (
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/kv"
 	"github.com/armadakv/armada/storage/table/fsm"
+	"github.com/armadakv/armada/storage/watch"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/pebble/v2"
 	"go.uber.org/zap"
@@ -54,7 +55,7 @@ func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg C
 	blockCache := pebble.NewCache(cfg.Table.BlockCacheSize)
 	scheduler := ap.NewConcurrencyLimitScheduler()
 	lifeCtx, lifeCancel := context.WithCancel(context.Background())
-	return &Manager{
+	m := &Manager{
 		lifeCtx:             lifeCtx,
 		lifeCancel:          lifeCancel,
 		nh:                  nh,
@@ -78,6 +79,14 @@ func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg C
 		incarnation:         newIncarnation(),
 		scheduler:           scheduler,
 	}
+	m.watches = watch.NewRegistry(func(table string) (uint64, error) {
+		t, err := m.GetTable(table)
+		if err != nil {
+			return 0, err
+		}
+		return t.ClusterID, nil
+	})
+	return m
 }
 
 type Manager struct {
@@ -124,6 +133,17 @@ type Manager struct {
 	// manager has finished closing. See tableFSM.
 	smMu     sync.Mutex
 	smClosed map[uint64]chan struct{}
+
+	// watches serves the Watch API from the table state machines.
+	watches *watch.Registry
+}
+
+// Watch registers a watcher on a table; see watch.Registry.Watch.
+func (m *Manager) Watch(opts watch.Options, sink *watch.Sink) (*watch.Watcher, error) {
+	if m.watches == nil {
+		return nil, watch.ErrNotServed
+	}
+	return m.watches.Watch(opts, sink)
 }
 
 // newIncarnation returns an identifier unique to this process run.
@@ -305,6 +325,9 @@ func (m *Manager) GetTables() ([]Table, error) {
 }
 
 func (m *Manager) Start() {
+	if m.watches != nil {
+		m.watches.Start()
+	}
 	m.wg.Go(m.reconcileLoop)
 	m.wg.Go(m.cleanupLoop)
 	m.wg.Go(m.recoveryLoop)
@@ -327,6 +350,9 @@ func (m *Manager) Close() {
 		m.lifeCancel()
 	}
 	m.wg.Wait()
+	if m.watches != nil {
+		m.watches.Close()
+	}
 }
 
 func (m *Manager) reconcileLoop() {
@@ -605,6 +631,11 @@ func (m *Manager) tableFSM(name string) sm.CreateOnDiskStateMachineFunc {
 		if m.cfg.Table.AppliedIndexListener != nil {
 			m.cfg.Table.AppliedIndexListener(name, applied)
 		}
+	}, func(shardID uint64) fsm.Observer {
+		if m.watches == nil {
+			return nil
+		}
+		return m.watches.Observer(shardID, name)
 	})
 	return func(shardID, replicaID uint64) sm.IOnDiskStateMachine {
 		return &trackedStateMachine{

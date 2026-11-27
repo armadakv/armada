@@ -5,6 +5,7 @@ package fsm
 import (
 	"bytes"
 	"encoding/binary"
+	stderrors "errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -39,6 +40,13 @@ var (
 	sysGCHorizon = mustEncodeKey(key.Key{
 		KeyType: key.TypeSystem,
 		Key:     []byte("gc_horizon"),
+	})
+	// sysRevision is the table revision: the source sequence of the last
+	// applied write. Unlike sysLocalIndex it is the same on every cluster, and
+	// unlike sysLeaderIndex it is not written by locally proposed GC commands.
+	sysRevision = mustEncodeKey(key.Key{
+		KeyType: key.TypeSystem,
+		Key:     []byte("revision"),
 	})
 	// minEncodedUserKey uses the highest logical seqno, whose inverted physical
 	// suffix is all zeroes, so every physical version sorts at or above it.
@@ -94,7 +102,9 @@ func (s *snapshotHeader) format() snapshotFormat {
 	return snapshotFormat(s[6])
 }
 
-func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, compactionScheduler *rp.ConcurrencyLimitScheduler, af func(applied uint64)) sm.CreateOnDiskStateMachineFunc {
+// New returns a factory of table state machines. observe, when set, returns
+// the Observer notified about the committed batches of the given shard.
+func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache, compactionScheduler *rp.ConcurrencyLimitScheduler, af func(applied uint64), observe func(clusterID uint64) Observer) sm.CreateOnDiskStateMachineFunc {
 	if fs == nil {
 		fs = vfs.Default
 	}
@@ -116,6 +126,7 @@ func New(tableName, stateMachineDir string, fs vfs.FS, blockCache *pebble.Cache,
 			log:                 zap.S().Named("table").Named(tableName),
 			metrics:             newMetrics(tableName, clusterID),
 			appliedFunc:         af,
+			observe:             observe,
 		}
 	}
 }
@@ -134,6 +145,14 @@ type FSM struct {
 	compactionScheduler *rp.ConcurrencyLimitScheduler
 	metrics             *metrics
 	appliedFunc         func(applied uint64)
+	// observe returns the observer of a shard. It is called on every Open, so a
+	// shard restarted on this node never reuses the observer of the instance
+	// that closed before it.
+	observe func(clusterID uint64) Observer
+	// observer is notified about committed batches.
+	observer Observer
+	// revision is the table revision, see sysRevision.
+	revision atomic.Uint64
 
 	// gcHorizon is the MVCC seqno below which GC may remove versions that a
 	// newer version shadows. It never decreases.
@@ -213,6 +232,15 @@ func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
 	gcH, _ := readLocalIndex(db, sysGCHorizon)
 	p.gcHorizon.Store(gcH)
 
+	rev, err := readRevision(db)
+	if err != nil {
+		return 0, err
+	}
+	p.revision.Store(rev)
+	if p.observe != nil {
+		p.observer = p.observe(p.clusterID)
+	}
+
 	p.pebble.Store(db)
 	if err := prometheus.Register(p); err != nil {
 		p.log.Errorf("unable to register metrics for FSM: %s", err)
@@ -221,6 +249,7 @@ func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
 	// Start background GC worker.
 	p.startGCWorker()
 	installed = true
+	p.getObserver().Committed(Commit{Revision: rev})
 
 	return idx, nil
 }
@@ -327,6 +356,11 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 		batch:     db.NewBatch(pebble.WithInitialSizeBytes(updatesSize(updates))),
 		db:        db,
 		gcHorizon: p.gcHorizon.Load(),
+		revision:  p.revision.Load(),
+	}
+	observer := p.getObserver()
+	if observer.Capturing() {
+		ctx.events = newEventRecorder()
 	}
 
 	defer func() {
@@ -344,6 +378,7 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 		if err != nil {
 			return nil, err
 		}
+		ctx.advanceRevision()
 
 		bts, err := res.MarshalVT()
 		if err != nil {
@@ -357,6 +392,8 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 	if err := ctx.Commit(); err != nil {
 		return nil, err
 	}
+	p.revision.Store(ctx.revision)
+	observer.Committed(ctx.commit())
 
 	// Advance the in-memory GC horizon and wake the sweep worker when a GC
 	// command advanced it, including one nested in a replicated SEQUENCE.
@@ -389,6 +426,7 @@ func (p *FSM) Sync() error {
 func (p *FSM) Close() error {
 	p.closed = true
 	prometheus.Unregister(p)
+	defer p.getObserver().Closed()
 
 	// Stop GC worker before closing pebble so any in-progress sweep can
 	// observe the closed DB and exit cleanly.
@@ -411,9 +449,48 @@ func (p *FSM) Close() error {
 // the pebble DB. It updates the in-memory GC horizon from the new DB and
 // kicks the GC worker to sweep the freshly recovered state.
 func (p *FSM) notifyRecovered() {
-	gcH, _ := readLocalIndex(p.pebble.Load(), sysGCHorizon)
+	db := p.pebble.Load()
+	gcH, _ := readLocalIndex(db, sysGCHorizon)
 	p.gcHorizon.Store(gcH)
 	p.signalGCWorker()
+
+	rev, err := readRevision(db)
+	if err != nil {
+		p.log.Errorf("unable to read the revision of the recovered state: %v", err)
+		return
+	}
+	p.revision.Store(rev)
+	// The recovered state carries the sender's complete history, so watchers
+	// can continue by reading the skipped revisions from the store.
+	p.getObserver().Committed(Commit{Revision: rev})
+}
+
+// getObserver returns the observer, or a no-op one when nobody observes.
+func (p *FSM) getObserver() Observer {
+	if p.observer == nil {
+		return noopObserver{}
+	}
+	return p.observer
+}
+
+// readRevision reads the table revision. State written before the revision
+// was tracked has no such key: it falls back to the source index, which is
+// exact on follower clusters and at most the compacted index on the leader
+// cluster, and otherwise to the local index. The fallback only applies until
+// the next write persists the revision.
+func readRevision(db pebble.Reader) (uint64, error) {
+	val, closer, err := db.Get(sysRevision)
+	switch {
+	case err == nil:
+		defer func() { _ = closer.Close() }()
+		return binary.LittleEndian.Uint64(val), nil
+	case !stderrors.Is(err, pebble.ErrNotFound):
+		return 0, err
+	}
+	if lx, err := readLocalIndex(db, sysLeaderIndex); err != nil || lx != 0 {
+		return lx, err
+	}
+	return readLocalIndex(db, sysLocalIndex)
 }
 
 // GetHash gets the DB hash for test comparison.

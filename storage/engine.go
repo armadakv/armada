@@ -317,6 +317,16 @@ func (e *Engine) Status(ctx context.Context, r *armadapb.StatusRequest) (*armada
 	})
 }
 
+// WatchHeader returns the response header of a watch response for a shard
+// at the given revision.
+func (e *Engine) WatchHeader(shardID, revision uint64) *armadapb.ResponseHeader {
+	header := &armadapb.ResponseHeader{Revision: revision, ReplicaId: e.cfg.NodeID}
+	if shardID == 0 {
+		return header
+	}
+	return e.getHeader(header, shardID)
+}
+
 func (e *Engine) getHeader(header *armadapb.ResponseHeader, shardID uint64) *armadapb.ResponseHeader {
 	if header == nil {
 		header = &armadapb.ResponseHeader{}

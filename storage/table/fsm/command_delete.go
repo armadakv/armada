@@ -80,6 +80,7 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 			userKey     []byte
 			physicalKey []byte
 			createSeqno uint64
+			prevKv      *armadapb.KeyValue
 		}
 		var toTombstone []recordToDelete
 		var prevKvs []*armadapb.KeyValue
@@ -95,11 +96,11 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 				if !isTombstone(k) {
 					userKey := append([]byte(nil), k.Key...)
 					physicalKey := append([]byte(nil), iter.Key()...)
-					toTombstone = append(toTombstone, recordToDelete{
+					record := recordToDelete{
 						userKey: userKey, physicalKey: physicalKey, createSeqno: k.CreateSeqno,
-					})
+					}
 
-					if del.PrevKv {
+					if del.PrevKv || ctx.capturing() {
 						val, err := iter.ValueAndErr()
 						if err != nil {
 							_ = iter.Close()
@@ -110,8 +111,12 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 							_ = iter.Close()
 							return nil, err
 						}
-						prevKvs = append(prevKvs, prevKv)
+						record.prevKv = prevKv
+						if del.PrevKv {
+							prevKvs = append(prevKvs, prevKv)
+						}
 					}
+					toTombstone = append(toTombstone, record)
 				}
 			}
 
@@ -147,6 +152,7 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 				return nil, err
 			}
 			bufferPool.Put(keyBuf)
+			ctx.recordEvent(armadapb.Event_DELETE, record.userKey, nil, record.createSeqno, modSeqno, record.prevKv, false)
 		}
 
 		// Only populate Deleted / PrevKvs when the caller explicitly asked for them.
@@ -160,7 +166,7 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 		if err := ctx.EnsureIndexed(); err != nil {
 			return nil, err
 		}
-		current, value, physicalKey, found, err := currentRecord(ctx.batch, del.Key, del.PrevKv)
+		current, value, physicalKey, found, err := currentRecord(ctx.batch, del.Key, del.PrevKv || ctx.capturing())
 		if err != nil {
 			return nil, err
 		}
@@ -179,11 +185,14 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 				resp.Deleted = 1
 			}
 		}
-		if del.PrevKv && found && !isTombstone(current) {
-			prevKv, err := makeKeyValue(del.Key, value, current.CreateSeqno, current.Seqno)
+		var prevKv *armadapb.KeyValue
+		if found && !isTombstone(current) && (del.PrevKv || ctx.capturing()) {
+			prevKv, err = makeKeyValue(del.Key, value, current.CreateSeqno, current.Seqno)
 			if err != nil {
 				return nil, err
 			}
+		}
+		if del.PrevKv && prevKv != nil {
 			resp.PrevKvs = []*armadapb.KeyValue{prevKv}
 		}
 		keyBuf := bufferPool.Get()
@@ -199,6 +208,7 @@ func handleDeleteWithMetadata(ctx *updateContext, del *armadapb.RequestOp_Delete
 		if err := ctx.batch.Set(keyBuf.Bytes(), nil, nil); err != nil {
 			return nil, err
 		}
+		ctx.recordEvent(armadapb.Event_DELETE, del.Key, nil, createSeqno, modSeqno, prevKv, hasSourceMetadata)
 	}
 	return resp, nil
 }
