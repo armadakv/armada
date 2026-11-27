@@ -42,6 +42,7 @@ there breaks this build instead of silently breaking a string match.
 | `incremental` | A follower inside the delta window applies an `incr` artefact into its **live** shard — same shard id, no learner seeding. |
 | `powerloss` | SIGKILL of the node actually coordinating a recovery; it must resume from the durable journal rather than abandon and restart. |
 | `direct` | The follower reads the shared bucket itself (`--replication.snapshot-source=direct`) instead of proxying through the leader. |
+| `watch` | Watchers on the leader and on two follower nodes see the same events at the same revisions, and a watch resumes on a third follower node from a leader revision by replaying its store. |
 
 Each scenario runs in its own leader/follower environment. Recovery tests
 intentionally wipe data, rebuild containers, change configuration, and kill

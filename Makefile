@@ -51,8 +51,8 @@ test-integration:
 .PHONY: test-integration-one
 test-integration-one:
 	@case "$(SCENARIO)" in \
-		baseline|full|incremental|powerloss|direct) ;; \
-		*) echo "SCENARIO must be one of: baseline, full, incremental, powerloss, direct"; exit 2 ;; \
+		baseline|full|incremental|powerloss|direct|watch) ;; \
+		*) echo "SCENARIO must be one of: baseline, full, incremental, powerloss, direct, watch"; exit 2 ;; \
 	esac
 	cd integration && go test -count=1 -timeout=60m -v -run '^TestRecovery/$(SCENARIO)$$' ./...
 
