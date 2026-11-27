@@ -11,6 +11,40 @@ Release sections are generated from merged pull request titles when a release is
 [Contributing](contributing.md#release-notes). The same notes become the body of the GitHub release,
 where the maintainer adds the highlights and upgrade notes by hand.
 
+## v0.4.0 - 2026-11-27
+
+### Breaking changes
+
+- remove legacy snapshot recovery type ([96e93f6](https://github.com/armadakv/armada/commit/96e93f6216823d311c1faa209530d079411ba5ae))
+- remove legacy snapshot recovery type ([#191](https://github.com/armadakv/armada/pull/191))
+
+### Bug fixes
+
+- stop GC from corrupting follower replication and GC state ([#202](https://github.com/armadakv/armada/pull/202))
+- assign new revisions to records restored from a backup ([#203](https://github.com/armadakv/armada/pull/203))
+
+### Refactoring
+
+- remove legacy snapshot recovery type ([#191](https://github.com/armadakv/armada/pull/191))
+
+### Documentation
+
+- proposal of Watch API ([#193](https://github.com/armadakv/armada/pull/193))
+
+### Internal
+
+- bump dependencies ([#192](https://github.com/armadakv/armada/pull/192))
+
+<details markdown="1">
+<summary>Other commits (2)</summary>
+
+Commits that are part of a merged PR but not named by its title, for example commits of stacked PRs.
+
+- clarify the leader index bookkeeping in the apply context ([88affb5](https://github.com/armadakv/armada/commit/88affb5272b3a8d9862da3461544657f58dcf103))
+- keep applying the terminal marker of a restored backup ([0c687ce](https://github.com/armadakv/armada/commit/0c687ce85e3df701ad1621dc56e02afc24dd453f))
+
+</details>
+
 ## v0.3.2 - 2026-11-25
 
 ### Bug fixes
