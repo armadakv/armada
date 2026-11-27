@@ -49,6 +49,9 @@ const (
 	reasonDeleted   = "table was deleted"
 	reasonReplaced  = "table was recreated or replaced by a recovery, re-list and watch again"
 	reasonShutdown  = "node is shutting down"
+	// ReasonResponseTooLarge is used by the server for a revision that does
+	// not fit one response when the watcher did not allow fragments.
+	ReasonResponseTooLarge = "a revision exceeds the maximum response size, watch with fragment enabled"
 )
 
 // Options describe a watcher.
@@ -69,4 +72,7 @@ type Options struct {
 	NoDelete bool
 	// PrevKV delivers the previous key-value pair with each event.
 	PrevKV bool
+	// ProgressNotify asks for periodic progress notifications while the
+	// watcher receives no events.
+	ProgressNotify bool
 }

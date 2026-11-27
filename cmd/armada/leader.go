@@ -31,7 +31,7 @@ var leaderCmd = &cli.Command{
 	Usage: "Start Armada in leader mode.",
 	Flags: mergeFlags(
 		rootFlags, apiFlags, restFlags, raftFlags, memberlistFlags,
-		storageFlags, maintenanceFlags, tablesFlags, experimentalFlags,
+		storageFlags, maintenanceFlags, tablesFlags, watchFlags, experimentalFlags,
 		sharedStoreFlags,
 		[]cli.Flag{
 			&cli.StringSliceFlag{Name: "tables.names", Usage: "Create Armada tables with given names."},
@@ -157,7 +157,7 @@ func leader() error {
 				armadapb.RegisterKVServer(r, &armadaserver.KVServer{
 					Storage: engine,
 				})
-				armadapb.RegisterWatchServer(r, &armadaserver.WatchServer{Watches: engine})
+				armadapb.RegisterWatchServer(r, newWatchServer(engine))
 				armadapb.RegisterClusterServer(r, &armadaserver.ClusterServer{
 					Cluster: engine,
 					Config:  koanfConfigReader,

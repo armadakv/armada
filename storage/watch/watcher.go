@@ -4,6 +4,7 @@ package watch
 
 import (
 	"bytes"
+	"time"
 
 	"github.com/armadakv/armada/armadapb"
 )
@@ -31,6 +32,7 @@ type Watcher struct {
 	noPut    bool
 	noDelete bool
 	prevKV   bool
+	progress bool
 	// minRev is the first revision the watcher wants; earlier events are
 	// skipped. A watcher created for a future revision waits for it this way.
 	minRev uint64
@@ -43,6 +45,12 @@ type Watcher struct {
 	catchingUp bool
 	// stop is closed when the watcher is canceled.
 	stop chan struct{}
+	// sent is set when events were queued since the last progress tick.
+	sent bool
+	// progressPending is set when progress was requested while unsynced.
+	progressPending bool
+	// unsyncedSince is when the watcher last started catching up.
+	unsyncedSince time.Time
 }
 
 func newWatcher(h *Hub, opts Options, sink *Sink) *Watcher {
@@ -54,6 +62,7 @@ func newWatcher(h *Hub, opts Options, sink *Sink) *Watcher {
 		noPut:    opts.NoPut,
 		noDelete: opts.NoDelete,
 		prevKV:   opts.PrevKV,
+		progress: opts.ProgressNotify,
 		stop:     make(chan struct{}),
 	}
 	if len(opts.RangeEnd) > 0 {
@@ -71,6 +80,17 @@ func (w *Watcher) ID() int64 {
 // watcher was already canceled.
 func (w *Watcher) Cancel() {
 	w.hub.cancel(w, "", 0)
+}
+
+// CancelWithReason unregisters the watcher with a reason for the client.
+func (w *Watcher) CancelWithReason(reason string) {
+	w.hub.cancel(w, reason, 0)
+}
+
+// RequestProgress queues a progress notification as soon as the watcher has
+// received every event up to the current revision.
+func (w *Watcher) RequestProgress() {
+	w.hub.requestProgress(w)
 }
 
 // single reports whether the watcher watches one key.

@@ -94,16 +94,17 @@ func createEngineConfig(engineLog *zap.Logger, appliedIndexListener func(table s
 			},
 		},
 		Table: storage.TableConfig{
-			FS:                   vfs.Default,
-			ElectionRTT:          uint64(k.Int64("raft.election-rtt")),
-			HeartbeatRTT:         uint64(k.Int64("raft.heartbeat-rtt")),
-			SnapshotEntries:      uint64(k.Int64("raft.snapshot-entries")),
-			CompactionOverhead:   uint64(k.Int64("raft.compaction-overhead")),
-			MaxInMemLogSize:      uint64(k.Int64("raft.max-in-mem-log-size")),
-			DataDir:              k.String("raft.state-machine-dir"),
-			BlockCacheSize:       k.Int64("storage.block-cache-size"),
-			TableCacheSize:       k.Int("storage.table-cache-size"),
-			AppliedIndexListener: appliedIndexListener,
+			FS:                    vfs.Default,
+			ElectionRTT:           uint64(k.Int64("raft.election-rtt")),
+			HeartbeatRTT:          uint64(k.Int64("raft.heartbeat-rtt")),
+			SnapshotEntries:       uint64(k.Int64("raft.snapshot-entries")),
+			CompactionOverhead:    uint64(k.Int64("raft.compaction-overhead")),
+			MaxInMemLogSize:       uint64(k.Int64("raft.max-in-mem-log-size")),
+			DataDir:               k.String("raft.state-machine-dir"),
+			BlockCacheSize:        k.Int64("storage.block-cache-size"),
+			TableCacheSize:        k.Int("storage.table-cache-size"),
+			AppliedIndexListener:  appliedIndexListener,
+			WatchProgressInterval: k.Duration("watch.progress-interval"),
 		},
 		Meta: storage.MetaConfig{
 			ElectionRTT:        uint64(k.Int64("raft.election-rtt")),
@@ -172,4 +173,14 @@ func waitForEngine(ctx context.Context, engine *storage.Engine, log *zap.Sugared
 		return
 	}
 	log.Info("engine started")
+}
+
+// newWatchServer creates the Watch API server from the watch flags.
+func newWatchServer(watches armadaserver.WatchService) *armadaserver.WatchServer {
+	return &armadaserver.WatchServer{
+		Watches:              watches,
+		SinkLimit:            k.Int("watch.stream-buffer-bytes"),
+		MaxResponseSize:      k.Int("watch.max-response-size-bytes"),
+		MaxWatchersPerStream: k.Int("watch.max-watchers-per-stream"),
+	}
 }

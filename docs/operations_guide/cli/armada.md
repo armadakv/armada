@@ -205,6 +205,14 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 
 **--tables.token**="": Token to check for tables API access, if left empty (default) no token is checked.
 
+**--watch.max-response-size-bytes**="": Target maximum size of one watch response. Larger responses are split between revisions, or into fragments for watchers that allow them. (default: 4194304)
+
+**--watch.max-watchers-per-stream**="": Maximum number of watchers on one watch stream. A negative value means no limit. (default: 1000)
+
+**--watch.progress-interval**="": How often watchers that set progress_notify get a progress notification while they receive no events. (default: 10m0s)
+
+**--watch.stream-buffer-bytes**="": Event bytes buffered per watch stream. A stream that falls further behind reads its events back from the store instead. (default: 16777216)
+
 ### help, h
 
 Shows a list of commands or help for one command
@@ -391,6 +399,14 @@ Leave WALDir to have zero value will have everything stored in NodeHostDir.
 **--tables.enabled**: Whether tables API is enabled. (default: true)
 
 **--tables.token**="": Token to check for tables API access, if left empty (default) no token is checked.
+
+**--watch.max-response-size-bytes**="": Target maximum size of one watch response. Larger responses are split between revisions, or into fragments for watchers that allow them. (default: 4194304)
+
+**--watch.max-watchers-per-stream**="": Maximum number of watchers on one watch stream. A negative value means no limit. (default: 1000)
+
+**--watch.progress-interval**="": How often watchers that set progress_notify get a progress notification while they receive no events. (default: 10m0s)
+
+**--watch.stream-buffer-bytes**="": Event bytes buffered per watch stream. A stream that falls further behind reads its events back from the store instead. (default: 16777216)
 
 ### help, h
 

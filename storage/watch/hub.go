@@ -100,6 +100,9 @@ func (h *Hub) Committed(c fsm.Commit) {
 		return
 	}
 	if h.overflow || len(h.pending) >= maxPendingCommits {
+		if !h.overflow {
+			h.registry.metrics.overflows.Inc()
+		}
 		h.overflow = true
 		h.ovRevision = c.Revision
 		h.ovRewritten = h.ovRewritten || c.Rewritten
@@ -231,7 +234,7 @@ func (h *Hub) dispatchLocked(c fsm.Commit) {
 	for _, w := range order {
 		evs := byW[w]
 		m := Message{WatchID: w.id, ShardID: h.shardID, Revision: c.Revision, Events: evs}
-		if !w.sink.offer(m, eventsSize(evs)) {
+		if !h.offerLocked(w, m) {
 			// The stream is too slow: the watcher reads this commit and
 			// everything after it back from the store once there is room.
 			h.demoteLocked(w, h.positionLocked(w))
@@ -239,8 +242,53 @@ func (h *Hub) dispatchLocked(c fsm.Commit) {
 	}
 }
 
+// offerLocked queues an event message for a watcher.
+func (h *Hub) offerLocked(w *Watcher, m Message) bool {
+	if !w.sink.offer(m, eventsSize(m.Events)) {
+		return false
+	}
+	w.sent = true
+	h.registry.metrics.events.Add(float64(len(m.Events)))
+	return true
+}
+
+// progressLocked queues a progress notification for a synced watcher: it has
+// received every event up to the hub's revision.
+func (h *Hub) progressLocked(w *Watcher) {
+	w.sink.Push(Message{WatchID: w.id, ShardID: h.shardID, Revision: h.revision})
+}
+
+func (h *Hub) requestProgress(w *Watcher) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	switch w.state {
+	case stateSynced:
+		h.progressLocked(w)
+	case stateUnsynced:
+		w.progressPending = true
+	}
+}
+
+// notifyProgress sends periodic progress notifications to the synced
+// watchers that asked for them and received no events since the last tick.
+func (h *Hub) notifyProgress() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for w := range h.watchers {
+		if w.progress && w.state == stateSynced && !w.sent {
+			h.progressLocked(w)
+		}
+		w.sent = false
+	}
+}
+
 // demoteLocked makes a watcher read its events from the store from next on.
 func (h *Hub) demoteLocked(w *Watcher, next uint64) {
+	if w.state == stateSynced {
+		h.registry.metrics.moved(stateSynced, stateUnsynced)
+		h.registry.metrics.catchUps.Inc()
+		w.unsyncedSince = time.Now()
+	}
 	w.state = stateUnsynced
 	w.next = next
 	if !w.catchingUp {
@@ -265,7 +313,7 @@ func (h *Hub) promoteLocked(w *Watcher) bool {
 			w.next = c.Revision + 1
 			continue
 		}
-		if !w.sink.offer(Message{WatchID: w.id, ShardID: h.shardID, Revision: c.Revision, Events: evs}, eventsSize(evs)) {
+		if !h.offerLocked(w, Message{WatchID: w.id, ShardID: h.shardID, Revision: c.Revision, Events: evs}) {
 			return false
 		}
 		w.next = c.Revision + 1
@@ -273,6 +321,12 @@ func (h *Hub) promoteLocked(w *Watcher) bool {
 	w.state = stateSynced
 	w.catchingUp = false
 	w.minRev = max(w.minRev, w.next)
+	h.registry.metrics.moved(stateUnsynced, stateSynced)
+	h.registry.metrics.caughtUp(w.unsyncedSince)
+	if w.progressPending {
+		w.progressPending = false
+		h.progressLocked(w)
+	}
 	return true
 }
 
@@ -336,7 +390,7 @@ func (h *Hub) deliverCatchUp(w *Watcher, from uint64, res *fsm.WatchScanResponse
 			h.mu.Unlock()
 			return w.state == stateUnsynced
 		}
-		if len(evs) == 0 || w.sink.offer(Message{WatchID: w.id, ShardID: h.shardID, Revision: res.Through, Events: evs}, eventsSize(evs)) {
+		if len(evs) == 0 || h.offerLocked(w, Message{WatchID: w.id, ShardID: h.shardID, Revision: res.Through, Events: evs}) {
 			w.next = res.Through + 1
 			h.mu.Unlock()
 			return true
@@ -377,6 +431,7 @@ func (h *Hub) add(opts Options, sink *Sink) (*Watcher, error) {
 	h.watchers[w] = struct{}{}
 	h.count.Add(1)
 	h.matcher.add(w)
+	h.registry.metrics.added()
 	sink.Push(Message{WatchID: w.id, ShardID: h.shardID, Revision: h.revision, Created: true})
 	if historical {
 		// The store is authoritative about the floor: the catch-up read
@@ -396,6 +451,7 @@ func (h *Hub) cancelLocked(w *Watcher, reason string, compact uint64) {
 	if w.state == stateCanceled {
 		return
 	}
+	h.registry.metrics.removed(w.state, reason)
 	w.state = stateCanceled
 	close(w.stop)
 	delete(h.watchers, w)

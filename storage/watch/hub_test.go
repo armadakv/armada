@@ -11,6 +11,7 @@ import (
 	"github.com/armadakv/armada/armadapb"
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/fsm"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 )
 
@@ -458,4 +459,86 @@ func TestHub_Overflow(t *testing.T) {
 	// Queued commits are delivered live, the overflowed ones from the store.
 	require.Equal(t, seq(2, int64(last)), collect(t, s, int(last-1)))
 	requireNoMessage(t, s)
+}
+
+func TestHub_Progress(t *testing.T) {
+	r, h, _ := newTestHub(t, 1)
+	_, quiet := watchOn(t, r, Options{ID: 1, Key: []byte("a"), ProgressNotify: true})
+	_, busy := watchOn(t, r, Options{ID: 2, Key: []byte("b"), ProgressNotify: true})
+	_, silent := watchOn(t, r, Options{ID: 3, Key: []byte("a")})
+
+	commitTo(r, h, true, 5, put("b", "1", 5, 5))
+	require.Len(t, next(t, busy).Events, 1)
+	h.notifyProgress()
+
+	// Only the watcher that asked for progress and saw no events gets one.
+	m := next(t, quiet)
+	require.Empty(t, m.Events)
+	require.False(t, m.Created || m.Canceled)
+	require.Equal(t, uint64(5), m.Revision)
+	requireNoMessage(t, busy)
+	requireNoMessage(t, silent)
+
+	// The next tick reaches the busy watcher too.
+	h.notifyProgress()
+	require.Equal(t, uint64(5), next(t, busy).Revision)
+}
+
+func TestHub_RequestProgress(t *testing.T) {
+	r, h, _ := newTestHub(t, 1)
+	for rev := uint64(2); rev <= 6; rev++ {
+		commitTo(r, h, true, rev, put("a", "v", 2, int64(rev)))
+	}
+	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return h.revision == 6
+	}, time.Second, time.Millisecond)
+
+	w, s := watchOn(t, r, Options{ID: 1, Key: []byte("a")})
+	w.RequestProgress()
+	m := next(t, s)
+	require.Empty(t, m.Events)
+	require.Equal(t, uint64(6), m.Revision)
+
+	// A watcher still reading history answers once it has caught up, so the
+	// progress revision never runs ahead of its events.
+	commitTo(r, h, false, 8, put("a", "v", 2, 8))
+	require.Eventually(t, func() bool {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		return h.revision == 8
+	}, time.Second, time.Millisecond)
+	hist, hs := watchOn(t, r, Options{ID: 2, Key: []byte("a"), StartRevision: 3})
+	hist.RequestProgress()
+	var revs []int64
+	for {
+		m := next(t, hs)
+		if len(m.Events) == 0 {
+			require.Equal(t, uint64(8), m.Revision)
+			break
+		}
+		for _, ev := range m.Events {
+			revs = append(revs, ev.Kv.ModRevision)
+		}
+	}
+	require.Equal(t, []int64{3, 4, 5, 6, 8}, revs)
+}
+
+func TestRegistry_Metrics(t *testing.T) {
+	r, h, _ := newTestHub(t, 1)
+	gauge := func(state string) float64 {
+		return testutil.ToFloat64(r.metrics.watchers.WithLabelValues(state))
+	}
+	w, s := watchOn(t, r, Options{ID: 1, Key: []byte("a")})
+	require.InDelta(t, 1, gauge("synced"), 0)
+	commitTo(r, h, true, 2, put("a", "v", 2, 2))
+	next(t, s)
+	require.InDelta(t, 1, testutil.ToFloat64(r.metrics.events), 0)
+
+	w.Cancel()
+	next(t, s)
+	require.InDelta(t, 0, gauge("synced"), 0)
+	require.InDelta(t, 1, testutil.ToFloat64(r.metrics.canceled.WithLabelValues("client")), 0)
+	require.Positive(t, testutil.CollectAndCount(r))
 }
