@@ -302,10 +302,14 @@ func TestManager_Restore(t *testing.T) {
 	for i, kv := range rangeResp.Kvs {
 		require.Equal(t, snapshotTestKey(i), kv.Key)
 		require.Equal(t, []byte(strings.Repeat(string(rune('a'+i)), 300)), kv.Value)
+		// The restored shard's own log assigns the revisions.
+		require.Equal(t, kv.CreateRevision, kv.ModRevision)
 	}
+	// An operator restore makes a new shard of this cluster, not a replica of
+	// the backup's source, so it records no source index.
 	leaderIndex, err := tab2.LeaderIndex(ctx, true)
 	require.NoError(t, err)
-	require.Equal(t, resp.Index, leaderIndex.Index)
+	require.Zero(t, leaderIndex.Index)
 }
 
 func snapshotTestKey(i int) []byte {
@@ -776,4 +780,21 @@ func startRaftNode(t *testing.T) (*raft.NodeHost, map[uint64]string) {
 	nh, err := raft.NewNodeHost(nhc)
 	require.NoError(t, err)
 	return nh, map[uint64]string{1: addr}
+}
+
+func TestAsFreshWrites(t *testing.T) {
+	li := func(i uint64) *uint64 { return &i }
+	seq := &armadapb.Command{Type: armadapb.Command_SEQUENCE, Sequence: []*armadapb.Command{
+		{Type: armadapb.Command_PUT, LeaderIndex: li(50), Kv: &armadapb.KeyValue{Key: []byte("k"), Value: []byte("v"), CreateRevision: 40, ModRevision: 50}},
+		{Type: armadapb.Command_DELETE, LeaderIndex: li(60), Kv: &armadapb.KeyValue{Key: []byte("d"), CreateRevision: 10, ModRevision: 60}},
+	}}
+	got := asFreshWrites(seq)
+	require.NotNil(t, got)
+	for _, child := range got.Sequence {
+		require.Nil(t, child.LeaderIndex)
+		require.Zero(t, child.Kv.CreateRevision)
+		require.Zero(t, child.Kv.ModRevision)
+	}
+	require.Equal(t, []byte("v"), got.Sequence[0].Kv.Value, "values are kept")
+	require.Nil(t, asFreshWrites(&armadapb.Command{Type: armadapb.Command_DUMMY, LeaderIndex: li(70)}), "the terminal marker is dropped")
 }

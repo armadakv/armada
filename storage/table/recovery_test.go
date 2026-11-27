@@ -728,7 +728,7 @@ func TestRecoveryResumesAfterCoordinatorRestart(t *testing.T) {
 				r.NoError(first.waitForLeader(ctx, recoveryID))
 				staged, err := snapshot.OpenFile(sf.Path())
 				r.NoError(err)
-				r.NoError(first.readIntoTable(ctx, recoveryID, tableName, staged, true))
+				r.NoError(first.readIntoTable(ctx, recoveryID, tableName, staged, true, false))
 				r.NoError(staged.Close())
 			}
 			_, err = first.putRecovery(&rec, 0)
