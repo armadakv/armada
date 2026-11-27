@@ -194,6 +194,52 @@ func (Compare_CompareTarget) EnumDescriptor() ([]byte, []int) {
 	return file_mvcc_proto_rawDescGZIP(), []int{5, 1}
 }
 
+type Event_EventType int32
+
+const (
+	Event_PUT    Event_EventType = 0
+	Event_DELETE Event_EventType = 1
+)
+
+// Enum value maps for Event_EventType.
+var (
+	Event_EventType_name = map[int32]string{
+		0: "PUT",
+		1: "DELETE",
+	}
+	Event_EventType_value = map[string]int32{
+		"PUT":    0,
+		"DELETE": 1,
+	}
+)
+
+func (x Event_EventType) Enum() *Event_EventType {
+	p := new(Event_EventType)
+	*p = x
+	return p
+}
+
+func (x Event_EventType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Event_EventType) Descriptor() protoreflect.EnumDescriptor {
+	return file_mvcc_proto_enumTypes[3].Descriptor()
+}
+
+func (Event_EventType) Type() protoreflect.EnumType {
+	return &file_mvcc_proto_enumTypes[3]
+}
+
+func (x Event_EventType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Event_EventType.Descriptor instead.
+func (Event_EventType) EnumDescriptor() ([]byte, []int) {
+	return file_mvcc_proto_rawDescGZIP(), []int{7, 0}
+}
+
 type Command struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// table name of the table
@@ -884,6 +930,76 @@ func (x *KeyValue) GetValue() []byte {
 	return nil
 }
 
+// Event is a single change of one key, delivered by the Watch API.
+type Event struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// type is the kind of event. A PUT event means a new value was stored for the key.
+	// A DELETE event means the key was deleted.
+	Type Event_EventType `protobuf:"varint,1,opt,name=type,proto3,enum=mvcc.v1.Event_EventType" json:"type,omitempty"`
+	// kv holds the key-value pair after the event.
+	// A PUT event contains the key, value, create_revision and mod_revision.
+	// A DELETE event contains the key, the deleted incarnation's create_revision,
+	// and mod_revision set to the revision of the deletion.
+	Kv *KeyValue `protobuf:"bytes,2,opt,name=kv,proto3" json:"kv,omitempty"`
+	// prev_kv holds the key-value pair before the event, when the watcher asked for it.
+	// It is always set for events delivered live. For events replayed from history it is
+	// best-effort: it is unset when the previous version has already been garbage collected.
+	PrevKv        *KeyValue `protobuf:"bytes,3,opt,name=prev_kv,json=prevKv,proto3" json:"prev_kv,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Event) Reset() {
+	*x = Event{}
+	mi := &file_mvcc_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Event) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Event) ProtoMessage() {}
+
+func (x *Event) ProtoReflect() protoreflect.Message {
+	mi := &file_mvcc_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Event.ProtoReflect.Descriptor instead.
+func (*Event) Descriptor() ([]byte, []int) {
+	return file_mvcc_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *Event) GetType() Event_EventType {
+	if x != nil {
+		return x.Type
+	}
+	return Event_PUT
+}
+
+func (x *Event) GetKv() *KeyValue {
+	if x != nil {
+		return x.Kv
+	}
+	return nil
+}
+
+func (x *Event) GetPrevKv() *KeyValue {
+	if x != nil {
+		return x.PrevKv
+	}
+	return nil
+}
+
 type RequestOp_Range struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// key is the first key for the range. If range_end is not given, the request only looks up key.
@@ -919,7 +1035,7 @@ type RequestOp_Range struct {
 
 func (x *RequestOp_Range) Reset() {
 	*x = RequestOp_Range{}
-	mi := &file_mvcc_proto_msgTypes[7]
+	mi := &file_mvcc_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -931,7 +1047,7 @@ func (x *RequestOp_Range) String() string {
 func (*RequestOp_Range) ProtoMessage() {}
 
 func (x *RequestOp_Range) ProtoReflect() protoreflect.Message {
-	mi := &file_mvcc_proto_msgTypes[7]
+	mi := &file_mvcc_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1024,7 +1140,7 @@ type RequestOp_Put struct {
 
 func (x *RequestOp_Put) Reset() {
 	*x = RequestOp_Put{}
-	mi := &file_mvcc_proto_msgTypes[8]
+	mi := &file_mvcc_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1036,7 +1152,7 @@ func (x *RequestOp_Put) String() string {
 func (*RequestOp_Put) ProtoMessage() {}
 
 func (x *RequestOp_Put) ProtoReflect() protoreflect.Message {
-	mi := &file_mvcc_proto_msgTypes[8]
+	mi := &file_mvcc_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1097,7 +1213,7 @@ type RequestOp_DeleteRange struct {
 
 func (x *RequestOp_DeleteRange) Reset() {
 	*x = RequestOp_DeleteRange{}
-	mi := &file_mvcc_proto_msgTypes[9]
+	mi := &file_mvcc_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1109,7 +1225,7 @@ func (x *RequestOp_DeleteRange) String() string {
 func (*RequestOp_DeleteRange) ProtoMessage() {}
 
 func (x *RequestOp_DeleteRange) ProtoReflect() protoreflect.Message {
-	mi := &file_mvcc_proto_msgTypes[9]
+	mi := &file_mvcc_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1168,7 +1284,7 @@ type ResponseOp_Range struct {
 
 func (x *ResponseOp_Range) Reset() {
 	*x = ResponseOp_Range{}
-	mi := &file_mvcc_proto_msgTypes[10]
+	mi := &file_mvcc_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1180,7 +1296,7 @@ func (x *ResponseOp_Range) String() string {
 func (*ResponseOp_Range) ProtoMessage() {}
 
 func (x *ResponseOp_Range) ProtoReflect() protoreflect.Message {
-	mi := &file_mvcc_proto_msgTypes[10]
+	mi := &file_mvcc_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1227,7 +1343,7 @@ type ResponseOp_Put struct {
 
 func (x *ResponseOp_Put) Reset() {
 	*x = ResponseOp_Put{}
-	mi := &file_mvcc_proto_msgTypes[11]
+	mi := &file_mvcc_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1239,7 +1355,7 @@ func (x *ResponseOp_Put) String() string {
 func (*ResponseOp_Put) ProtoMessage() {}
 
 func (x *ResponseOp_Put) ProtoReflect() protoreflect.Message {
-	mi := &file_mvcc_proto_msgTypes[11]
+	mi := &file_mvcc_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1274,7 +1390,7 @@ type ResponseOp_DeleteRange struct {
 
 func (x *ResponseOp_DeleteRange) Reset() {
 	*x = ResponseOp_DeleteRange{}
-	mi := &file_mvcc_proto_msgTypes[12]
+	mi := &file_mvcc_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1286,7 +1402,7 @@ func (x *ResponseOp_DeleteRange) String() string {
 func (*ResponseOp_DeleteRange) ProtoMessage() {}
 
 func (x *ResponseOp_DeleteRange) ProtoReflect() protoreflect.Message {
-	mi := &file_mvcc_proto_msgTypes[12]
+	mi := &file_mvcc_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1423,7 +1539,15 @@ const file_mvcc_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\fR\x03key\x12'\n" +
 	"\x0fcreate_revision\x18\x02 \x01(\x03R\x0ecreateRevision\x12!\n" +
 	"\fmod_revision\x18\x03 \x01(\x03R\vmodRevision\x12\x14\n" +
-	"\x05value\x18\x04 \x01(\fR\x05valueB\fZ\n" +
+	"\x05value\x18\x04 \x01(\fR\x05value\"\xa6\x01\n" +
+	"\x05Event\x12,\n" +
+	"\x04type\x18\x01 \x01(\x0e2\x18.mvcc.v1.Event.EventTypeR\x04type\x12!\n" +
+	"\x02kv\x18\x02 \x01(\v2\x11.mvcc.v1.KeyValueR\x02kv\x12*\n" +
+	"\aprev_kv\x18\x03 \x01(\v2\x11.mvcc.v1.KeyValueR\x06prevKv\" \n" +
+	"\tEventType\x12\a\n" +
+	"\x03PUT\x10\x00\x12\n" +
+	"\n" +
+	"\x06DELETE\x10\x01B\fZ\n" +
 	"./armadapbb\x06proto3"
 
 var (
@@ -1438,52 +1562,57 @@ func file_mvcc_proto_rawDescGZIP() []byte {
 	return file_mvcc_proto_rawDescData
 }
 
-var file_mvcc_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_mvcc_proto_msgTypes = make([]protoimpl.MessageInfo, 13)
+var file_mvcc_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_mvcc_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
 var file_mvcc_proto_goTypes = []any{
 	(Command_CommandType)(0),       // 0: mvcc.v1.Command.CommandType
 	(Compare_CompareResult)(0),     // 1: mvcc.v1.Compare.CompareResult
 	(Compare_CompareTarget)(0),     // 2: mvcc.v1.Compare.CompareTarget
-	(*Command)(nil),                // 3: mvcc.v1.Command
-	(*CommandResult)(nil),          // 4: mvcc.v1.CommandResult
-	(*Txn)(nil),                    // 5: mvcc.v1.Txn
-	(*RequestOp)(nil),              // 6: mvcc.v1.RequestOp
-	(*ResponseOp)(nil),             // 7: mvcc.v1.ResponseOp
-	(*Compare)(nil),                // 8: mvcc.v1.Compare
-	(*KeyValue)(nil),               // 9: mvcc.v1.KeyValue
-	(*RequestOp_Range)(nil),        // 10: mvcc.v1.RequestOp.Range
-	(*RequestOp_Put)(nil),          // 11: mvcc.v1.RequestOp.Put
-	(*RequestOp_DeleteRange)(nil),  // 12: mvcc.v1.RequestOp.DeleteRange
-	(*ResponseOp_Range)(nil),       // 13: mvcc.v1.ResponseOp.Range
-	(*ResponseOp_Put)(nil),         // 14: mvcc.v1.ResponseOp.Put
-	(*ResponseOp_DeleteRange)(nil), // 15: mvcc.v1.ResponseOp.DeleteRange
+	(Event_EventType)(0),           // 3: mvcc.v1.Event.EventType
+	(*Command)(nil),                // 4: mvcc.v1.Command
+	(*CommandResult)(nil),          // 5: mvcc.v1.CommandResult
+	(*Txn)(nil),                    // 6: mvcc.v1.Txn
+	(*RequestOp)(nil),              // 7: mvcc.v1.RequestOp
+	(*ResponseOp)(nil),             // 8: mvcc.v1.ResponseOp
+	(*Compare)(nil),                // 9: mvcc.v1.Compare
+	(*KeyValue)(nil),               // 10: mvcc.v1.KeyValue
+	(*Event)(nil),                  // 11: mvcc.v1.Event
+	(*RequestOp_Range)(nil),        // 12: mvcc.v1.RequestOp.Range
+	(*RequestOp_Put)(nil),          // 13: mvcc.v1.RequestOp.Put
+	(*RequestOp_DeleteRange)(nil),  // 14: mvcc.v1.RequestOp.DeleteRange
+	(*ResponseOp_Range)(nil),       // 15: mvcc.v1.ResponseOp.Range
+	(*ResponseOp_Put)(nil),         // 16: mvcc.v1.ResponseOp.Put
+	(*ResponseOp_DeleteRange)(nil), // 17: mvcc.v1.ResponseOp.DeleteRange
 }
 var file_mvcc_proto_depIdxs = []int32{
 	0,  // 0: mvcc.v1.Command.type:type_name -> mvcc.v1.Command.CommandType
-	9,  // 1: mvcc.v1.Command.kv:type_name -> mvcc.v1.KeyValue
-	9,  // 2: mvcc.v1.Command.batch:type_name -> mvcc.v1.KeyValue
-	5,  // 3: mvcc.v1.Command.txn:type_name -> mvcc.v1.Txn
-	3,  // 4: mvcc.v1.Command.sequence:type_name -> mvcc.v1.Command
-	7,  // 5: mvcc.v1.CommandResult.responses:type_name -> mvcc.v1.ResponseOp
-	8,  // 6: mvcc.v1.Txn.compare:type_name -> mvcc.v1.Compare
-	6,  // 7: mvcc.v1.Txn.success:type_name -> mvcc.v1.RequestOp
-	6,  // 8: mvcc.v1.Txn.failure:type_name -> mvcc.v1.RequestOp
-	10, // 9: mvcc.v1.RequestOp.request_range:type_name -> mvcc.v1.RequestOp.Range
-	11, // 10: mvcc.v1.RequestOp.request_put:type_name -> mvcc.v1.RequestOp.Put
-	12, // 11: mvcc.v1.RequestOp.request_delete_range:type_name -> mvcc.v1.RequestOp.DeleteRange
-	13, // 12: mvcc.v1.ResponseOp.response_range:type_name -> mvcc.v1.ResponseOp.Range
-	14, // 13: mvcc.v1.ResponseOp.response_put:type_name -> mvcc.v1.ResponseOp.Put
-	15, // 14: mvcc.v1.ResponseOp.response_delete_range:type_name -> mvcc.v1.ResponseOp.DeleteRange
+	10, // 1: mvcc.v1.Command.kv:type_name -> mvcc.v1.KeyValue
+	10, // 2: mvcc.v1.Command.batch:type_name -> mvcc.v1.KeyValue
+	6,  // 3: mvcc.v1.Command.txn:type_name -> mvcc.v1.Txn
+	4,  // 4: mvcc.v1.Command.sequence:type_name -> mvcc.v1.Command
+	8,  // 5: mvcc.v1.CommandResult.responses:type_name -> mvcc.v1.ResponseOp
+	9,  // 6: mvcc.v1.Txn.compare:type_name -> mvcc.v1.Compare
+	7,  // 7: mvcc.v1.Txn.success:type_name -> mvcc.v1.RequestOp
+	7,  // 8: mvcc.v1.Txn.failure:type_name -> mvcc.v1.RequestOp
+	12, // 9: mvcc.v1.RequestOp.request_range:type_name -> mvcc.v1.RequestOp.Range
+	13, // 10: mvcc.v1.RequestOp.request_put:type_name -> mvcc.v1.RequestOp.Put
+	14, // 11: mvcc.v1.RequestOp.request_delete_range:type_name -> mvcc.v1.RequestOp.DeleteRange
+	15, // 12: mvcc.v1.ResponseOp.response_range:type_name -> mvcc.v1.ResponseOp.Range
+	16, // 13: mvcc.v1.ResponseOp.response_put:type_name -> mvcc.v1.ResponseOp.Put
+	17, // 14: mvcc.v1.ResponseOp.response_delete_range:type_name -> mvcc.v1.ResponseOp.DeleteRange
 	1,  // 15: mvcc.v1.Compare.result:type_name -> mvcc.v1.Compare.CompareResult
 	2,  // 16: mvcc.v1.Compare.target:type_name -> mvcc.v1.Compare.CompareTarget
-	9,  // 17: mvcc.v1.ResponseOp.Range.kvs:type_name -> mvcc.v1.KeyValue
-	9,  // 18: mvcc.v1.ResponseOp.Put.prev_kv:type_name -> mvcc.v1.KeyValue
-	9,  // 19: mvcc.v1.ResponseOp.DeleteRange.prev_kvs:type_name -> mvcc.v1.KeyValue
-	20, // [20:20] is the sub-list for method output_type
-	20, // [20:20] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	3,  // 17: mvcc.v1.Event.type:type_name -> mvcc.v1.Event.EventType
+	10, // 18: mvcc.v1.Event.kv:type_name -> mvcc.v1.KeyValue
+	10, // 19: mvcc.v1.Event.prev_kv:type_name -> mvcc.v1.KeyValue
+	10, // 20: mvcc.v1.ResponseOp.Range.kvs:type_name -> mvcc.v1.KeyValue
+	10, // 21: mvcc.v1.ResponseOp.Put.prev_kv:type_name -> mvcc.v1.KeyValue
+	10, // 22: mvcc.v1.ResponseOp.DeleteRange.prev_kvs:type_name -> mvcc.v1.KeyValue
+	23, // [23:23] is the sub-list for method output_type
+	23, // [23:23] is the sub-list for method input_type
+	23, // [23:23] is the sub-list for extension type_name
+	23, // [23:23] is the sub-list for extension extendee
+	0,  // [0:23] is the sub-list for field type_name
 }
 
 func init() { file_mvcc_proto_init() }
@@ -1512,8 +1641,8 @@ func file_mvcc_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_mvcc_proto_rawDesc), len(file_mvcc_proto_rawDesc)),
-			NumEnums:      3,
-			NumMessages:   13,
+			NumEnums:      4,
+			NumMessages:   14,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

@@ -255,3 +255,23 @@ message KeyValue {
   // value is the value held by the key, in bytes.
   bytes value = 4;
 }
+
+// Event is a single change of one key, delivered by the Watch API.
+message Event {
+  enum EventType {
+    PUT = 0;
+    DELETE = 1;
+  }
+  // type is the kind of event. A PUT event means a new value was stored for the key.
+  // A DELETE event means the key was deleted.
+  EventType type = 1;
+  // kv holds the key-value pair after the event.
+  // A PUT event contains the key, value, create_revision and mod_revision.
+  // A DELETE event contains the key, the deleted incarnation's create_revision,
+  // and mod_revision set to the revision of the deletion.
+  KeyValue kv = 2;
+  // prev_kv holds the key-value pair before the event, when the watcher asked for it.
+  // It is always set for events delivered live. For events replayed from history it is
+  // best-effort: it is unset when the previous version has already been garbage collected.
+  KeyValue prev_kv = 3;
+}

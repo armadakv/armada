@@ -200,6 +200,114 @@ message TxnResponse {
   repeated mvcc.v1.ResponseOp responses = 3;
 }
 
+// Watch streams changes of keys in a table.
+//
+// Events are delivered in non-decreasing revision order, and all events of one
+// revision are delivered before any event of a later revision. There is at most
+// one event per key per revision. Revisions are sparse: they advance on writes
+// to the table, but not every revision produces an event.
+//
+// Watches are served locally by any node of any cluster; they are never forwarded.
+// Revisions are the same on every cluster, so a client can resume a watch on another
+// node or cluster with the revision it last observed.
+service Watch {
+  // Watch watches for events happening or that have happened. Both input and output are streams;
+  // the input stream is for creating and canceling watchers and for requesting progress, and the
+  // output stream sends events. One watch RPC can watch on multiple key ranges, streaming events
+  // for several watches at once. The entire event history can be watched starting from the
+  // first available revision.
+  rpc Watch(stream WatchRequest) returns (stream WatchResponse);
+}
+
+message WatchRequest {
+  // request_union is a request to either create a new watcher, cancel an existing watcher,
+  // or request progress notifications for all watchers on the stream.
+  oneof request_union {
+    WatchCreateRequest create_request = 1;
+    WatchCancelRequest cancel_request = 2;
+    WatchProgressRequest progress_request = 3;
+  }
+}
+
+message WatchCreateRequest {
+  // FilterType filters out events of the given type.
+  enum FilterType {
+    // NOPUT filters out PUT events.
+    NOPUT = 0;
+    // NODELETE filters out DELETE events.
+    NODELETE = 1;
+  }
+  // table name of the table to watch.
+  bytes table = 1;
+  // key is the key to register for watching.
+  bytes key = 2;
+  // range_end is the end of the range [key, range_end) to watch. If range_end is not given,
+  // only the key argument is watched. If range_end is equal to '\0', all keys greater than
+  // or equal to the key argument are watched.
+  // If the range_end is one bit larger than the given key,
+  // then all keys with the prefix (the given key) will be watched.
+  bytes range_end = 3;
+  // start_revision is an optional revision to watch from (inclusive). No start_revision is "now".
+  // A start_revision before the first available revision cancels the watch with
+  // compact_revision set to the first available revision.
+  int64 start_revision = 4;
+  // progress_notify is set so that the server will periodically send a WatchResponse with
+  // no events to the new watcher if there are no recent events. It is useful when clients
+  // wish to recover a disconnected watcher starting from a recent known revision.
+  bool progress_notify = 5;
+  // filters filter the events at server side before it sends back to the watcher.
+  repeated FilterType filters = 6;
+  // If prev_kv is set, created watcher gets the previous KV before the event happens.
+  // If the previous KV is already garbage collected, nothing will be returned.
+  bool prev_kv = 7;
+  // If watch_id is provided and non-zero, it will be assigned to this watcher.
+  // Since creating a watcher in the server is not a synchronous operation,
+  // this can be used to ensure that ordering is correct when creating multiple
+  // watchers on the same stream. Creating a watcher with an ID already in
+  // use on the stream will cause an error to be returned.
+  int64 watch_id = 8;
+  // fragment enables splitting large revisions into multiple watch responses.
+  bool fragment = 9;
+}
+
+message WatchCancelRequest {
+  // watch_id is the watcher id to cancel so that no more events are transmitted.
+  int64 watch_id = 1;
+}
+
+// Requests that a watch stream progress status be sent in the watch response stream as soon as
+// possible.
+message WatchProgressRequest {}
+
+message WatchResponse {
+  // header.revision is the revision of the watched table on the node when the response was built.
+  // A response with no events is a progress notification: the watcher has received every event
+  // up to header.revision, and a client may resume from header.revision + 1.
+  ResponseHeader header = 1;
+  // watch_id is the ID of the watcher that corresponds to the response.
+  int64 watch_id = 2;
+  // created is set to true if the response is for a create watch request.
+  // The client should record the watch_id and expect to receive events for
+  // the created watcher from the same stream.
+  // All events sent to the created watcher will attach with the same watch_id.
+  bool created = 3;
+  // canceled is set to true if the response is for a cancel watch request
+  // or if the watcher was canceled by the server.
+  // No further events will be sent to the canceled watcher.
+  bool canceled = 4;
+  // compact_revision is set to the first available revision if the watcher was canceled
+  // because the revisions it asked for are no longer available, either because they were
+  // garbage collected or because the node's view of the table was replaced by a recovery.
+  // The client should re-list the keys and start a new watch from a recent revision.
+  int64 compact_revision = 5;
+  // cancel_reason indicates the reason for canceling the watcher.
+  string cancel_reason = 6;
+  // fragment is true if a large watch response was split over multiple responses.
+  bool fragment = 7;
+  // events is the list of events, in revision order.
+  repeated mvcc.v1.Event events = 8;
+}
+
 // Cluster service ops.
 service Cluster {
   // MemberList lists all the members in the cluster.

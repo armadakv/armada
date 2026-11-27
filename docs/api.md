@@ -46,6 +46,24 @@ API for managing tables.
 | **List** | [ListTablesRequest](#listtablesrequest) | [ListTablesResponse](#listtablesresponse) | Get names of all the tables present in the cluster. This procedure is available in both leader and follower clusters. |
 
 
+### Service: Watch
+
+Watch streams changes of keys in a table.
+
+Events are delivered in non-decreasing revision order, and all events of one
+revision are delivered before any event of a later revision. There is at most
+one event per key per revision. Revisions are sparse: they advance on writes
+to the table, but not every revision produces an event.
+
+Watches are served locally by any node of any cluster; they are never forwarded.
+Revisions are the same on every cluster, so a client can resume a watch on another
+node or cluster with the revision it last observed.
+
+| Method | Request | Response | Description |
+| ------ | ------- | -------- | ----------- |
+| **Watch** | [WatchRequest](#watchrequest) | [WatchResponse](#watchresponse) | Watch watches for events happening or that have happened. Both input and output are streams; the input stream is for creating and canceling watchers and for requesting progress, and the output stream sends events. One watch RPC can watch on multiple key ranges, streaming events for several watches at once. The entire event history can be watched starting from the first available revision. |
+
+
 
 #### CreateTableRequest {#createtablerequest}
 
@@ -276,6 +294,69 @@ if guard evaluates to true.
 | `responses` | [mvcc.v1.ResponseOp](#mvccv1responseop) | repeated | responses is a list of responses corresponding to the results from applying success if succeeded is true or failure if succeeded is false. |
 
 
+#### WatchCancelRequest {#watchcancelrequest}
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `watch_id` | [int64](#int64) |  | watch_id is the watcher id to cancel so that no more events are transmitted. |
+
+
+#### WatchCreateRequest {#watchcreaterequest}
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `table` | [bytes](#bytes) |  | table name of the table to watch. |
+| `key` | [bytes](#bytes) |  | key is the key to register for watching. |
+| `range_end` | [bytes](#bytes) |  | range_end is the end of the range [key, range_end) to watch. If range_end is not given, only the key argument is watched. If range_end is equal to '\0', all keys greater than or equal to the key argument are watched. If the range_end is one bit larger than the given key, then all keys with the prefix (the given key) will be watched. |
+| `start_revision` | [int64](#int64) |  | start_revision is an optional revision to watch from (inclusive). No start_revision is "now". A start_revision before the first available revision cancels the watch with compact_revision set to the first available revision. |
+| `progress_notify` | [bool](#bool) |  | progress_notify is set so that the server will periodically send a WatchResponse with no events to the new watcher if there are no recent events. It is useful when clients wish to recover a disconnected watcher starting from a recent known revision. |
+| `filters` | [WatchCreateRequest.FilterType](#watchcreaterequestfiltertype) | repeated | filters filter the events at server side before it sends back to the watcher. |
+| `prev_kv` | [bool](#bool) |  | If prev_kv is set, created watcher gets the previous KV before the event happens. If the previous KV is already garbage collected, nothing will be returned. |
+| `watch_id` | [int64](#int64) |  | If watch_id is provided and non-zero, it will be assigned to this watcher. Since creating a watcher in the server is not a synchronous operation, this can be used to ensure that ordering is correct when creating multiple watchers on the same stream. Creating a watcher with an ID already in use on the stream will cause an error to be returned. |
+| `fragment` | [bool](#bool) |  | fragment enables splitting large revisions into multiple watch responses. |
+
+
+#### WatchProgressRequest {#watchprogressrequest}
+
+Requests that a watch stream progress status be sent in the watch response stream as soon as
+possible.
+
+
+
+#### WatchRequest {#watchrequest}
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `create_request` | [WatchCreateRequest](#watchcreaterequest) |  |  |
+| `cancel_request` | [WatchCancelRequest](#watchcancelrequest) |  |  |
+| `progress_request` | [WatchProgressRequest](#watchprogressrequest) |  |  |
+
+
+#### WatchResponse {#watchresponse}
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `header` | [ResponseHeader](#responseheader) |  | header.revision is the revision of the watched table on the node when the response was built. A response with no events is a progress notification: the watcher has received every event up to header.revision, and a client may resume from header.revision + 1. |
+| `watch_id` | [int64](#int64) |  | watch_id is the ID of the watcher that corresponds to the response. |
+| `created` | [bool](#bool) |  | created is set to true if the response is for a create watch request. The client should record the watch_id and expect to receive events for the created watcher from the same stream. All events sent to the created watcher will attach with the same watch_id. |
+| `canceled` | [bool](#bool) |  | canceled is set to true if the response is for a cancel watch request or if the watcher was canceled by the server. No further events will be sent to the canceled watcher. |
+| `compact_revision` | [int64](#int64) |  | compact_revision is set to the first available revision if the watcher was canceled because the revisions it asked for are no longer available, either because they were garbage collected or because the node's view of the table was replaced by a recovery. The client should re-list the keys and start a new watch from a recent revision. |
+| `cancel_reason` | [string](#string) |  | cancel_reason indicates the reason for canceling the watcher. |
+| `fragment` | [bool](#bool) |  | fragment is true if a large watch response was split over multiple responses. |
+| `events` | [mvcc.v1.Event](#mvccv1event) | repeated | events is the list of events, in revision order. |
+
+
+
+#### WatchCreateRequest.FilterType {#watchcreaterequestfiltertype}
+
+FilterType filters out events of the given type.
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| `NOPUT` | 0 | NOPUT filters out PUT events. |
+| `NODELETE` | 1 | NODELETE filters out DELETE events. |
+
+
 
 
 
@@ -429,6 +510,17 @@ Examples:
 | `range_end` | [bytes](#bytes) |  | range_end compares the given target to all keys in the range [key, range_end). Only the latest live version of each key is compared. If no live keys match, revision targets compare against zero and VALUE comparisons fail. See RangeRequest for more details on key ranges.  TODO: fill out with most of the rest of RangeRequest fields when needed. |
 
 
+#### Event {#event}
+
+Event is a single change of one key, delivered by the Watch API.
+
+| Field | Type | Label | Description |
+| ----- | ---- | ----- | ----------- |
+| `type` | [Event.EventType](#eventeventtype) |  | type is the kind of event. A PUT event means a new value was stored for the key. A DELETE event means the key was deleted. |
+| `kv` | [KeyValue](#keyvalue) |  | kv holds the key-value pair after the event. A PUT event contains the key, value, create_revision and mod_revision. A DELETE event contains the key, the deleted incarnation's create_revision, and mod_revision set to the revision of the deletion. |
+| `prev_kv` | [KeyValue](#keyvalue) |  | prev_kv holds the key-value pair before the event, when the watcher asked for it. It is always set for events delivered live. For events replayed from history it is best-effort: it is unset when the previous version has already been garbage collected. |
+
+
 #### KeyValue {#keyvalue}
 
 | Field | Type | Label | Description |
@@ -558,6 +650,15 @@ Examples:
 | `VALUE` | 0 |  |
 | `CREATE` | 2 | Creation revision of the current live key incarnation. |
 | `MOD` | 3 | Modification revision of the current live key. |
+
+
+
+#### Event.EventType {#eventeventtype}
+
+| Name | Number | Description |
+| ---- | ------ | ----------- |
+| `PUT` | 0 |  |
+| `DELETE` | 1 |  |
 
 
 

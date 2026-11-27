@@ -157,6 +157,7 @@ func leader() error {
 				armadapb.RegisterKVServer(r, &armadaserver.KVServer{
 					Storage: engine,
 				})
+				armadapb.RegisterWatchServer(r, &armadaserver.WatchServer{})
 				armadapb.RegisterClusterServer(r, &armadaserver.ClusterServer{
 					Cluster: engine,
 					Config:  koanfConfigReader,
