@@ -3,6 +3,8 @@
 package table
 
 import (
+	"time"
+
 	"github.com/cockroachdb/pebble/v2/vfs"
 )
 
@@ -93,8 +95,11 @@ type TableConfig struct {
 	// BlockCacheSize shared block cache size in bytes, the cache is used to hold uncompressed blocks of data in memory.
 	BlockCacheSize int64
 	// TableCacheSize shared table cache size, the cache is used to hold handles to open SSTs.
-	TableCacheSize       int
-	AppliedIndexListener func(table string, rev uint64)
+	TableCacheSize int
+	// WatchProgressInterval is how often watchers that asked for progress
+	// notifications get one while they receive no events.
+	WatchProgressInterval time.Duration
+	AppliedIndexListener  func(table string, rev uint64)
 	// GCHorizonListener is called when the Raft log for the given shard is
 	// compacted up to index. The FSM should advance its GC horizon to this index.
 	GCHorizonListener func(shardID uint64, index uint64)

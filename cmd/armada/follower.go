@@ -26,7 +26,7 @@ var followerCmd = &cli.Command{
 	Usage: "Start Armada in follower mode.",
 	Flags: mergeFlags(
 		rootFlags, apiFlags, restFlags, raftFlags, memberlistFlags,
-		storageFlags, maintenanceFlags, tablesFlags, experimentalFlags,
+		storageFlags, maintenanceFlags, tablesFlags, watchFlags, experimentalFlags,
 		sharedStoreFlags,
 		[]cli.Flag{
 			&cli.StringFlag{Name: "replication.leader-address", Value: "localhost:8444", Usage: "Address of the leader replication API to connect to."},
@@ -130,7 +130,7 @@ func follower() error {
 			// Create server
 			regatta, err := createAPIServer(logger.Named("server.api"), func(r grpc.ServiceRegistrar) {
 				armadapb.RegisterKVServer(r, armadaserver.NewForwardingKVServer(engine, armadapb.NewKVClient(conn), nQueue))
-				armadapb.RegisterWatchServer(r, &armadaserver.WatchServer{Watches: engine})
+				armadapb.RegisterWatchServer(r, newWatchServer(engine))
 				armadapb.RegisterClusterServer(r, &armadaserver.ClusterServer{
 					Cluster: engine,
 					Config:  koanfConfigReader,

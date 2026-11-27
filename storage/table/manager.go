@@ -29,6 +29,7 @@ import (
 	"github.com/armadakv/armada/storage/watch"
 	"github.com/cenkalti/backoff/v4"
 	"github.com/cockroachdb/pebble/v2"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -91,7 +92,7 @@ func NewManager(nh *raft.NodeHost, members map[uint64]string, store store, cfg C
 			return nil, err
 		}
 		return res.(*fsm.WatchScanResponse), nil
-	})
+	}, watch.WithProgressInterval(cfg.Table.WatchProgressInterval))
 	return m
 }
 
@@ -142,6 +143,11 @@ type Manager struct {
 
 	// watches serves the Watch API from the table state machines.
 	watches *watch.Registry
+}
+
+// WatchCollector returns the collector of the Watch API metrics.
+func (m *Manager) WatchCollector() prometheus.Collector {
+	return m.watches
 }
 
 // Watch registers a watcher on a table; see watch.Registry.Watch.

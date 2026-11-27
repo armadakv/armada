@@ -5,6 +5,8 @@ package main
 import (
 	"time"
 
+	"github.com/armadakv/armada/armadaserver"
+	"github.com/armadakv/armada/storage/watch"
 	"github.com/urfave/cli/v3"
 )
 
@@ -105,6 +107,13 @@ All nodes of the cluster MUST set this to the same value. If changing it is advi
 	tablesFlags = []cli.Flag{
 		&cli.BoolFlag{Name: "tables.enabled", Value: true, Usage: "Whether tables API is enabled."},
 		&cli.StringFlag{Name: "tables.token", Value: "", Usage: "Token to check for tables API access, if left empty (default) no token is checked."},
+	}
+
+	watchFlags = []cli.Flag{
+		&cli.DurationFlag{Name: "watch.progress-interval", Value: watch.DefaultProgressInterval, Usage: "How often watchers that set progress_notify get a progress notification while they receive no events."},
+		&cli.IntFlag{Name: "watch.max-response-size-bytes", Value: armadaserver.DefaultMaxGRPCSize, Usage: "Target maximum size of one watch response. Larger responses are split between revisions, or into fragments for watchers that allow them."},
+		&cli.IntFlag{Name: "watch.max-watchers-per-stream", Value: armadaserver.DefaultMaxWatchersPerStream, Usage: "Maximum number of watchers on one watch stream. A negative value means no limit."},
+		&cli.IntFlag{Name: "watch.stream-buffer-bytes", Value: watch.DefaultSinkLimit, Usage: "Event bytes buffered per watch stream. A stream that falls further behind reads its events back from the store instead."},
 	}
 
 	experimentalFlags = []cli.Flag{}

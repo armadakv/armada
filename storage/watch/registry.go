@@ -9,6 +9,7 @@ import (
 
 	serrors "github.com/armadakv/armada/storage/errors"
 	"github.com/armadakv/armada/storage/table/fsm"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
 )
 
@@ -18,7 +19,23 @@ const (
 	defaultServingInterval = time.Second
 	// maxConcurrentScans bounds the catch-up reads running at once on a node.
 	maxConcurrentScans = 16
+	// DefaultProgressInterval is how often watchers that asked for progress
+	// notifications get one while they receive no events.
+	DefaultProgressInterval = 10 * time.Minute
 )
+
+// Option configures a Registry.
+type Option func(*Registry)
+
+// WithProgressInterval sets the progress notification interval. Values that
+// are not positive keep the default.
+func WithProgressInterval(d time.Duration) Option {
+	return func(r *Registry) {
+		if d > 0 {
+			r.progressInterval = d
+		}
+	}
+}
 
 // Resolver returns the shard currently serving a table.
 type Resolver func(table string) (shardID uint64, err error)
@@ -28,11 +45,13 @@ type Scanner func(shardID uint64, req fsm.WatchScanRequest) (*fsm.WatchScanRespo
 
 // Registry owns the hubs of all table shards on a node.
 type Registry struct {
-	resolve  Resolver
-	scanner  Scanner
-	scans    chan struct{}
-	log      *zap.SugaredLogger
-	interval time.Duration
+	resolve          Resolver
+	scanner          Scanner
+	scans            chan struct{}
+	log              *zap.SugaredLogger
+	interval         time.Duration
+	progressInterval time.Duration
+	metrics          *metrics
 
 	mu     sync.Mutex
 	hubs   map[uint64]*Hub
@@ -44,16 +63,32 @@ type Registry struct {
 
 // NewRegistry returns a registry resolving tables with resolve and reading
 // history with scan.
-func NewRegistry(resolve Resolver, scan Scanner) *Registry {
-	return &Registry{
-		resolve:  resolve,
-		scanner:  scan,
-		scans:    make(chan struct{}, maxConcurrentScans),
-		log:      zap.S().Named("watch"),
-		interval: defaultServingInterval,
-		hubs:     make(map[uint64]*Hub),
-		stop:     make(chan struct{}),
+func NewRegistry(resolve Resolver, scan Scanner, opts ...Option) *Registry {
+	r := &Registry{
+		resolve:          resolve,
+		scanner:          scan,
+		scans:            make(chan struct{}, maxConcurrentScans),
+		log:              zap.S().Named("watch"),
+		interval:         defaultServingInterval,
+		progressInterval: DefaultProgressInterval,
+		metrics:          newMetrics(),
+		hubs:             make(map[uint64]*Hub),
+		stop:             make(chan struct{}),
 	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
+}
+
+// Describe implements prometheus.Collector.
+func (r *Registry) Describe(ch chan<- *prometheus.Desc) {
+	r.metrics.Describe(ch)
+}
+
+// Collect implements prometheus.Collector.
+func (r *Registry) Collect(ch chan<- prometheus.Metric) {
+	r.metrics.Collect(ch)
 }
 
 // Observer returns the observer for a shard's state machine. It is called
@@ -121,27 +156,36 @@ func (r *Registry) Start() {
 func (r *Registry) monitor() {
 	t := time.NewTicker(r.interval)
 	defer t.Stop()
+	p := time.NewTicker(r.progressInterval)
+	defer p.Stop()
 	for {
 		select {
 		case <-r.stop:
 			return
 		case <-t.C:
 			r.checkServing()
+		case <-p.C:
+			for _, h := range r.snapshot() {
+				h.notifyProgress()
+			}
 		}
 	}
+}
+
+func (r *Registry) snapshot() []*Hub {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	hubs := make([]*Hub, 0, len(r.hubs))
+	for _, h := range r.hubs {
+		hubs = append(hubs, h)
+	}
+	return hubs
 }
 
 // checkServing cancels the watchers of hubs that no longer serve their table:
 // the table was deleted, recreated, or its shard was replaced by a recovery.
 func (r *Registry) checkServing() {
-	r.mu.Lock()
-	hubs := make([]*Hub, 0, len(r.hubs))
-	for _, h := range r.hubs {
-		hubs = append(hubs, h)
-	}
-	r.mu.Unlock()
-
-	for _, h := range hubs {
+	for _, h := range r.snapshot() {
 		if !h.watching() {
 			continue
 		}

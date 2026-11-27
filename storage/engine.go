@@ -131,11 +131,13 @@ func New(cfg Config) (*Engine, error) {
 // Describe implements prometheus.Collector.
 func (e *Engine) Describe(ch chan<- *prometheus.Desc) {
 	e.disk.Describe(ch)
+	e.Manager.WatchCollector().Describe(ch)
 }
 
 // Collect implements prometheus.Collector.
 func (e *Engine) Collect(ch chan<- prometheus.Metric) {
 	e.disk.Collect(ch)
+	e.Manager.WatchCollector().Collect(ch)
 }
 
 // SnapshotNotifier is implemented by the snapshot exporter and called when the

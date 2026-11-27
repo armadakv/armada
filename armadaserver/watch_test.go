@@ -12,6 +12,7 @@ import (
 
 	"github.com/armadakv/armada/armadapb"
 	"github.com/armadakv/armada/storage"
+	"github.com/armadakv/armada/storage/watch"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -308,4 +309,105 @@ func TestWatchServer_SnapshotReplay(t *testing.T) {
 
 	now := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), StartRevision: int64(tip + 1)})
 	require.False(t, now.Canceled)
+}
+
+type headerOnly struct{}
+
+func (headerOnly) Watch(watch.Options, *watch.Sink) (*watch.Watcher, error) { return nil, nil }
+func (headerOnly) WatchHeader(_, revision uint64) *armadapb.ResponseHeader {
+	return &armadapb.ResponseHeader{Revision: revision}
+}
+
+func TestWatchStream_Responses(t *testing.T) {
+	ev := func(key string, rev int64) *armadapb.Event {
+		return &armadapb.Event{Kv: &armadapb.KeyValue{Key: []byte(key), Value: make([]byte, 40), ModRevision: rev, CreateRevision: rev}}
+	}
+	events := []*armadapb.Event{ev("a", 1), ev("b", 1), ev("c", 2), ev("d", 3), ev("e", 3), ev("f", 3)}
+	one := eventsBytes(events[:1])
+
+	newStream := func(limit int, fragments bool) *watchStream {
+		st := &watchStream{server: &WatchServer{Watches: headerOnly{}, MaxResponseSize: limit}, fragments: map[int64]bool{}}
+		if fragments {
+			st.fragments[1] = true
+		}
+		return st
+	}
+	revs := func(resp *armadapb.WatchResponse) []int64 {
+		var res []int64
+		for _, e := range resp.Events {
+			res = append(res, e.Kv.ModRevision)
+		}
+		return res
+	}
+
+	// Everything fits: one response.
+	res, ok := newStream(1<<20, false).responses(watch.Message{WatchID: 1, Revision: 3, Events: events})
+	require.True(t, ok)
+	require.Len(t, res, 1)
+
+	// Two events per response at most, packing whole revisions.
+	res, ok = newStream(2*one, false).responses(watch.Message{WatchID: 1, Revision: 3, Events: events[:4]})
+	require.True(t, ok)
+	require.Len(t, res, 2)
+	require.Equal(t, []int64{1, 1}, revs(res[0]))
+	require.Equal(t, []int64{2, 3}, revs(res[1]))
+	for _, r := range res {
+		require.False(t, r.Fragment)
+	}
+
+	// Revision 3 needs three events: without fragments the watcher is
+	// canceled after the revisions that fit.
+	res, ok = newStream(2*one, false).responses(watch.Message{WatchID: 1, Revision: 3, Events: events})
+	require.False(t, ok)
+	require.Len(t, res, 2)
+	require.Equal(t, []int64{2}, revs(res[1]))
+
+	// With fragments the revision is split, marking all but its last part.
+	res, ok = newStream(2*one, true).responses(watch.Message{WatchID: 1, Revision: 3, Events: events})
+	require.True(t, ok)
+	require.Len(t, res, 4)
+	require.Equal(t, []int64{2}, revs(res[1]))
+	require.Equal(t, []int64{3, 3}, revs(res[2]))
+	require.True(t, res[2].Fragment)
+	require.Equal(t, []int64{3}, revs(res[3]))
+	require.False(t, res[3].Fragment)
+}
+
+func TestWatchServer_ProgressRequest(t *testing.T) {
+	kv, wc := startWatchServer(t, "t")
+	stream := openWatch(t, wc)
+	created := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a")})
+	put, err := kv.Put(context.Background(), &armadapb.PutRequest{Table: []byte("t"), Key: []byte("b"), Value: []byte("1")})
+	require.NoError(t, err)
+
+	// Progress is reported at a revision that includes every committed write.
+	require.Eventually(t, func() bool {
+		require.NoError(t, stream.Send(&armadapb.WatchRequest{RequestUnion: &armadapb.WatchRequest_ProgressRequest{ProgressRequest: &armadapb.WatchProgressRequest{}}}))
+		resp, err := stream.Recv()
+		require.NoError(t, err)
+		require.Equal(t, created.WatchId, resp.WatchId)
+		require.Empty(t, resp.Events)
+		return resp.Header.Revision >= put.Header.Revision
+	}, 5*time.Second, 10*time.Millisecond)
+}
+
+func TestWatchServer_MaxWatchers(t *testing.T) {
+	engine := newInMemTestEngine(t, "t")
+	lis := bufconn.Listen(1 << 20)
+	srv := grpc.NewServer()
+	armadapb.RegisterWatchServer(srv, &WatchServer{Watches: engine, MaxWatchersPerStream: 2})
+	go func() { _ = srv.Serve(lis) }()
+	t.Cleanup(srv.Stop)
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return lis.DialContext(ctx) }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	stream := openWatch(t, armadapb.NewWatchClient(conn))
+	for range 2 {
+		require.False(t, createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a")}).Canceled)
+	}
+	require.True(t, createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a")}).Canceled)
 }
