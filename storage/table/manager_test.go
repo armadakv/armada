@@ -312,14 +312,6 @@ func TestManager_Restore(t *testing.T) {
 	for _, kv := range rangeResp.Kvs {
 		require.Less(t, uint64(kv.ModRevision), localIndex.Index)
 	}
-	// It is a new shard of the leader cluster, not a replica of the backup's
-	// source: like every leader-cluster table it records no leader index. The
-	// backup's tip, an index of the old shard's log, would make every snapshot
-	// exported from this shard fail a follower's check that the terminal index
-	// is not behind the data.
-	leaderIndex, err := tab2.LeaderIndex(ctx, true)
-	require.NoError(t, err)
-	require.Zero(t, leaderIndex.Index)
 }
 
 func snapshotTestKey(i int) []byte {

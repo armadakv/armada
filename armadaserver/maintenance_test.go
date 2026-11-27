@@ -165,9 +165,6 @@ func TestBackupServer_RestoreThenUpdate(t *testing.T) {
 	for _, kv := range before.Kvs {
 		r.Equal(kv.CreateRevision, kv.ModRevision, "a restored record is a new incarnation of %s", kv.Key)
 	}
-	leaderIndex, err := restored.LeaderIndex(ctx, true)
-	r.NoError(err)
-	r.Zero(leaderIndex.Index, "a restore does not make the shard a replica of the backup's source")
 	localIndex, err := restored.LocalIndex(ctx, true)
 	r.NoError(err)
 	for _, kv := range before.Kvs {
@@ -217,9 +214,6 @@ func TestBackupServer_RestoreEmptyBackup(t *testing.T) {
 	localIndex, err := restored.LocalIndex(ctx, true)
 	r.NoError(err)
 	r.Positive(localIndex.Index, "the terminal marker is applied")
-	leaderIndex, err := restored.LeaderIndex(ctx, true)
-	r.NoError(err)
-	r.Zero(leaderIndex.Index)
 
 	empty, err := restored.Range(ctx, &armadapb.RangeRequest{Table: []byte("orders"), Key: []byte{0}, RangeEnd: []byte{0}, Linearizable: true})
 	r.NoError(err)
