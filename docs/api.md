@@ -397,6 +397,7 @@ MetricsResponse contains the requested metrics data.
 | `prev_kvs` | [bool](#bool) |  | prev_kvs if to fetch previous KVs. |
 | `sequence` | [Command](#command) | repeated | sequence is the sequence of commands to be applied as a single FSM step. |
 | `count` | [bool](#bool) |  | count if to count number of records affected by a command. |
+| `gc_horizon` | [uint64](#uint64) | optional | gc_horizon is the GC horizon of a GC command: the compacted Raft log index of the cluster that proposed it. leader_index cannot carry it across clusters, because replication sets leader_index to the index of the replicated entry. When unset, the command's sequence is the horizon. |
 
 
 #### CommandResult {#commandresult}

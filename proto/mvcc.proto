@@ -63,6 +63,11 @@ message Command {
 
   // count if to count number of records affected by a command.
   bool count = 11;
+
+  // gc_horizon is the GC horizon of a GC command: the compacted Raft log index of the cluster that
+  // proposed it. leader_index cannot carry it across clusters, because replication sets leader_index
+  // to the index of the replicated entry. When unset, the command's sequence is the horizon.
+  optional uint64 gc_horizon = 12;
 }
 
 message CommandResult {
