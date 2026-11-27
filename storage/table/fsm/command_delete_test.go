@@ -123,11 +123,11 @@ func Test_handleDeleteAllPreservesSystemState(t *testing.T) {
 
 	putLeaderIndex := uint64(10)
 	c := &updateContext{
-		batch:       db.NewBatch(),
-		db:          db,
-		index:       1,
-		leaderIndex: &putLeaderIndex,
-		sourceIndex: &putLeaderIndex,
+		batch:              db.NewBatch(),
+		db:                 db,
+		index:              1,
+		leaderIndex:        &putLeaderIndex,
+		appliedLeaderIndex: &putLeaderIndex,
 	}
 	defer func() { _ = c.Close() }()
 
@@ -150,7 +150,7 @@ func Test_handleDeleteAllPreservesSystemState(t *testing.T) {
 	c.batch = db.NewBatch()
 	c.index = 2
 	c.leaderIndex = &deleteLeaderIndex
-	c.sourceIndex = &deleteLeaderIndex
+	c.appliedLeaderIndex = &deleteLeaderIndex
 	response, err := handleDelete(c, &armadapb.RequestOp_DeleteRange{
 		Key:      []byte{0},
 		RangeEnd: []byte{0},

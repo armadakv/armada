@@ -69,7 +69,7 @@ func localGC(compacted uint64) *armadapb.Command {
 }
 
 // A follower cluster proposes GC from its own log compaction, with its local
-// compacted index. That index must not replace the source index that
+// compacted index. That index must not replace the leader index that
 // replication resumes from.
 func TestFSM_LocalGCKeepsLeaderIndex(t *testing.T) {
 	t.Run("separate batches", func(t *testing.T) {
@@ -96,8 +96,7 @@ func TestFSM_LocalGCKeepsLeaderIndex(t *testing.T) {
 }
 
 // On the leader cluster GC carries the compacted index too. It must not
-// create a source index where there is none, and the applied callback keeps
-// reporting the local index.
+// create a leader index where there is none, nor be reported as applied.
 func TestFSM_LeaderGCDoesNotWriteLeaderIndex(t *testing.T) {
 	p, applied := gcLeaderIndexSM(t)
 	updateEntries(t, p, 10, putCmdGC("a"))
@@ -106,7 +105,7 @@ func TestFSM_LeaderGCDoesNotWriteLeaderIndex(t *testing.T) {
 	// The GC-only batch reports nothing; the last report is the put's index.
 	require.Equal(t, uint64(10), (*applied)[len(*applied)-1])
 
-	// A reset still writes its zero source index.
+	// A reset still writes its zero leader index.
 	zero := uint64(0)
 	updateEntries(t, p, 12, replicated(300))
 	updateEntries(t, p, 13, &armadapb.Command{Table: []byte(testTable), Type: armadapb.Command_DUMMY, LeaderIndex: &zero})

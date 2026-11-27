@@ -135,7 +135,8 @@ type FSM struct {
 	metrics             *metrics
 	appliedFunc         func(applied uint64)
 
-	// gcHorizon is the highest leaderIndex up to which MVCC GC is safe.
+	// gcHorizon is the MVCC seqno below which GC may remove versions that a
+	// newer version shadows. It never decreases.
 	// It is persisted as sysGCHorizon and kept in sync via this atomic.
 	gcHorizon atomic.Uint64
 	// gcCh is a buffered(1) channel used to signal the GC worker to run a sweep immediately.
@@ -366,11 +367,11 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 
 	p.metrics.applied.Store(idx)
 	switch {
-	case !ctx.dataApplied:
-		// Only GC was applied: there is no new source index to report, and
+	case !ctx.nonGCApplied:
+		// Only GC was applied: there is no new leader index to report, and
 		// the compacted index a GC carries is not one.
-	case ctx.sourceIndex != nil:
-		p.appliedFunc(*ctx.sourceIndex)
+	case ctx.appliedLeaderIndex != nil:
+		p.appliedFunc(*ctx.appliedLeaderIndex)
 	default:
 		p.appliedFunc(idx)
 	}

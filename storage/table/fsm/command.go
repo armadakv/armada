@@ -2,8 +2,8 @@
 
 // Package fsm implements the Raft finite state machine for Armada tables.
 // It applies committed Raft log entries as MVCC writes to a Pebble-backed key-value store,
-// tracking both the local Raft apply index and the source leader index for cross-cluster
-// revision consistency.
+// tracking both the local Raft apply index and, on follower clusters, the index of the last
+// entry replicated from the leader cluster, which stamps the same revision on every cluster.
 package fsm
 
 import (
@@ -16,21 +16,28 @@ import (
 )
 
 type updateContext struct {
-	batch       *pebble.Batch
-	db          *pebble.DB
-	index       uint64
+	batch *pebble.Batch
+	db    *pebble.DB
+	// index is the local Raft index of the entry being applied.
+	index uint64
+	// leaderIndex is the leader_index field of the command being applied; a
+	// SEQUENCE switches it to each child's while the child is applied. For a
+	// command replicated or restored from the leader cluster it is the index of
+	// the source entry in the leader cluster's log. Other commands leave it
+	// unset, except a maintenance reset, which sets it to zero, and GC, which
+	// carries the compacted index of the proposing cluster's own log.
 	leaderIndex *uint64
 	// cmd is the top-level command of the entry being applied.
 	cmd *armadapb.Command
 
-	// sourceIndex is the source index persisted as sysLeaderIndex and reported
-	// as applied: the leader index of the last applied entry that is not a
-	// top-level GC. A GC proposal carries the compacted index of the cluster
-	// that proposed it, which is not a source index, and on a follower cluster
-	// it is in the follower's own index domain.
-	sourceIndex *uint64
-	// dataApplied is set once an entry other than a top-level GC was applied.
-	dataApplied bool
+	// appliedLeaderIndex is persisted as sysLeaderIndex, from which follower
+	// replication resumes, and reported to the applied-index callback. It is
+	// the leaderIndex of the last applied entry that is not a top-level GC:
+	// the compacted index a GC carries is not a leader index, and on a
+	// follower cluster it is in the follower's own index domain.
+	appliedLeaderIndex *uint64
+	// nonGCApplied is set once an entry other than a top-level GC was applied.
+	nonGCApplied bool
 	// gcHorizon is the GC horizon after the entries applied so far. It never
 	// decreases: versions below an applied horizon may already be swept.
 	gcHorizon        uint64
@@ -45,10 +52,12 @@ func (c *updateContext) advanceGCHorizon(horizon uint64) {
 	}
 }
 
-// seqno returns the sequence number to use when encoding MVCC keys.
-// On the leader, leaderIndex and index are identical. On followers, the
-// leaderIndex is used so that every region stamps the same seqno into the
-// same logical write, giving a consistent MVCC version across the cluster.
+// seqno returns the sequence number to use when encoding MVCC keys. A
+// command replicated from the leader cluster uses its leaderIndex, so that
+// every cluster stamps the same seqno into the same logical write. A command
+// proposed locally has none and uses the local Raft index, which on the leader
+// cluster is that same source index. A GC command's leaderIndex is the
+// compacted index instead; GC writes no versions.
 func (c *updateContext) seqno() uint64 {
 	if c.leaderIndex != nil {
 		return *c.leaderIndex
@@ -73,10 +82,11 @@ func (c *updateContext) EnsureIndexed() error {
 }
 
 func (c *updateContext) Commit() error {
-	// Set leader index if present in the proposal
-	if c.sourceIndex != nil {
+	// Persist the leader index replication resumes from, when the batch
+	// applied a command that carries one.
+	if c.appliedLeaderIndex != nil {
 		leaderIdx := make([]byte, 8)
-		binary.LittleEndian.PutUint64(leaderIdx, *c.sourceIndex)
+		binary.LittleEndian.PutUint64(leaderIdx, *c.appliedLeaderIndex)
 		if err := c.batch.Set(sysLeaderIndex, leaderIdx, nil); err != nil {
 			return err
 		}
@@ -113,8 +123,8 @@ func parseCommand(c *updateContext, entry sm.Entry) (command, error) {
 	c.leaderIndex = cmd.LeaderIndex
 	c.cmd = cmd
 	if cmd.Type != armadapb.Command_GC {
-		c.sourceIndex = cmd.LeaderIndex
-		c.dataApplied = true
+		c.appliedLeaderIndex = cmd.LeaderIndex
+		c.nonGCApplied = true
 	}
 	return wrapCommand(cmd), nil
 }
