@@ -13,9 +13,23 @@ where the maintainer adds the highlights and upgrade notes by hand.
 
 ## v0.4.0 - 2026-11-27
 
+### About this release
+
+v0.4.0 fixes two correctness bugs, in follower clusters and in restored tables, and removes the legacy in-cluster snapshot recovery type. It is the last release before the Watch API.
+
+### Highlights
+- **Follower clusters keep the leader's history and garbage-collect continuously.** Previously a GC command could overwrite the source index that replication resumes from, sending followers back to entries they had already applied and, when those were below the leader's GC horizon, into a full snapshot recovery they did not need. Followers also took the GC entry's own index as their horizon, swept nothing while running, and then removed nearly all history in one pass after a restart. GC now leaves the source index alone, carries the leader's horizon to followers in a new `gc_horizon` field, wakes the sweeper on followers, and never moves the horizon back.
+- **Tables restored from a backup take new writes.** An operator restore loaded the backup's records with the revisions of the old shard, above the revisions the new shard gives later writes, so writes after a restore were accepted but never visible, and followers could not recover from the restored table. Restored records now get revisions of the new shard.
+- **Only checkpoint snapshots between replicas.** The legacy `snapshot` recovery type and the `--raft.snapshot-recovery-type` flag are removed; replicas of a shard always exchange Pebble checkpoints.
+
+### Upgrade notes
+- **Remove `--raft.snapshot-recovery-type`** from the configuration before upgrading: a node started with it fails on the unknown flag. With Helm, use a chart version that no longer sets `raft.snapshotRecoveryType`. A cluster still running with `snapshot` must switch every node to `checkpoint` first, because a v0.4.0 node cannot recover from a legacy snapshot sent by an older peer.
+- **Rolling upgrades are safe.** Older binaries ignore the new `gc_horizon` field and keep their previous GC behaviour until upgraded.
+- **Expect a cleanup on follower clusters.** The first GC sweep after the upgrade removes the versions accumulated since the follower's last restart, so disk usage drops once and then stays at the leader's level.
+- **Tables restored with an earlier version stay affected after the upgrade**: their restored records keep the old revisions, so writes to those keys remain invisible until the shard's log passes the backup's tip. To fix such a table, take a backup of it and restore that backup with v0.4.0. Writes made to restored keys since the earlier restore were never visible and are not recovered: the new backup holds the restored values for those keys.
+
 ### Breaking changes
 
-- remove legacy snapshot recovery type ([96e93f6](https://github.com/armadakv/armada/commit/96e93f6216823d311c1faa209530d079411ba5ae))
 - remove legacy snapshot recovery type ([#191](https://github.com/armadakv/armada/pull/191))
 
 ### Bug fixes
