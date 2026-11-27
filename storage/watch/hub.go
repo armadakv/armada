@@ -60,6 +60,9 @@ type Hub struct {
 	open bool
 	// revision is the revision of the last commit the hub has processed.
 	revision uint64
+	// floor is the highest revision whose events are no longer available,
+	// as of the last commit.
+	floor uint64
 	// ring holds the most recent captured commits. Together they cover every
 	// revision in (ringBase, revision].
 	ring     []fsm.Commit
@@ -164,9 +167,10 @@ func (h *Hub) loop() {
 // applyLocked processes one commit.
 func (h *Hub) applyLocked(c fsm.Commit) {
 	h.open = true
+	h.floor = c.Floor
 	switch {
 	case c.Rewritten || c.Revision < h.revision:
-		h.cancelAllLocked(reasonRewritten, 0)
+		h.cancelAllLocked(reasonRewritten, c.Floor+1)
 		h.resetRingLocked(c.Revision)
 	case !c.Captured:
 		if c.Revision > h.revision {
@@ -358,18 +362,27 @@ func (h *Hub) add(opts Options, sink *Sink) (*Watcher, error) {
 		return nil, ErrNotServed
 	}
 	w := newWatcher(h, opts, sink)
+	historical := false
 	switch {
 	case opts.StartRevision == 0:
 		w.minRev = h.revision + 1
+	case opts.StartRevision <= h.floor:
+		return nil, &CompactedError{CompactRevision: h.floor + 1}
 	case opts.StartRevision > h.revision:
 		w.minRev = opts.StartRevision
 	default:
-		return nil, ErrHistoricalRevision
+		w.minRev = opts.StartRevision
+		historical = true
 	}
 	h.watchers[w] = struct{}{}
 	h.count.Add(1)
 	h.matcher.add(w)
 	sink.Push(Message{WatchID: w.id, ShardID: h.shardID, Revision: h.revision, Created: true})
+	if historical {
+		// The store is authoritative about the floor: the catch-up read
+		// cancels the watcher if its revisions are gone.
+		h.demoteLocked(w, opts.StartRevision)
+	}
 	return w, nil
 }
 

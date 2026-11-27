@@ -51,9 +51,18 @@ const watchEventOverhead = 32
 
 // historyFloor returns the highest revision whose events are not available
 // in the given state. Garbage collection removes the versions below the GC
-// horizon that a newer version shadows.
+// horizon that a newer version shadows, and a snapshot replay collapses the
+// history up to the artifact tip into the latest version of each key.
 func historyFloor(reader pebble.Reader) (uint64, error) {
-	return readLocalIndex(reader, sysGCHorizon)
+	gc, err := readLocalIndex(reader, sysGCHorizon)
+	if err != nil {
+		return 0, err
+	}
+	hf, err := readLocalIndex(reader, sysHistoryFloor)
+	if err != nil {
+		return 0, err
+	}
+	return max(gc, hf), nil
 }
 
 // watchScan reads the events of a window of revisions from one consistent

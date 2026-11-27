@@ -243,11 +243,51 @@ func TestFSM_SnapshotReplayRewrites(t *testing.T) {
 	require.Empty(t, c.Events)
 	require.Equal(t, uint64(40), c.Revision)
 
+	require.Equal(t, uint64(40), c.Floor, "replayed records collapse the history up to their revision")
+
 	terminal := &armadapb.Command{Table: []byte(testTable), Type: armadapb.Command_DUMMY, LeaderIndex: li(55)}
 	applyCommands(t, p, 2, terminal)
 	c = obs.last()
 	require.True(t, c.Rewritten, "the terminal marker completes the replay")
 	require.Equal(t, uint64(55), c.Revision)
+	require.Equal(t, uint64(55), c.Floor, "the replay collapsed everything up to the artifact tip")
+}
+
+func TestFSM_HistoryFloor(t *testing.T) {
+	fs := vfs.NewMem()
+	p, _ := observedSM(t, fs)
+	li := func(i uint64) *uint64 { return &i }
+
+	// Live writes, then an incremental replay into the same shard.
+	applyCommands(t, p, 1, putCmd("a", "1"), putCmd("a", "2"))
+	replay := &armadapb.Command{Table: []byte(testTable), Type: armadapb.Command_SEQUENCE, Sequence: []*armadapb.Command{{
+		Table:       []byte(testTable),
+		Type:        armadapb.Command_PUT,
+		LeaderIndex: li(30),
+		Kv:          &armadapb.KeyValue{Key: []byte("a"), Value: []byte("3"), CreateRevision: 1, ModRevision: 30},
+	}}}
+	applyCommands(t, p, 3, replay, &armadapb.Command{Table: []byte(testTable), Type: armadapb.Command_DUMMY, LeaderIndex: li(35)})
+
+	res, err := p.Lookup(WatchScanRequest{Key: []byte("a"), From: 2, To: 35})
+	require.NoError(t, err)
+	r := res.(*WatchScanResponse)
+	require.True(t, r.Compacted, "the versions below the replayed tip are not a complete history")
+	require.Equal(t, uint64(35), r.Floor)
+	require.NoError(t, p.Close())
+
+	// The floor survives a restart and only moves forward.
+	p, obs := observedSM(t, fs)
+	defer p.Close()
+	require.Equal(t, uint64(35), obs.last().Floor)
+	applyCommands(t, p, 5, putCmd("a", "4"))
+	c := obs.last()
+	require.Equal(t, uint64(35), c.Floor)
+	require.Len(t, c.Events, 1)
+
+	// The GC horizon counts as well.
+	horizon := uint64(40)
+	applyCommands(t, p, 6, &armadapb.Command{Type: armadapb.Command_GC, LeaderIndex: &horizon})
+	require.Equal(t, uint64(40), obs.last().Floor)
 }
 
 func TestFSM_RevisionResetAndGC(t *testing.T) {

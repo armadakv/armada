@@ -48,6 +48,13 @@ var (
 		KeyType: key.TypeSystem,
 		Key:     []byte("revision"),
 	})
+	// sysHistoryFloor is the highest revision whose history a snapshot replay
+	// collapsed: replayed records carry only the latest version of each key,
+	// so the events of earlier revisions are gone even above the GC horizon.
+	sysHistoryFloor = mustEncodeKey(key.Key{
+		KeyType: key.TypeSystem,
+		Key:     []byte("history_floor"),
+	})
 	// minEncodedUserKey uses the highest logical seqno, whose inverted physical
 	// suffix is all zeroes, so every physical version sorts at or above it.
 	minEncodedUserKey = mustEncodeKey(key.Key{
@@ -153,6 +160,8 @@ type FSM struct {
 	observer Observer
 	// revision is the table revision, see sysRevision.
 	revision atomic.Uint64
+	// historyFloor is the persisted sysHistoryFloor.
+	historyFloor atomic.Uint64
 
 	// gcHorizon is the MVCC seqno below which GC may remove versions that a
 	// newer version shadows. It never decreases.
@@ -237,6 +246,11 @@ func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
 		return 0, err
 	}
 	p.revision.Store(rev)
+	hf, err := readLocalIndex(db, sysHistoryFloor)
+	if err != nil {
+		return 0, err
+	}
+	p.historyFloor.Store(hf)
 	if p.observe != nil {
 		p.observer = p.observe(p.clusterID)
 	}
@@ -249,7 +263,7 @@ func (p *FSM) Open(_ <-chan struct{}) (uint64, error) {
 	// Start background GC worker.
 	p.startGCWorker()
 	installed = true
-	p.getObserver().Committed(Commit{Revision: rev})
+	p.getObserver().Committed(Commit{Revision: rev, Floor: p.floor()})
 
 	return idx, nil
 }
@@ -361,6 +375,7 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 		db:        db,
 		gcHorizon: p.gcHorizon.Load(),
 		revision:  p.revision.Load(),
+		floor:     p.historyFloor.Load(),
 	}
 	observer := p.getObserver()
 	if observer.Capturing() {
@@ -397,14 +412,16 @@ func (p *FSM) Update(updates []sm.Entry) ([]sm.Entry, error) {
 		return nil, err
 	}
 	p.revision.Store(ctx.revision)
-	observer.Committed(ctx.commit())
-
+	p.historyFloor.Store(ctx.floor)
 	// Advance the in-memory GC horizon and wake the sweep worker when a GC
 	// command advanced it, including one nested in a replicated SEQUENCE.
 	if ctx.gcHorizonChanged {
 		p.gcHorizon.Store(ctx.gcHorizon)
 		p.signalGCWorker()
 	}
+	commit := ctx.commit()
+	commit.Floor = p.floor()
+	observer.Committed(commit)
 
 	p.metrics.applied.Store(idx)
 	switch {
@@ -464,9 +481,21 @@ func (p *FSM) notifyRecovered() {
 		return
 	}
 	p.revision.Store(rev)
-	// The recovered state carries the sender's complete history, so watchers
-	// can continue by reading the skipped revisions from the store.
-	p.getObserver().Committed(Commit{Revision: rev})
+	hf, err := readLocalIndex(db, sysHistoryFloor)
+	if err != nil {
+		p.log.Errorf("unable to read the history floor of the recovered state: %v", err)
+		return
+	}
+	p.historyFloor.Store(hf)
+	// The recovered state is a Pebble checkpoint carrying the sender's
+	// complete history, so watchers continue by reading the skipped revisions
+	// from the store.
+	p.getObserver().Committed(Commit{Revision: rev, Floor: p.floor()})
+}
+
+// floor returns the highest revision whose events are no longer available.
+func (p *FSM) floor() uint64 {
+	return max(p.gcHorizon.Load(), p.historyFloor.Load())
 }
 
 // getObserver returns the observer, or a no-op one when nobody observes.

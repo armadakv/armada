@@ -49,6 +49,17 @@ type updateContext struct {
 	events *eventRecorder
 	// rewritten is set when the batch rewrites history instead of extending it.
 	rewritten bool
+	// floor is the history floor after the entries applied so far.
+	floor        uint64
+	floorChanged bool
+}
+
+// raiseFloor marks the revisions up to r as collapsed by a snapshot replay.
+func (c *updateContext) raiseFloor(r uint64) {
+	if r > c.floor {
+		c.floor = r
+		c.floorChanged = true
+	}
 }
 
 // capturing reports whether the batch records events.
@@ -61,6 +72,7 @@ func (c *updateContext) capturing() bool {
 func (c *updateContext) recordEvent(typ armadapb.Event_EventType, userKey, value []byte, createSeqno, modSeqno uint64, prev *armadapb.KeyValue, replayed bool) {
 	if replayed {
 		c.rewritten = true
+		c.raiseFloor(modSeqno)
 		return
 	}
 	if c.events != nil {
@@ -83,8 +95,11 @@ func (c *updateContext) advanceRevision() {
 	case cmd.Type == armadapb.Command_DUMMY && cmd.LeaderIndex != nil:
 		// A top-level DUMMY with a source index is the terminal marker of a
 		// snapshot replay; live replication always wraps commands in a SEQUENCE.
+		// The replay collapsed every revision up to the artifact tip, including
+		// keys that were created and deleted again and so left no record.
 		c.rewritten = true
 		c.setRevision(*cmd.LeaderIndex)
+		c.raiseFloor(*cmd.LeaderIndex)
 	case cmd.Type == armadapb.Command_SEQUENCE:
 		r := sequenceRevision(cmd)
 		if r == 0 {
@@ -162,6 +177,13 @@ func (c *updateContext) Commit() error {
 		horizon := make([]byte, 8)
 		binary.LittleEndian.PutUint64(horizon, c.gcHorizon)
 		if err := c.batch.Set(sysGCHorizon, horizon, nil); err != nil {
+			return err
+		}
+	}
+	if c.floorChanged {
+		floor := make([]byte, 8)
+		binary.LittleEndian.PutUint64(floor, c.floor)
+		if err := c.batch.Set(sysHistoryFloor, floor, nil); err != nil {
 			return err
 		}
 	}
