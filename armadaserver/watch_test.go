@@ -175,3 +175,61 @@ func TestWatchServer_IDsAndCancel(t *testing.T) {
 	again := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a"), WatchId: 7})
 	require.False(t, again.Canceled)
 }
+
+// TestWatchServer_ConcurrentWrites creates a watcher while writes are in
+// flight. Batches applied before the state machine noticed the watcher are
+// not recorded and must be read back from the store, so the watcher still
+// sees every write from its first event on, in order.
+func TestWatchServer_ConcurrentWrites(t *testing.T) {
+	kv, wc := startWatchServer(t, "t")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	revs := make(chan int64, 4096)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer close(revs)
+		for i := 0; ctx.Err() == nil && i < 2000; i++ {
+			res, err := kv.Put(ctx, &armadapb.PutRequest{Table: []byte("t"), Key: []byte("a"), Value: []byte("v")})
+			if err != nil {
+				return
+			}
+			revs <- int64(res.Header.Revision)
+		}
+	}()
+
+	// Let some writes happen before the watcher exists.
+	first := <-revs
+	stream := openWatch(t, wc)
+	created := createWatch(t, stream, &armadapb.WatchCreateRequest{Table: []byte("t"), Key: []byte("a")})
+	require.False(t, created.Canceled)
+
+	var got []int64
+	for len(got) < 300 {
+		resp, err := stream.Recv()
+		require.NoError(t, err)
+		require.False(t, resp.Canceled, resp.CancelReason)
+		for _, ev := range resp.Events {
+			got = append(got, ev.Kv.ModRevision)
+		}
+	}
+	cancel()
+	<-done
+
+	var written []int64
+	written = append(written, first)
+	for r := range revs {
+		written = append(written, r)
+	}
+	// Every write from the first received event on was delivered, in order.
+	start := -1
+	for i, r := range written {
+		if r == got[0] {
+			start = i
+			break
+		}
+	}
+	require.NotEqual(t, -1, start, "first event %d is a write", got[0])
+	require.Equal(t, written[start:start+len(got)], got)
+}

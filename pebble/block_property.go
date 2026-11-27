@@ -85,6 +85,18 @@ func NewMVCCSeqnoFilter(gcIndex uint64) pebble.BlockPropertyFilter {
 	)
 }
 
+// NewMVCCSeqnoRangeFilter returns a BlockPropertyFilter that skips any SST
+// block or table whose recorded seqno interval does not intersect the
+// half-open interval [lower, upper). The Watch API uses it to read the
+// versions written in a window of revisions without visiting older data.
+//
+// Blocks without the property, such as blocks written before it existed,
+// are never skipped, and memtables are not filtered: callers must still check
+// the seqno of every key they read.
+func NewMVCCSeqnoRangeFilter(lower, upper uint64) pebble.BlockPropertyFilter {
+	return sstable.NewBlockIntervalFilter(mvccSeqnoPropertyName, lower, upper, nil)
+}
+
 // WithMVCCBlockPropertyCollector adds the MVCC seqno block property collector
 // to the pebble options, enabling per-block seqno range tracking in all SSTs
 // written by this database instance.

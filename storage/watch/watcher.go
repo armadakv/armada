@@ -11,8 +11,12 @@ import (
 type watcherState uint8
 
 const (
-	// stateSynced watchers are fed by the live path.
+	// stateSynced watchers are fed by the live path. They have received every
+	// event up to the hub's revision.
 	stateSynced watcherState = iota
+	// stateUnsynced watchers read their events back from the store, starting
+	// at next, until they catch up with the live path.
+	stateUnsynced
 	// stateCanceled watchers receive nothing more.
 	stateCanceled
 )
@@ -31,8 +35,14 @@ type Watcher struct {
 	// skipped. A watcher created for a future revision waits for it this way.
 	minRev uint64
 
-	// state is guarded by hub.mu.
+	// The fields below are guarded by hub.mu.
 	state watcherState
+	// next is the first revision an unsynced watcher has not received.
+	next uint64
+	// catchingUp is set while the catch-up goroutine runs.
+	catchingUp bool
+	// stop is closed when the watcher is canceled.
+	stop chan struct{}
 }
 
 func newWatcher(h *Hub, opts Options, sink *Sink) *Watcher {
@@ -44,6 +54,7 @@ func newWatcher(h *Hub, opts Options, sink *Sink) *Watcher {
 		noPut:    opts.NoPut,
 		noDelete: opts.NoDelete,
 		prevKV:   opts.PrevKV,
+		stop:     make(chan struct{}),
 	}
 	if len(opts.RangeEnd) > 0 {
 		w.rangeEnd = bytes.Clone(opts.RangeEnd)
@@ -93,6 +104,17 @@ func (w *Watcher) wants(ev *armadapb.Event) bool {
 		return !w.noDelete
 	}
 	return false
+}
+
+// filter returns the events the watcher wants, as it sees them.
+func (w *Watcher) filter(events []*armadapb.Event) []*armadapb.Event {
+	var res []*armadapb.Event
+	for _, ev := range events {
+		if w.contains(ev.Kv.Key) && w.wants(ev) {
+			res = append(res, w.view(ev))
+		}
+	}
+	return res
 }
 
 // view returns the event as the watcher sees it. Events are shared between

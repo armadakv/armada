@@ -40,11 +40,50 @@ func (r *testResolver) set(table string, shard uint64) {
 	r.shards[table] = shard
 }
 
+// testStore plays the MVCC store: it keeps every committed event.
+type testStore struct {
+	mu     sync.Mutex
+	events []*armadapb.Event
+	floor  uint64
+}
+
+func (s *testStore) add(events ...*armadapb.Event) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, events...)
+}
+
+func (s *testStore) scan(_ uint64, req fsm.WatchScanRequest) (*fsm.WatchScanResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if req.From <= s.floor {
+		return &fsm.WatchScanResponse{Floor: s.floor, Compacted: true}, nil
+	}
+	w := &Watcher{key: req.Key, rangeEnd: req.RangeEnd}
+	res := &fsm.WatchScanResponse{Floor: s.floor, Through: req.To}
+	for _, ev := range s.events {
+		rev := uint64(ev.Kv.ModRevision)
+		if rev >= req.From && rev <= req.To && w.contains(ev.Kv.Key) {
+			res.Events = append(res.Events, ev)
+		}
+	}
+	return res, nil
+}
+
+var testStores sync.Map
+
+func storeOf(r *Registry) *testStore {
+	s, _ := testStores.Load(r)
+	return s.(*testStore)
+}
+
 // newTestHub returns a registry with an open hub for shard 1 at revision rev.
 func newTestHub(t *testing.T, rev uint64) (*Registry, *Hub, *testResolver) {
 	t.Helper()
 	res := &testResolver{shards: map[string]uint64{testTable: 1}}
-	r := NewRegistry(res.resolve)
+	st := &testStore{}
+	r := NewRegistry(res.resolve, st.scan)
+	testStores.Store(r, st)
 	t.Cleanup(r.Close)
 	h := r.Observer(1, testTable).(*Hub)
 	h.Committed(fsm.Commit{Revision: rev})
@@ -68,31 +107,34 @@ func commit(rev uint64, events ...*armadapb.Event) fsm.Commit {
 	return fsm.Commit{Revision: rev, Captured: true, Events: events}
 }
 
-// next returns the next message from the sink.
+// received holds messages taken from a sink but not yet returned by next.
+var received sync.Map
+
+// next returns the next message from the sink, draining it the way a stream does.
 func next(t *testing.T, s *Sink) Message {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	for {
-		s.mu.Lock()
-		if len(s.queue) > 0 {
-			m := s.queue[0]
-			s.queue = s.queue[1:]
-			s.mu.Unlock()
-			return m
-		}
-		s.mu.Unlock()
-		select {
-		case <-ctx.Done():
-			t.Fatal("no message received")
-		case <-s.ready:
+	if v, ok := received.Load(s); ok {
+		if q := v.([]Message); len(q) > 0 {
+			received.Store(s, q[1:])
+			return q[0]
 		}
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	q, err := s.Next(ctx)
+	if err != nil {
+		t.Fatalf("no message received: %v", err)
+	}
+	received.Store(s, q[1:])
+	return q[0]
 }
 
 func requireNoMessage(t *testing.T, s *Sink) {
 	t.Helper()
 	time.Sleep(20 * time.Millisecond)
+	if v, ok := received.Load(s); ok {
+		require.Empty(t, v.([]Message))
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	require.Empty(t, s.queue)
@@ -196,30 +238,92 @@ func TestHub_CancelOnRewrite(t *testing.T) {
 	require.Equal(t, reasonRewritten, next(t, s).Reason)
 }
 
-func TestHub_CancelOnMissedRevisions(t *testing.T) {
+// commitTo stores the events and reports the commit to the hub, captured or not.
+func commitTo(r *Registry, h *Hub, captured bool, rev uint64, events ...*armadapb.Event) {
+	storeOf(r).add(events...)
+	c := fsm.Commit{Revision: rev, Captured: captured}
+	if captured {
+		c.Events = events
+	}
+	h.Committed(c)
+}
+
+// collect reads event messages until n events arrived and returns their revisions.
+func collect(t *testing.T, s *Sink, n int) []int64 {
+	t.Helper()
+	var revs []int64
+	for len(revs) < n {
+		m := next(t, s)
+		require.False(t, m.Canceled, "unexpected cancel: %s", m.Reason)
+		for _, ev := range m.Events {
+			revs = append(revs, ev.Kv.ModRevision)
+		}
+	}
+	return revs
+}
+
+func seq(from, to int64) []int64 {
+	var res []int64
+	for r := from; r <= to; r++ {
+		res = append(res, r)
+	}
+	return res
+}
+
+func TestHub_CatchUpMissedRevisions(t *testing.T) {
 	r, h, _ := newTestHub(t, 10)
 	_, s := watchOn(t, r, Options{ID: 1, Key: []byte("a")})
 	_, future := watchOn(t, r, Options{ID: 2, Key: []byte("a"), StartRevision: 100})
-	h.Committed(fsm.Commit{Revision: 20})
-	m := next(t, s)
-	require.True(t, m.Canceled)
-	require.Equal(t, reasonBehind, m.Reason)
+
+	commitTo(r, h, true, 11, put("a", "1", 11, 11))
+	// Revisions 12 and 13 were not recorded: the watcher reads them from the store.
+	commitTo(r, h, false, 13, put("a", "2", 11, 12), put("b", "1", 13, 13), put("a", "3", 11, 13))
+	commitTo(r, h, true, 14, put("a", "4", 11, 14))
+
+	require.Equal(t, seq(11, 14), collect(t, s, 4))
+	requireNoMessage(t, s)
 	requireNoMessage(t, future)
 }
 
-func TestHub_CancelSlowConsumer(t *testing.T) {
+func TestHub_CatchUpSlowConsumer(t *testing.T) {
 	r, h, _ := newTestHub(t, 1)
 	s := NewSink(1)
 	_, err := r.Watch(Options{ID: 1, Table: testTable, Key: []byte("a")}, s)
 	require.NoError(t, err)
-	h.Committed(commit(2, put("a", "1", 2, 2)))
-	h.Committed(commit(3, put("a", "2", 2, 3)))
-
 	require.True(t, next(t, s).Created)
-	require.Len(t, next(t, s).Events, 1, "a message larger than the limit fits an empty sink")
+
+	// The sink holds one message: the rest is read back from the store as
+	// the stream drains.
+	for rev := uint64(2); rev <= 40; rev++ {
+		commitTo(r, h, true, rev, put("a", "v", 2, int64(rev)))
+	}
+	require.Equal(t, seq(2, 40), collect(t, s, 39))
+
+	// Once caught up, the watcher is live again.
+	commitTo(r, h, true, 41, put("a", "v", 2, 41))
+	require.Equal(t, []int64{41}, collect(t, s, 1))
+	requireNoMessage(t, s)
+}
+
+func TestHub_CatchUpCompacted(t *testing.T) {
+	r, h, _ := newTestHub(t, 10)
+	_, s := watchOn(t, r, Options{ID: 1, Key: []byte("a")})
+	storeOf(r).floor = 30
+	commitTo(r, h, false, 40, put("a", "1", 40, 40))
 	m := next(t, s)
 	require.True(t, m.Canceled)
-	require.Equal(t, reasonBehind, m.Reason)
+	require.Equal(t, reasonCompacted, m.Reason)
+	require.Equal(t, uint64(31), m.CompactRevision)
+}
+
+func TestHub_Capturing(t *testing.T) {
+	r, h, _ := newTestHub(t, 1)
+	require.False(t, h.Capturing(), "nothing is recorded without watchers")
+	w, s := watchOn(t, r, Options{ID: 1, Key: []byte("a")})
+	require.True(t, h.Capturing())
+	w.Cancel()
+	require.True(t, next(t, s).Canceled)
+	require.False(t, h.Capturing())
 }
 
 func TestHub_Closed(t *testing.T) {
@@ -286,26 +390,22 @@ func TestHub_Overflow(t *testing.T) {
 	// Block the loop on the hub lock right after it took the first commit, so
 	// that the following commits fill the queue and then overflow.
 	h.mu.Lock()
-	h.Committed(commit(2, put("a", "v", 2, 2)))
+	commitTo(r, h, true, 2, put("a", "v", 2, 2))
 	require.Eventually(t, func() bool {
 		h.qmu.Lock()
 		defer h.qmu.Unlock()
 		return len(h.pending) == 0
 	}, time.Second, time.Millisecond)
-	for i := range maxPendingCommits + 10 {
-		rev := uint64(i + 3)
-		h.Committed(commit(rev, put("a", "v", 2, int64(rev))))
+	last := uint64(maxPendingCommits + 12)
+	for rev := uint64(3); rev <= last; rev++ {
+		commitTo(r, h, true, rev, put("a", "v", 2, int64(rev)))
 	}
+	h.qmu.Lock()
+	require.True(t, h.overflow)
+	h.qmu.Unlock()
 	h.mu.Unlock()
 
-	var delivered int
-	for {
-		m := next(t, s)
-		if m.Canceled {
-			require.Equal(t, reasonBehind, m.Reason)
-			break
-		}
-		delivered++
-	}
-	require.Equal(t, 1+maxPendingCommits, delivered, "queued commits are delivered before the overflow")
+	// Queued commits are delivered live, the overflowed ones from the store.
+	require.Equal(t, seq(2, int64(last)), collect(t, s, int(last-1)))
+	requireNoMessage(t, s)
 }

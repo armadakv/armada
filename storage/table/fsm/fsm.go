@@ -341,6 +341,10 @@ func (p *FSM) Lookup(l any) (any, error) {
 		return &PathResponse{Path: p.dirname}, nil
 	case GCHorizonRequest:
 		return &IndexResponse{Index: p.gcHorizon.Load()}, nil
+	case WatchScanRequest:
+		snapshot := p.pebble.Load().NewSnapshot()
+		defer snapshot.Close()
+		return watchScan(snapshot, req)
 	default:
 		p.log.Warnf("received unknown lookup request of type %T", req)
 	}
