@@ -30,6 +30,55 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// FilterType filters out events of the given type.
+type WatchCreateRequest_FilterType int32
+
+const (
+	// NOPUT filters out PUT events.
+	WatchCreateRequest_NOPUT WatchCreateRequest_FilterType = 0
+	// NODELETE filters out DELETE events.
+	WatchCreateRequest_NODELETE WatchCreateRequest_FilterType = 1
+)
+
+// Enum value maps for WatchCreateRequest_FilterType.
+var (
+	WatchCreateRequest_FilterType_name = map[int32]string{
+		0: "NOPUT",
+		1: "NODELETE",
+	}
+	WatchCreateRequest_FilterType_value = map[string]int32{
+		"NOPUT":    0,
+		"NODELETE": 1,
+	}
+)
+
+func (x WatchCreateRequest_FilterType) Enum() *WatchCreateRequest_FilterType {
+	p := new(WatchCreateRequest_FilterType)
+	*p = x
+	return p
+}
+
+func (x WatchCreateRequest_FilterType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WatchCreateRequest_FilterType) Descriptor() protoreflect.EnumDescriptor {
+	return file_armada_proto_enumTypes[0].Descriptor()
+}
+
+func (WatchCreateRequest_FilterType) Type() protoreflect.EnumType {
+	return &file_armada_proto_enumTypes[0]
+}
+
+func (x WatchCreateRequest_FilterType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WatchCreateRequest_FilterType.Descriptor instead.
+func (WatchCreateRequest_FilterType) EnumDescriptor() ([]byte, []int) {
+	return file_armada_proto_rawDescGZIP(), []int{10, 0}
+}
+
 type ResponseHeader struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// shard_id is the ID of the shard which sent the response.
@@ -760,6 +809,438 @@ func (x *TxnResponse) GetResponses() []*ResponseOp {
 	return nil
 }
 
+type WatchRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// request_union is a request to either create a new watcher, cancel an existing watcher,
+	// or request progress notifications for all watchers on the stream.
+	//
+	// Types that are valid to be assigned to RequestUnion:
+	//
+	//	*WatchRequest_CreateRequest
+	//	*WatchRequest_CancelRequest
+	//	*WatchRequest_ProgressRequest
+	RequestUnion  isWatchRequest_RequestUnion `protobuf_oneof:"request_union"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchRequest) Reset() {
+	*x = WatchRequest{}
+	mi := &file_armada_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchRequest) ProtoMessage() {}
+
+func (x *WatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_armada_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchRequest.ProtoReflect.Descriptor instead.
+func (*WatchRequest) Descriptor() ([]byte, []int) {
+	return file_armada_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *WatchRequest) GetRequestUnion() isWatchRequest_RequestUnion {
+	if x != nil {
+		return x.RequestUnion
+	}
+	return nil
+}
+
+func (x *WatchRequest) GetCreateRequest() *WatchCreateRequest {
+	if x != nil {
+		if x, ok := x.RequestUnion.(*WatchRequest_CreateRequest); ok {
+			return x.CreateRequest
+		}
+	}
+	return nil
+}
+
+func (x *WatchRequest) GetCancelRequest() *WatchCancelRequest {
+	if x != nil {
+		if x, ok := x.RequestUnion.(*WatchRequest_CancelRequest); ok {
+			return x.CancelRequest
+		}
+	}
+	return nil
+}
+
+func (x *WatchRequest) GetProgressRequest() *WatchProgressRequest {
+	if x != nil {
+		if x, ok := x.RequestUnion.(*WatchRequest_ProgressRequest); ok {
+			return x.ProgressRequest
+		}
+	}
+	return nil
+}
+
+type isWatchRequest_RequestUnion interface {
+	isWatchRequest_RequestUnion()
+}
+
+type WatchRequest_CreateRequest struct {
+	CreateRequest *WatchCreateRequest `protobuf:"bytes,1,opt,name=create_request,json=createRequest,proto3,oneof"`
+}
+
+type WatchRequest_CancelRequest struct {
+	CancelRequest *WatchCancelRequest `protobuf:"bytes,2,opt,name=cancel_request,json=cancelRequest,proto3,oneof"`
+}
+
+type WatchRequest_ProgressRequest struct {
+	ProgressRequest *WatchProgressRequest `protobuf:"bytes,3,opt,name=progress_request,json=progressRequest,proto3,oneof"`
+}
+
+func (*WatchRequest_CreateRequest) isWatchRequest_RequestUnion() {}
+
+func (*WatchRequest_CancelRequest) isWatchRequest_RequestUnion() {}
+
+func (*WatchRequest_ProgressRequest) isWatchRequest_RequestUnion() {}
+
+type WatchCreateRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// table name of the table to watch.
+	Table []byte `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
+	// key is the key to register for watching.
+	Key []byte `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	// range_end is the end of the range [key, range_end) to watch. If range_end is not given,
+	// only the key argument is watched. If range_end is equal to '\0', all keys greater than
+	// or equal to the key argument are watched.
+	// If the range_end is one bit larger than the given key,
+	// then all keys with the prefix (the given key) will be watched.
+	RangeEnd []byte `protobuf:"bytes,3,opt,name=range_end,json=rangeEnd,proto3" json:"range_end,omitempty"`
+	// start_revision is an optional revision to watch from (inclusive). No start_revision is "now".
+	// A start_revision at or below the first available revision cancels the watch with
+	// compact_revision set to the first available revision.
+	StartRevision int64 `protobuf:"varint,4,opt,name=start_revision,json=startRevision,proto3" json:"start_revision,omitempty"`
+	// progress_notify is set so that the server will periodically send a WatchResponse with
+	// no events to the new watcher if there are no recent events. It is useful when clients
+	// wish to recover a disconnected watcher starting from a recent known revision.
+	ProgressNotify bool `protobuf:"varint,5,opt,name=progress_notify,json=progressNotify,proto3" json:"progress_notify,omitempty"`
+	// filters filter the events at server side before it sends back to the watcher.
+	Filters []WatchCreateRequest_FilterType `protobuf:"varint,6,rep,packed,name=filters,proto3,enum=regatta.v1.WatchCreateRequest_FilterType" json:"filters,omitempty"`
+	// If prev_kv is set, created watcher gets the previous KV before the event happens.
+	// If the previous KV is already garbage collected, nothing will be returned.
+	PrevKv bool `protobuf:"varint,7,opt,name=prev_kv,json=prevKv,proto3" json:"prev_kv,omitempty"`
+	// If watch_id is provided and non-zero, it will be assigned to this watcher.
+	// Since creating a watcher in the server is not a synchronous operation,
+	// this can be used to ensure that ordering is correct when creating multiple
+	// watchers on the same stream. Creating a watcher with an ID already in
+	// use on the stream will cause an error to be returned.
+	WatchId int64 `protobuf:"varint,8,opt,name=watch_id,json=watchId,proto3" json:"watch_id,omitempty"`
+	// fragment enables splitting large revisions into multiple watch responses.
+	Fragment      bool `protobuf:"varint,9,opt,name=fragment,proto3" json:"fragment,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchCreateRequest) Reset() {
+	*x = WatchCreateRequest{}
+	mi := &file_armada_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchCreateRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchCreateRequest) ProtoMessage() {}
+
+func (x *WatchCreateRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_armada_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchCreateRequest.ProtoReflect.Descriptor instead.
+func (*WatchCreateRequest) Descriptor() ([]byte, []int) {
+	return file_armada_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *WatchCreateRequest) GetTable() []byte {
+	if x != nil {
+		return x.Table
+	}
+	return nil
+}
+
+func (x *WatchCreateRequest) GetKey() []byte {
+	if x != nil {
+		return x.Key
+	}
+	return nil
+}
+
+func (x *WatchCreateRequest) GetRangeEnd() []byte {
+	if x != nil {
+		return x.RangeEnd
+	}
+	return nil
+}
+
+func (x *WatchCreateRequest) GetStartRevision() int64 {
+	if x != nil {
+		return x.StartRevision
+	}
+	return 0
+}
+
+func (x *WatchCreateRequest) GetProgressNotify() bool {
+	if x != nil {
+		return x.ProgressNotify
+	}
+	return false
+}
+
+func (x *WatchCreateRequest) GetFilters() []WatchCreateRequest_FilterType {
+	if x != nil {
+		return x.Filters
+	}
+	return nil
+}
+
+func (x *WatchCreateRequest) GetPrevKv() bool {
+	if x != nil {
+		return x.PrevKv
+	}
+	return false
+}
+
+func (x *WatchCreateRequest) GetWatchId() int64 {
+	if x != nil {
+		return x.WatchId
+	}
+	return 0
+}
+
+func (x *WatchCreateRequest) GetFragment() bool {
+	if x != nil {
+		return x.Fragment
+	}
+	return false
+}
+
+type WatchCancelRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// watch_id is the watcher id to cancel so that no more events are transmitted.
+	WatchId       int64 `protobuf:"varint,1,opt,name=watch_id,json=watchId,proto3" json:"watch_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchCancelRequest) Reset() {
+	*x = WatchCancelRequest{}
+	mi := &file_armada_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchCancelRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchCancelRequest) ProtoMessage() {}
+
+func (x *WatchCancelRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_armada_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchCancelRequest.ProtoReflect.Descriptor instead.
+func (*WatchCancelRequest) Descriptor() ([]byte, []int) {
+	return file_armada_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *WatchCancelRequest) GetWatchId() int64 {
+	if x != nil {
+		return x.WatchId
+	}
+	return 0
+}
+
+// Requests that a watch stream progress status be sent in the watch response stream as soon as
+// possible.
+type WatchProgressRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchProgressRequest) Reset() {
+	*x = WatchProgressRequest{}
+	mi := &file_armada_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchProgressRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchProgressRequest) ProtoMessage() {}
+
+func (x *WatchProgressRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_armada_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchProgressRequest.ProtoReflect.Descriptor instead.
+func (*WatchProgressRequest) Descriptor() ([]byte, []int) {
+	return file_armada_proto_rawDescGZIP(), []int{12}
+}
+
+type WatchResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// header.revision is the revision of the watched table on the node when the response was built.
+	// A response with no events is a progress notification: the watcher has received every event
+	// up to header.revision, and a client may resume from header.revision + 1.
+	Header *ResponseHeader `protobuf:"bytes,1,opt,name=header,proto3" json:"header,omitempty"`
+	// watch_id is the ID of the watcher that corresponds to the response.
+	WatchId int64 `protobuf:"varint,2,opt,name=watch_id,json=watchId,proto3" json:"watch_id,omitempty"`
+	// created is set to true if the response is for a create watch request.
+	// The client should record the watch_id and expect to receive events for
+	// the created watcher from the same stream.
+	// All events sent to the created watcher will attach with the same watch_id.
+	Created bool `protobuf:"varint,3,opt,name=created,proto3" json:"created,omitempty"`
+	// canceled is set to true if the response is for a cancel watch request
+	// or if the watcher was canceled by the server.
+	// No further events will be sent to the canceled watcher.
+	Canceled bool `protobuf:"varint,4,opt,name=canceled,proto3" json:"canceled,omitempty"`
+	// compact_revision is set to the first available revision if the watcher was canceled
+	// because the revisions it asked for are no longer available, either because they were
+	// garbage collected or because the node's view of the table was replaced by a recovery.
+	// The client should re-list the keys and start a new watch from a recent revision.
+	CompactRevision int64 `protobuf:"varint,5,opt,name=compact_revision,json=compactRevision,proto3" json:"compact_revision,omitempty"`
+	// cancel_reason indicates the reason for canceling the watcher.
+	CancelReason string `protobuf:"bytes,6,opt,name=cancel_reason,json=cancelReason,proto3" json:"cancel_reason,omitempty"`
+	// fragment is true if a large watch response was split over multiple responses.
+	Fragment bool `protobuf:"varint,7,opt,name=fragment,proto3" json:"fragment,omitempty"`
+	// events is the list of events, in revision order.
+	Events        []*Event `protobuf:"bytes,8,rep,name=events,proto3" json:"events,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WatchResponse) Reset() {
+	*x = WatchResponse{}
+	mi := &file_armada_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WatchResponse) ProtoMessage() {}
+
+func (x *WatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_armada_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WatchResponse.ProtoReflect.Descriptor instead.
+func (*WatchResponse) Descriptor() ([]byte, []int) {
+	return file_armada_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *WatchResponse) GetHeader() *ResponseHeader {
+	if x != nil {
+		return x.Header
+	}
+	return nil
+}
+
+func (x *WatchResponse) GetWatchId() int64 {
+	if x != nil {
+		return x.WatchId
+	}
+	return 0
+}
+
+func (x *WatchResponse) GetCreated() bool {
+	if x != nil {
+		return x.Created
+	}
+	return false
+}
+
+func (x *WatchResponse) GetCanceled() bool {
+	if x != nil {
+		return x.Canceled
+	}
+	return false
+}
+
+func (x *WatchResponse) GetCompactRevision() int64 {
+	if x != nil {
+		return x.CompactRevision
+	}
+	return 0
+}
+
+func (x *WatchResponse) GetCancelReason() string {
+	if x != nil {
+		return x.CancelReason
+	}
+	return ""
+}
+
+func (x *WatchResponse) GetFragment() bool {
+	if x != nil {
+		return x.Fragment
+	}
+	return false
+}
+
+func (x *WatchResponse) GetEvents() []*Event {
+	if x != nil {
+		return x.Events
+	}
+	return nil
+}
+
 type MemberListRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -768,7 +1249,7 @@ type MemberListRequest struct {
 
 func (x *MemberListRequest) Reset() {
 	*x = MemberListRequest{}
-	mi := &file_armada_proto_msgTypes[9]
+	mi := &file_armada_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -780,7 +1261,7 @@ func (x *MemberListRequest) String() string {
 func (*MemberListRequest) ProtoMessage() {}
 
 func (x *MemberListRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[9]
+	mi := &file_armada_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -793,7 +1274,7 @@ func (x *MemberListRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemberListRequest.ProtoReflect.Descriptor instead.
 func (*MemberListRequest) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{9}
+	return file_armada_proto_rawDescGZIP(), []int{14}
 }
 
 type MemberListResponse struct {
@@ -808,7 +1289,7 @@ type MemberListResponse struct {
 
 func (x *MemberListResponse) Reset() {
 	*x = MemberListResponse{}
-	mi := &file_armada_proto_msgTypes[10]
+	mi := &file_armada_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -820,7 +1301,7 @@ func (x *MemberListResponse) String() string {
 func (*MemberListResponse) ProtoMessage() {}
 
 func (x *MemberListResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[10]
+	mi := &file_armada_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -833,7 +1314,7 @@ func (x *MemberListResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MemberListResponse.ProtoReflect.Descriptor instead.
 func (*MemberListResponse) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{10}
+	return file_armada_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *MemberListResponse) GetCluster() string {
@@ -866,7 +1347,7 @@ type Member struct {
 
 func (x *Member) Reset() {
 	*x = Member{}
-	mi := &file_armada_proto_msgTypes[11]
+	mi := &file_armada_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -878,7 +1359,7 @@ func (x *Member) String() string {
 func (*Member) ProtoMessage() {}
 
 func (x *Member) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[11]
+	mi := &file_armada_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -891,7 +1372,7 @@ func (x *Member) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Member.ProtoReflect.Descriptor instead.
 func (*Member) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{11}
+	return file_armada_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Member) GetId() string {
@@ -938,7 +1419,7 @@ type TableStatus struct {
 
 func (x *TableStatus) Reset() {
 	*x = TableStatus{}
-	mi := &file_armada_proto_msgTypes[12]
+	mi := &file_armada_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -950,7 +1431,7 @@ func (x *TableStatus) String() string {
 func (*TableStatus) ProtoMessage() {}
 
 func (x *TableStatus) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[12]
+	mi := &file_armada_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -963,7 +1444,7 @@ func (x *TableStatus) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TableStatus.ProtoReflect.Descriptor instead.
 func (*TableStatus) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{12}
+	return file_armada_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TableStatus) GetLeader() string {
@@ -1004,7 +1485,7 @@ type StatusRequest struct {
 
 func (x *StatusRequest) Reset() {
 	*x = StatusRequest{}
-	mi := &file_armada_proto_msgTypes[13]
+	mi := &file_armada_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1016,7 +1497,7 @@ func (x *StatusRequest) String() string {
 func (*StatusRequest) ProtoMessage() {}
 
 func (x *StatusRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[13]
+	mi := &file_armada_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1029,7 +1510,7 @@ func (x *StatusRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusRequest.ProtoReflect.Descriptor instead.
 func (*StatusRequest) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{13}
+	return file_armada_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *StatusRequest) GetConfig() bool {
@@ -1059,7 +1540,7 @@ type StatusResponse struct {
 
 func (x *StatusResponse) Reset() {
 	*x = StatusResponse{}
-	mi := &file_armada_proto_msgTypes[14]
+	mi := &file_armada_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1071,7 +1552,7 @@ func (x *StatusResponse) String() string {
 func (*StatusResponse) ProtoMessage() {}
 
 func (x *StatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[14]
+	mi := &file_armada_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1084,7 +1565,7 @@ func (x *StatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
 func (*StatusResponse) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{14}
+	return file_armada_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *StatusResponse) GetId() string {
@@ -1142,7 +1623,7 @@ type CreateTableRequest struct {
 
 func (x *CreateTableRequest) Reset() {
 	*x = CreateTableRequest{}
-	mi := &file_armada_proto_msgTypes[15]
+	mi := &file_armada_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1154,7 +1635,7 @@ func (x *CreateTableRequest) String() string {
 func (*CreateTableRequest) ProtoMessage() {}
 
 func (x *CreateTableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[15]
+	mi := &file_armada_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1167,7 +1648,7 @@ func (x *CreateTableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTableRequest.ProtoReflect.Descriptor instead.
 func (*CreateTableRequest) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{15}
+	return file_armada_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *CreateTableRequest) GetName() string {
@@ -1195,7 +1676,7 @@ type CreateTableResponse struct {
 
 func (x *CreateTableResponse) Reset() {
 	*x = CreateTableResponse{}
-	mi := &file_armada_proto_msgTypes[16]
+	mi := &file_armada_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1207,7 +1688,7 @@ func (x *CreateTableResponse) String() string {
 func (*CreateTableResponse) ProtoMessage() {}
 
 func (x *CreateTableResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[16]
+	mi := &file_armada_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1220,7 +1701,7 @@ func (x *CreateTableResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateTableResponse.ProtoReflect.Descriptor instead.
 func (*CreateTableResponse) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{16}
+	return file_armada_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *CreateTableResponse) GetId() string {
@@ -1241,7 +1722,7 @@ type DeleteTableRequest struct {
 
 func (x *DeleteTableRequest) Reset() {
 	*x = DeleteTableRequest{}
-	mi := &file_armada_proto_msgTypes[17]
+	mi := &file_armada_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1253,7 +1734,7 @@ func (x *DeleteTableRequest) String() string {
 func (*DeleteTableRequest) ProtoMessage() {}
 
 func (x *DeleteTableRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[17]
+	mi := &file_armada_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1266,7 +1747,7 @@ func (x *DeleteTableRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTableRequest.ProtoReflect.Descriptor instead.
 func (*DeleteTableRequest) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{17}
+	return file_armada_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *DeleteTableRequest) GetName() string {
@@ -1285,7 +1766,7 @@ type DeleteTableResponse struct {
 
 func (x *DeleteTableResponse) Reset() {
 	*x = DeleteTableResponse{}
-	mi := &file_armada_proto_msgTypes[18]
+	mi := &file_armada_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1297,7 +1778,7 @@ func (x *DeleteTableResponse) String() string {
 func (*DeleteTableResponse) ProtoMessage() {}
 
 func (x *DeleteTableResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[18]
+	mi := &file_armada_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1310,7 +1791,7 @@ func (x *DeleteTableResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteTableResponse.ProtoReflect.Descriptor instead.
 func (*DeleteTableResponse) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{18}
+	return file_armada_proto_rawDescGZIP(), []int{23}
 }
 
 // ListTablesRequest requests the list of currently registered tables.
@@ -1322,7 +1803,7 @@ type ListTablesRequest struct {
 
 func (x *ListTablesRequest) Reset() {
 	*x = ListTablesRequest{}
-	mi := &file_armada_proto_msgTypes[19]
+	mi := &file_armada_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1334,7 +1815,7 @@ func (x *ListTablesRequest) String() string {
 func (*ListTablesRequest) ProtoMessage() {}
 
 func (x *ListTablesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[19]
+	mi := &file_armada_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1347,7 +1828,7 @@ func (x *ListTablesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTablesRequest.ProtoReflect.Descriptor instead.
 func (*ListTablesRequest) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{19}
+	return file_armada_proto_rawDescGZIP(), []int{24}
 }
 
 // TableInfo describes a single table.
@@ -1365,7 +1846,7 @@ type TableInfo struct {
 
 func (x *TableInfo) Reset() {
 	*x = TableInfo{}
-	mi := &file_armada_proto_msgTypes[20]
+	mi := &file_armada_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1377,7 +1858,7 @@ func (x *TableInfo) String() string {
 func (*TableInfo) ProtoMessage() {}
 
 func (x *TableInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[20]
+	mi := &file_armada_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1390,7 +1871,7 @@ func (x *TableInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TableInfo.ProtoReflect.Descriptor instead.
 func (*TableInfo) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{20}
+	return file_armada_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *TableInfo) GetName() string {
@@ -1424,7 +1905,7 @@ type ListTablesResponse struct {
 
 func (x *ListTablesResponse) Reset() {
 	*x = ListTablesResponse{}
-	mi := &file_armada_proto_msgTypes[21]
+	mi := &file_armada_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1436,7 +1917,7 @@ func (x *ListTablesResponse) String() string {
 func (*ListTablesResponse) ProtoMessage() {}
 
 func (x *ListTablesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_armada_proto_msgTypes[21]
+	mi := &file_armada_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1449,7 +1930,7 @@ func (x *ListTablesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListTablesResponse.ProtoReflect.Descriptor instead.
 func (*ListTablesResponse) Descriptor() ([]byte, []int) {
-	return file_armada_proto_rawDescGZIP(), []int{21}
+	return file_armada_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ListTablesResponse) GetTables() []*TableInfo {
@@ -1520,7 +2001,38 @@ const file_armada_proto_rawDesc = "" +
 	"\vTxnResponse\x122\n" +
 	"\x06header\x18\x01 \x01(\v2\x1a.regatta.v1.ResponseHeaderR\x06header\x12\x1c\n" +
 	"\tsucceeded\x18\x02 \x01(\bR\tsucceeded\x121\n" +
-	"\tresponses\x18\x03 \x03(\v2\x13.mvcc.v1.ResponseOpR\tresponses\"\x13\n" +
+	"\tresponses\x18\x03 \x03(\v2\x13.mvcc.v1.ResponseOpR\tresponses\"\x80\x02\n" +
+	"\fWatchRequest\x12G\n" +
+	"\x0ecreate_request\x18\x01 \x01(\v2\x1e.regatta.v1.WatchCreateRequestH\x00R\rcreateRequest\x12G\n" +
+	"\x0ecancel_request\x18\x02 \x01(\v2\x1e.regatta.v1.WatchCancelRequestH\x00R\rcancelRequest\x12M\n" +
+	"\x10progress_request\x18\x03 \x01(\v2 .regatta.v1.WatchProgressRequestH\x00R\x0fprogressRequestB\x0f\n" +
+	"\rrequest_union\"\xe5\x02\n" +
+	"\x12WatchCreateRequest\x12\x14\n" +
+	"\x05table\x18\x01 \x01(\fR\x05table\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\fR\x03key\x12\x1b\n" +
+	"\trange_end\x18\x03 \x01(\fR\brangeEnd\x12%\n" +
+	"\x0estart_revision\x18\x04 \x01(\x03R\rstartRevision\x12'\n" +
+	"\x0fprogress_notify\x18\x05 \x01(\bR\x0eprogressNotify\x12C\n" +
+	"\afilters\x18\x06 \x03(\x0e2).regatta.v1.WatchCreateRequest.FilterTypeR\afilters\x12\x17\n" +
+	"\aprev_kv\x18\a \x01(\bR\x06prevKv\x12\x19\n" +
+	"\bwatch_id\x18\b \x01(\x03R\awatchId\x12\x1a\n" +
+	"\bfragment\x18\t \x01(\bR\bfragment\"%\n" +
+	"\n" +
+	"FilterType\x12\t\n" +
+	"\x05NOPUT\x10\x00\x12\f\n" +
+	"\bNODELETE\x10\x01\"/\n" +
+	"\x12WatchCancelRequest\x12\x19\n" +
+	"\bwatch_id\x18\x01 \x01(\x03R\awatchId\"\x16\n" +
+	"\x14WatchProgressRequest\"\xa8\x02\n" +
+	"\rWatchResponse\x122\n" +
+	"\x06header\x18\x01 \x01(\v2\x1a.regatta.v1.ResponseHeaderR\x06header\x12\x19\n" +
+	"\bwatch_id\x18\x02 \x01(\x03R\awatchId\x12\x18\n" +
+	"\acreated\x18\x03 \x01(\bR\acreated\x12\x1a\n" +
+	"\bcanceled\x18\x04 \x01(\bR\bcanceled\x12)\n" +
+	"\x10compact_revision\x18\x05 \x01(\x03R\x0fcompactRevision\x12#\n" +
+	"\rcancel_reason\x18\x06 \x01(\tR\fcancelReason\x12\x1a\n" +
+	"\bfragment\x18\a \x01(\bR\bfragment\x12&\n" +
+	"\x06events\x18\b \x03(\v2\x0e.mvcc.v1.EventR\x06events\"\x13\n" +
 	"\x11MemberListRequest\"\\\n" +
 	"\x12MemberListResponse\x12\x18\n" +
 	"\acluster\x18\x01 \x01(\tR\acluster\x12,\n" +
@@ -1569,7 +2081,9 @@ const file_armada_proto_rawDesc = "" +
 	"\fIterateRange\x12\x18.regatta.v1.RangeRequest\x1a\x19.regatta.v1.RangeResponse0\x01\x126\n" +
 	"\x03Put\x12\x16.regatta.v1.PutRequest\x1a\x17.regatta.v1.PutResponse\x12N\n" +
 	"\vDeleteRange\x12\x1e.regatta.v1.DeleteRangeRequest\x1a\x1f.regatta.v1.DeleteRangeResponse\x126\n" +
-	"\x03Txn\x12\x16.regatta.v1.TxnRequest\x1a\x17.regatta.v1.TxnResponse2\x97\x01\n" +
+	"\x03Txn\x12\x16.regatta.v1.TxnRequest\x1a\x17.regatta.v1.TxnResponse2I\n" +
+	"\x05Watch\x12@\n" +
+	"\x05Watch\x12\x18.regatta.v1.WatchRequest\x1a\x19.regatta.v1.WatchResponse(\x010\x012\x97\x01\n" +
 	"\aCluster\x12K\n" +
 	"\n" +
 	"MemberList\x12\x1d.regatta.v1.MemberListRequest\x1a\x1e.regatta.v1.MemberListResponse\x12?\n" +
@@ -1594,81 +2108,97 @@ func file_armada_proto_rawDescGZIP() []byte {
 	return file_armada_proto_rawDescData
 }
 
-var file_armada_proto_msgTypes = make([]protoimpl.MessageInfo, 23)
+var file_armada_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_armada_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_armada_proto_goTypes = []any{
-	(*ResponseHeader)(nil),      // 0: regatta.v1.ResponseHeader
-	(*RangeRequest)(nil),        // 1: regatta.v1.RangeRequest
-	(*RangeResponse)(nil),       // 2: regatta.v1.RangeResponse
-	(*PutRequest)(nil),          // 3: regatta.v1.PutRequest
-	(*PutResponse)(nil),         // 4: regatta.v1.PutResponse
-	(*DeleteRangeRequest)(nil),  // 5: regatta.v1.DeleteRangeRequest
-	(*DeleteRangeResponse)(nil), // 6: regatta.v1.DeleteRangeResponse
-	(*TxnRequest)(nil),          // 7: regatta.v1.TxnRequest
-	(*TxnResponse)(nil),         // 8: regatta.v1.TxnResponse
-	(*MemberListRequest)(nil),   // 9: regatta.v1.MemberListRequest
-	(*MemberListResponse)(nil),  // 10: regatta.v1.MemberListResponse
-	(*Member)(nil),              // 11: regatta.v1.Member
-	(*TableStatus)(nil),         // 12: regatta.v1.TableStatus
-	(*StatusRequest)(nil),       // 13: regatta.v1.StatusRequest
-	(*StatusResponse)(nil),      // 14: regatta.v1.StatusResponse
-	(*CreateTableRequest)(nil),  // 15: regatta.v1.CreateTableRequest
-	(*CreateTableResponse)(nil), // 16: regatta.v1.CreateTableResponse
-	(*DeleteTableRequest)(nil),  // 17: regatta.v1.DeleteTableRequest
-	(*DeleteTableResponse)(nil), // 18: regatta.v1.DeleteTableResponse
-	(*ListTablesRequest)(nil),   // 19: regatta.v1.ListTablesRequest
-	(*TableInfo)(nil),           // 20: regatta.v1.TableInfo
-	(*ListTablesResponse)(nil),  // 21: regatta.v1.ListTablesResponse
-	nil,                         // 22: regatta.v1.StatusResponse.TablesEntry
-	(*KeyValue)(nil),            // 23: mvcc.v1.KeyValue
-	(*Compare)(nil),             // 24: mvcc.v1.Compare
-	(*RequestOp)(nil),           // 25: mvcc.v1.RequestOp
-	(*ResponseOp)(nil),          // 26: mvcc.v1.ResponseOp
-	(*structpb.Struct)(nil),     // 27: google.protobuf.Struct
+	(WatchCreateRequest_FilterType)(0), // 0: regatta.v1.WatchCreateRequest.FilterType
+	(*ResponseHeader)(nil),             // 1: regatta.v1.ResponseHeader
+	(*RangeRequest)(nil),               // 2: regatta.v1.RangeRequest
+	(*RangeResponse)(nil),              // 3: regatta.v1.RangeResponse
+	(*PutRequest)(nil),                 // 4: regatta.v1.PutRequest
+	(*PutResponse)(nil),                // 5: regatta.v1.PutResponse
+	(*DeleteRangeRequest)(nil),         // 6: regatta.v1.DeleteRangeRequest
+	(*DeleteRangeResponse)(nil),        // 7: regatta.v1.DeleteRangeResponse
+	(*TxnRequest)(nil),                 // 8: regatta.v1.TxnRequest
+	(*TxnResponse)(nil),                // 9: regatta.v1.TxnResponse
+	(*WatchRequest)(nil),               // 10: regatta.v1.WatchRequest
+	(*WatchCreateRequest)(nil),         // 11: regatta.v1.WatchCreateRequest
+	(*WatchCancelRequest)(nil),         // 12: regatta.v1.WatchCancelRequest
+	(*WatchProgressRequest)(nil),       // 13: regatta.v1.WatchProgressRequest
+	(*WatchResponse)(nil),              // 14: regatta.v1.WatchResponse
+	(*MemberListRequest)(nil),          // 15: regatta.v1.MemberListRequest
+	(*MemberListResponse)(nil),         // 16: regatta.v1.MemberListResponse
+	(*Member)(nil),                     // 17: regatta.v1.Member
+	(*TableStatus)(nil),                // 18: regatta.v1.TableStatus
+	(*StatusRequest)(nil),              // 19: regatta.v1.StatusRequest
+	(*StatusResponse)(nil),             // 20: regatta.v1.StatusResponse
+	(*CreateTableRequest)(nil),         // 21: regatta.v1.CreateTableRequest
+	(*CreateTableResponse)(nil),        // 22: regatta.v1.CreateTableResponse
+	(*DeleteTableRequest)(nil),         // 23: regatta.v1.DeleteTableRequest
+	(*DeleteTableResponse)(nil),        // 24: regatta.v1.DeleteTableResponse
+	(*ListTablesRequest)(nil),          // 25: regatta.v1.ListTablesRequest
+	(*TableInfo)(nil),                  // 26: regatta.v1.TableInfo
+	(*ListTablesResponse)(nil),         // 27: regatta.v1.ListTablesResponse
+	nil,                                // 28: regatta.v1.StatusResponse.TablesEntry
+	(*KeyValue)(nil),                   // 29: mvcc.v1.KeyValue
+	(*Compare)(nil),                    // 30: mvcc.v1.Compare
+	(*RequestOp)(nil),                  // 31: mvcc.v1.RequestOp
+	(*ResponseOp)(nil),                 // 32: mvcc.v1.ResponseOp
+	(*Event)(nil),                      // 33: mvcc.v1.Event
+	(*structpb.Struct)(nil),            // 34: google.protobuf.Struct
 }
 var file_armada_proto_depIdxs = []int32{
-	0,  // 0: regatta.v1.RangeResponse.header:type_name -> regatta.v1.ResponseHeader
-	23, // 1: regatta.v1.RangeResponse.kvs:type_name -> mvcc.v1.KeyValue
-	0,  // 2: regatta.v1.PutResponse.header:type_name -> regatta.v1.ResponseHeader
-	23, // 3: regatta.v1.PutResponse.prev_kv:type_name -> mvcc.v1.KeyValue
-	0,  // 4: regatta.v1.DeleteRangeResponse.header:type_name -> regatta.v1.ResponseHeader
-	23, // 5: regatta.v1.DeleteRangeResponse.prev_kvs:type_name -> mvcc.v1.KeyValue
-	24, // 6: regatta.v1.TxnRequest.compare:type_name -> mvcc.v1.Compare
-	25, // 7: regatta.v1.TxnRequest.success:type_name -> mvcc.v1.RequestOp
-	25, // 8: regatta.v1.TxnRequest.failure:type_name -> mvcc.v1.RequestOp
-	0,  // 9: regatta.v1.TxnResponse.header:type_name -> regatta.v1.ResponseHeader
-	26, // 10: regatta.v1.TxnResponse.responses:type_name -> mvcc.v1.ResponseOp
-	11, // 11: regatta.v1.MemberListResponse.members:type_name -> regatta.v1.Member
-	22, // 12: regatta.v1.StatusResponse.tables:type_name -> regatta.v1.StatusResponse.TablesEntry
-	27, // 13: regatta.v1.StatusResponse.config:type_name -> google.protobuf.Struct
-	27, // 14: regatta.v1.CreateTableRequest.config:type_name -> google.protobuf.Struct
-	27, // 15: regatta.v1.TableInfo.config:type_name -> google.protobuf.Struct
-	20, // 16: regatta.v1.ListTablesResponse.tables:type_name -> regatta.v1.TableInfo
-	12, // 17: regatta.v1.StatusResponse.TablesEntry.value:type_name -> regatta.v1.TableStatus
-	1,  // 18: regatta.v1.KV.Range:input_type -> regatta.v1.RangeRequest
-	1,  // 19: regatta.v1.KV.IterateRange:input_type -> regatta.v1.RangeRequest
-	3,  // 20: regatta.v1.KV.Put:input_type -> regatta.v1.PutRequest
-	5,  // 21: regatta.v1.KV.DeleteRange:input_type -> regatta.v1.DeleteRangeRequest
-	7,  // 22: regatta.v1.KV.Txn:input_type -> regatta.v1.TxnRequest
-	9,  // 23: regatta.v1.Cluster.MemberList:input_type -> regatta.v1.MemberListRequest
-	13, // 24: regatta.v1.Cluster.Status:input_type -> regatta.v1.StatusRequest
-	15, // 25: regatta.v1.Tables.Create:input_type -> regatta.v1.CreateTableRequest
-	17, // 26: regatta.v1.Tables.Delete:input_type -> regatta.v1.DeleteTableRequest
-	19, // 27: regatta.v1.Tables.List:input_type -> regatta.v1.ListTablesRequest
-	2,  // 28: regatta.v1.KV.Range:output_type -> regatta.v1.RangeResponse
-	2,  // 29: regatta.v1.KV.IterateRange:output_type -> regatta.v1.RangeResponse
-	4,  // 30: regatta.v1.KV.Put:output_type -> regatta.v1.PutResponse
-	6,  // 31: regatta.v1.KV.DeleteRange:output_type -> regatta.v1.DeleteRangeResponse
-	8,  // 32: regatta.v1.KV.Txn:output_type -> regatta.v1.TxnResponse
-	10, // 33: regatta.v1.Cluster.MemberList:output_type -> regatta.v1.MemberListResponse
-	14, // 34: regatta.v1.Cluster.Status:output_type -> regatta.v1.StatusResponse
-	16, // 35: regatta.v1.Tables.Create:output_type -> regatta.v1.CreateTableResponse
-	18, // 36: regatta.v1.Tables.Delete:output_type -> regatta.v1.DeleteTableResponse
-	21, // 37: regatta.v1.Tables.List:output_type -> regatta.v1.ListTablesResponse
-	28, // [28:38] is the sub-list for method output_type
-	18, // [18:28] is the sub-list for method input_type
-	18, // [18:18] is the sub-list for extension type_name
-	18, // [18:18] is the sub-list for extension extendee
-	0,  // [0:18] is the sub-list for field type_name
+	1,  // 0: regatta.v1.RangeResponse.header:type_name -> regatta.v1.ResponseHeader
+	29, // 1: regatta.v1.RangeResponse.kvs:type_name -> mvcc.v1.KeyValue
+	1,  // 2: regatta.v1.PutResponse.header:type_name -> regatta.v1.ResponseHeader
+	29, // 3: regatta.v1.PutResponse.prev_kv:type_name -> mvcc.v1.KeyValue
+	1,  // 4: regatta.v1.DeleteRangeResponse.header:type_name -> regatta.v1.ResponseHeader
+	29, // 5: regatta.v1.DeleteRangeResponse.prev_kvs:type_name -> mvcc.v1.KeyValue
+	30, // 6: regatta.v1.TxnRequest.compare:type_name -> mvcc.v1.Compare
+	31, // 7: regatta.v1.TxnRequest.success:type_name -> mvcc.v1.RequestOp
+	31, // 8: regatta.v1.TxnRequest.failure:type_name -> mvcc.v1.RequestOp
+	1,  // 9: regatta.v1.TxnResponse.header:type_name -> regatta.v1.ResponseHeader
+	32, // 10: regatta.v1.TxnResponse.responses:type_name -> mvcc.v1.ResponseOp
+	11, // 11: regatta.v1.WatchRequest.create_request:type_name -> regatta.v1.WatchCreateRequest
+	12, // 12: regatta.v1.WatchRequest.cancel_request:type_name -> regatta.v1.WatchCancelRequest
+	13, // 13: regatta.v1.WatchRequest.progress_request:type_name -> regatta.v1.WatchProgressRequest
+	0,  // 14: regatta.v1.WatchCreateRequest.filters:type_name -> regatta.v1.WatchCreateRequest.FilterType
+	1,  // 15: regatta.v1.WatchResponse.header:type_name -> regatta.v1.ResponseHeader
+	33, // 16: regatta.v1.WatchResponse.events:type_name -> mvcc.v1.Event
+	17, // 17: regatta.v1.MemberListResponse.members:type_name -> regatta.v1.Member
+	28, // 18: regatta.v1.StatusResponse.tables:type_name -> regatta.v1.StatusResponse.TablesEntry
+	34, // 19: regatta.v1.StatusResponse.config:type_name -> google.protobuf.Struct
+	34, // 20: regatta.v1.CreateTableRequest.config:type_name -> google.protobuf.Struct
+	34, // 21: regatta.v1.TableInfo.config:type_name -> google.protobuf.Struct
+	26, // 22: regatta.v1.ListTablesResponse.tables:type_name -> regatta.v1.TableInfo
+	18, // 23: regatta.v1.StatusResponse.TablesEntry.value:type_name -> regatta.v1.TableStatus
+	2,  // 24: regatta.v1.KV.Range:input_type -> regatta.v1.RangeRequest
+	2,  // 25: regatta.v1.KV.IterateRange:input_type -> regatta.v1.RangeRequest
+	4,  // 26: regatta.v1.KV.Put:input_type -> regatta.v1.PutRequest
+	6,  // 27: regatta.v1.KV.DeleteRange:input_type -> regatta.v1.DeleteRangeRequest
+	8,  // 28: regatta.v1.KV.Txn:input_type -> regatta.v1.TxnRequest
+	10, // 29: regatta.v1.Watch.Watch:input_type -> regatta.v1.WatchRequest
+	15, // 30: regatta.v1.Cluster.MemberList:input_type -> regatta.v1.MemberListRequest
+	19, // 31: regatta.v1.Cluster.Status:input_type -> regatta.v1.StatusRequest
+	21, // 32: regatta.v1.Tables.Create:input_type -> regatta.v1.CreateTableRequest
+	23, // 33: regatta.v1.Tables.Delete:input_type -> regatta.v1.DeleteTableRequest
+	25, // 34: regatta.v1.Tables.List:input_type -> regatta.v1.ListTablesRequest
+	3,  // 35: regatta.v1.KV.Range:output_type -> regatta.v1.RangeResponse
+	3,  // 36: regatta.v1.KV.IterateRange:output_type -> regatta.v1.RangeResponse
+	5,  // 37: regatta.v1.KV.Put:output_type -> regatta.v1.PutResponse
+	7,  // 38: regatta.v1.KV.DeleteRange:output_type -> regatta.v1.DeleteRangeResponse
+	9,  // 39: regatta.v1.KV.Txn:output_type -> regatta.v1.TxnResponse
+	14, // 40: regatta.v1.Watch.Watch:output_type -> regatta.v1.WatchResponse
+	16, // 41: regatta.v1.Cluster.MemberList:output_type -> regatta.v1.MemberListResponse
+	20, // 42: regatta.v1.Cluster.Status:output_type -> regatta.v1.StatusResponse
+	22, // 43: regatta.v1.Tables.Create:output_type -> regatta.v1.CreateTableResponse
+	24, // 44: regatta.v1.Tables.Delete:output_type -> regatta.v1.DeleteTableResponse
+	27, // 45: regatta.v1.Tables.List:output_type -> regatta.v1.ListTablesResponse
+	35, // [35:46] is the sub-list for method output_type
+	24, // [24:35] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_armada_proto_init() }
@@ -1677,18 +2207,24 @@ func file_armada_proto_init() {
 		return
 	}
 	file_mvcc_proto_init()
+	file_armada_proto_msgTypes[9].OneofWrappers = []any{
+		(*WatchRequest_CreateRequest)(nil),
+		(*WatchRequest_CancelRequest)(nil),
+		(*WatchRequest_ProgressRequest)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_armada_proto_rawDesc), len(file_armada_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   23,
+			NumEnums:      1,
+			NumMessages:   28,
 			NumExtensions: 0,
-			NumServices:   3,
+			NumServices:   4,
 		},
 		GoTypes:           file_armada_proto_goTypes,
 		DependencyIndexes: file_armada_proto_depIdxs,
+		EnumInfos:         file_armada_proto_enumTypes,
 		MessageInfos:      file_armada_proto_msgTypes,
 	}.Build()
 	File_armada_proto = out.File

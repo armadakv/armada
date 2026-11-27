@@ -305,6 +305,134 @@ var KV_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	Watch_Watch_FullMethodName = "/regatta.v1.Watch/Watch"
+)
+
+// WatchClient is the client API for Watch service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Watch streams changes of keys in a table.
+//
+// Events are delivered in non-decreasing revision order, and all events of one
+// revision are delivered before any event of a later revision. There is at most
+// one event per key per revision. Revisions are sparse: they advance on writes
+// to the table, but not every revision produces an event.
+//
+// Watches are served locally by any node of any cluster; they are never forwarded.
+// Revisions are the same on every cluster, so a client can resume a watch on another
+// node or cluster with the revision it last observed.
+type WatchClient interface {
+	// Watch watches for events happening or that have happened. Both input and output are streams;
+	// the input stream is for creating and canceling watchers and for requesting progress, and the
+	// output stream sends events. One watch RPC can watch on multiple key ranges, streaming events
+	// for several watches at once. The entire event history can be watched starting from the
+	// first available revision.
+	Watch(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WatchRequest, WatchResponse], error)
+}
+
+type watchClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewWatchClient(cc grpc.ClientConnInterface) WatchClient {
+	return &watchClient{cc}
+}
+
+func (c *watchClient) Watch(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[WatchRequest, WatchResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &Watch_ServiceDesc.Streams[0], Watch_Watch_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WatchRequest, WatchResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Watch_WatchClient = grpc.BidiStreamingClient[WatchRequest, WatchResponse]
+
+// WatchServer is the server API for Watch service.
+// All implementations must embed UnimplementedWatchServer
+// for forward compatibility.
+//
+// Watch streams changes of keys in a table.
+//
+// Events are delivered in non-decreasing revision order, and all events of one
+// revision are delivered before any event of a later revision. There is at most
+// one event per key per revision. Revisions are sparse: they advance on writes
+// to the table, but not every revision produces an event.
+//
+// Watches are served locally by any node of any cluster; they are never forwarded.
+// Revisions are the same on every cluster, so a client can resume a watch on another
+// node or cluster with the revision it last observed.
+type WatchServer interface {
+	// Watch watches for events happening or that have happened. Both input and output are streams;
+	// the input stream is for creating and canceling watchers and for requesting progress, and the
+	// output stream sends events. One watch RPC can watch on multiple key ranges, streaming events
+	// for several watches at once. The entire event history can be watched starting from the
+	// first available revision.
+	Watch(grpc.BidiStreamingServer[WatchRequest, WatchResponse]) error
+	mustEmbedUnimplementedWatchServer()
+}
+
+// UnimplementedWatchServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedWatchServer struct{}
+
+func (UnimplementedWatchServer) Watch(grpc.BidiStreamingServer[WatchRequest, WatchResponse]) error {
+	return status.Error(codes.Unimplemented, "method Watch not implemented")
+}
+func (UnimplementedWatchServer) mustEmbedUnimplementedWatchServer() {}
+func (UnimplementedWatchServer) testEmbeddedByValue()               {}
+
+// UnsafeWatchServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to WatchServer will
+// result in compilation errors.
+type UnsafeWatchServer interface {
+	mustEmbedUnimplementedWatchServer()
+}
+
+func RegisterWatchServer(s grpc.ServiceRegistrar, srv WatchServer) {
+	// If the following call panics, it indicates UnimplementedWatchServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Watch_ServiceDesc, srv)
+}
+
+func _Watch_Watch_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(WatchServer).Watch(&grpc.GenericServerStream[WatchRequest, WatchResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type Watch_WatchServer = grpc.BidiStreamingServer[WatchRequest, WatchResponse]
+
+// Watch_ServiceDesc is the grpc.ServiceDesc for Watch service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Watch_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "regatta.v1.Watch",
+	HandlerType: (*WatchServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Watch",
+			Handler:       _Watch_Watch_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "armada.proto",
+}
+
+const (
 	Cluster_MemberList_FullMethodName = "/regatta.v1.Cluster/MemberList"
 	Cluster_Status_FullMethodName     = "/regatta.v1.Cluster/Status"
 )
