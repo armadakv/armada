@@ -130,7 +130,7 @@ func follower() error {
 			// Create server
 			regatta, err := createAPIServer(logger.Named("server.api"), func(r grpc.ServiceRegistrar) {
 				armadapb.RegisterKVServer(r, armadaserver.NewForwardingKVServer(engine, armadapb.NewKVClient(conn), nQueue))
-				armadapb.RegisterWatchServer(r, &armadaserver.WatchServer{})
+				armadapb.RegisterWatchServer(r, &armadaserver.WatchServer{Watches: engine})
 				armadapb.RegisterClusterServer(r, &armadaserver.ClusterServer{
 					Cluster: engine,
 					Config:  koanfConfigReader,

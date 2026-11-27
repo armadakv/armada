@@ -42,6 +42,73 @@ type updateContext struct {
 	// decreases: versions below an applied horizon may already be swept.
 	gcHorizon        uint64
 	gcHorizonChanged bool
+	// revision is the table revision after the entries applied so far.
+	revision        uint64
+	revisionChanged bool
+	// events records the changes of the batch, nil when nobody watches.
+	events *eventRecorder
+	// rewritten is set when the batch rewrites history instead of extending it.
+	rewritten bool
+}
+
+// capturing reports whether the batch records events.
+func (c *updateContext) capturing() bool {
+	return c.events != nil
+}
+
+// recordEvent records one change, unless it belongs to a snapshot replay:
+// replayed records carry their source revisions and rewrite history.
+func (c *updateContext) recordEvent(typ armadapb.Event_EventType, userKey, value []byte, createSeqno, modSeqno uint64, prev *armadapb.KeyValue, replayed bool) {
+	if replayed {
+		c.rewritten = true
+		return
+	}
+	if c.events != nil {
+		c.events.record(newEvent(typ, userKey, value, createSeqno, modSeqno, prev))
+	}
+}
+
+// advanceRevision updates the table revision after an entry was applied.
+func (c *updateContext) advanceRevision() {
+	cmd := c.cmd
+	switch {
+	case cmd.Type == armadapb.Command_GC:
+		// GC proposed on a cluster's own Raft leader carries the compacted
+		// local index, which is not a revision.
+		return
+	case cmd.Type == armadapb.Command_DUMMY && cmd.LeaderIndex != nil && *cmd.LeaderIndex == 0:
+		// A maintenance reset restarts replication from scratch.
+		c.rewritten = true
+		c.setRevision(0)
+	case cmd.Type == armadapb.Command_DUMMY && cmd.LeaderIndex != nil:
+		// A top-level DUMMY with a source index is the terminal marker of a
+		// snapshot replay; live replication always wraps commands in a SEQUENCE.
+		c.rewritten = true
+		c.setRevision(*cmd.LeaderIndex)
+	case cmd.Type == armadapb.Command_SEQUENCE:
+		r := sequenceRevision(cmd)
+		if r == 0 {
+			// Children without source indexes are written at the entry's sequence.
+			r = c.seqno()
+		}
+		c.setRevision(r)
+	default:
+		c.setRevision(c.seqno())
+	}
+}
+
+func (c *updateContext) setRevision(r uint64) {
+	c.revision = r
+	c.revisionChanged = true
+}
+
+// commit returns the observer notification for the committed batch.
+func (c *updateContext) commit() Commit {
+	res := Commit{Revision: c.revision, Captured: c.events != nil, Rewritten: c.rewritten}
+	if c.events != nil {
+		res.Events = c.events.sorted()
+	}
+	return res
 }
 
 // advanceGCHorizon applies a GC horizon, ignoring one that would move it back.
@@ -95,6 +162,13 @@ func (c *updateContext) Commit() error {
 		horizon := make([]byte, 8)
 		binary.LittleEndian.PutUint64(horizon, c.gcHorizon)
 		if err := c.batch.Set(sysGCHorizon, horizon, nil); err != nil {
+			return err
+		}
+	}
+	if c.revisionChanged {
+		rev := make([]byte, 8)
+		binary.LittleEndian.PutUint64(rev, c.revision)
+		if err := c.batch.Set(sysRevision, rev, nil); err != nil {
 			return err
 		}
 	}
