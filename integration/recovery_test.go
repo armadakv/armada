@@ -36,6 +36,7 @@ func TestRecovery(t *testing.T) {
 	run("incremental", (*Env).scenarioIncremental)
 	run("powerloss", (*Env).scenarioPowerloss)
 	run("direct", (*Env).scenarioDirect)
+	run("watch", (*Env).scenarioWatch)
 }
 
 // use points the harness's own helpers at the running subtest and restores the
