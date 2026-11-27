@@ -24,3 +24,4 @@ See [API documentation](../api.md#regatta-proto) for the complete user-facing gR
 * [Updating Records](put.md) — inserting and updating key-value pairs
 * [Deleting Records](delete.md) — deleting single keys, prefix ranges, and bulk deletes
 * [Transactions](transactions.md) — atomic if/then/else operations with compare predicates
+* [Watching Changes](watch.md) — streaming changes of keys, replaying history, and resuming watches

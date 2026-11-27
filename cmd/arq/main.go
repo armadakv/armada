@@ -51,6 +51,7 @@ var app = &cli.Command{
 		putCmd,
 		deleteCmd,
 		txnCmd,
+		watchCmd,
 		versionCmd,
 		docsCmd,
 	},
