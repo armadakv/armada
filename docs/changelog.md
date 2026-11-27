@@ -61,17 +61,46 @@ Commits that are part of a merged PR but not named by its title, for example com
 
 ## v0.3.2 - 2026-11-25
 
+### About this release
+
+v0.3.2 is a bugfix release that removes runaway memory and CPU use caused by MVCC garbage collection.
+
+### Highlights
+- GC sweeps no longer write a range tombstone for every unchanged key. Previously each sweep (every 10 minutes) added one tombstone per live key that had nothing to delete, and Pebble kept a delete-compaction hint in memory for each of them. On an affected leader this was over half of the in-use heap and over 60% of all allocations.
+- Tombstones are now written only for keys that actually have older versions, so a sweep over unchanged data writes none.
+
+### Upgrade notes
+- Upgrade leaders and followers to v0.3.2. This change introduces no compatibility break.
+- Tombstones written by earlier versions are not removed immediately; memory used for their compaction hints is released as compaction processes them.
+
 ### Bug fixes
 
 - do not write GC tombstones for unchanged keys ([#189](https://github.com/armadakv/armada/pull/189))
 
 ## v0.3.1 - 2026-11-25
 
+### About this release
+
+v0.3.1 is a bugfix release for follower live-snapshot recovery.
+
+### Highlights
+- Followers in proxy mode can now complete full recovery when the leader has no shared store (`shared-store.backend=none`), instead of retrying indefinitely.
+- Live snapshots no longer acquire download leases. Shared-store snapshot artifacts still require leases.
+
+### Upgrade notes
+- Upgrade affected v0.3.0 followers to v0.3.1 to receive this recovery fix. This change introduces no compatibility break.
+
 ### Bug fixes
 
 - do not take a download lease for live snapshots ([#187](https://github.com/armadakv/armada/pull/187))
 
 ## v0.3.0 - 2026-11-24
+
+### Highlights
+
+- **Query keys by creation and modification revision.** `Range`, `IterateRange` and transaction ranges now accept inclusive `min_create_revision` / `max_create_revision` and `min_mod_revision` / `max_mod_revision` bounds, with zero meaning unbounded. Filters apply to the current live key and are evaluated before any value is read.
+- **Revision targets in transaction comparisons.** `Compare` supports the `CREATE` and `MOD` targets with `create_revision` / `mod_revision` operands. Semantics follow etcd: a missing or deleted key compares as revision `0`, and a range matches only if every live key in it matches.
+- **Durable, resumable follower recovery.** Recovery now survives restarts and power loss and resumes instead of starting over. Downloads continue from fsynced checkpoints and are verified by size and sha256. Leaders publish recoverable full and incremental snapshots to the shared store, and a completed recovery is no longer repeated after a restart.
 
 ### Features
 
