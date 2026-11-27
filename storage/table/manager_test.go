@@ -302,10 +302,16 @@ func TestManager_Restore(t *testing.T) {
 	for i, kv := range rangeResp.Kvs {
 		require.Equal(t, snapshotTestKey(i), kv.Key)
 		require.Equal(t, []byte(strings.Repeat(string(rune('a'+i)), 300)), kv.Value)
+		// The restored shard's own log assigns the revisions.
+		require.Equal(t, kv.CreateRevision, kv.ModRevision)
 	}
-	leaderIndex, err := tab2.LeaderIndex(ctx, true)
+	// The restored shard applied the backup: its local index covers every
+	// record and the terminal marker, which is applied last.
+	localIndex, err := tab2.LocalIndex(ctx, true)
 	require.NoError(t, err)
-	require.Equal(t, resp.Index, leaderIndex.Index)
+	for _, kv := range rangeResp.Kvs {
+		require.Less(t, uint64(kv.ModRevision), localIndex.Index)
+	}
 }
 
 func snapshotTestKey(i int) []byte {
@@ -776,4 +782,26 @@ func startRaftNode(t *testing.T) (*raft.NodeHost, map[uint64]string) {
 	nh, err := raft.NewNodeHost(nhc)
 	require.NoError(t, err)
 	return nh, map[uint64]string{1: addr}
+}
+
+func TestAsFreshWrites(t *testing.T) {
+	li := func(i uint64) *uint64 { return &i }
+	seq := &armadapb.Command{Type: armadapb.Command_SEQUENCE, Sequence: []*armadapb.Command{
+		{Type: armadapb.Command_PUT, LeaderIndex: li(50), Kv: &armadapb.KeyValue{Key: []byte("k"), Value: []byte("v"), CreateRevision: 40, ModRevision: 50}},
+		{Type: armadapb.Command_DELETE, LeaderIndex: li(60), Kv: &armadapb.KeyValue{Key: []byte("d"), CreateRevision: 10, ModRevision: 60}},
+	}}
+	asFreshWrites(seq)
+	for _, child := range seq.Sequence {
+		require.Nil(t, child.LeaderIndex)
+		require.Zero(t, child.Kv.CreateRevision)
+		require.Zero(t, child.Kv.ModRevision)
+	}
+	require.Equal(t, []byte("v"), seq.Sequence[0].Kv.Value, "values are kept")
+
+	// The terminal marker is kept as a no-op: no leader index, which also
+	// keeps it from reading as a maintenance reset (leader index zero).
+	terminal := &armadapb.Command{Type: armadapb.Command_DUMMY, LeaderIndex: li(70)}
+	asFreshWrites(terminal)
+	require.Equal(t, armadapb.Command_DUMMY, terminal.Type)
+	require.Nil(t, terminal.LeaderIndex)
 }

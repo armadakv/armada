@@ -760,7 +760,7 @@ func (m *Manager) ApplySnapshot(ctx context.Context, name string, reader io.Read
 	if err != nil {
 		return err
 	}
-	return m.readIntoTable(ctx, tbl.ClusterID, name, reader, true)
+	return m.readIntoTable(ctx, tbl.ClusterID, name, reader, true, false)
 }
 
 func (m *Manager) stopTable(clusterID uint64) error {
@@ -922,9 +922,22 @@ func (m *Manager) setTableVersion(tbl Table, version uint64) error {
 	return nil
 }
 
-func (m *Manager) readIntoTable(ctx context.Context, id uint64, name string, reader io.Reader, requireTerminal bool) error {
+// readIntoTable replays a snapshot stream into the shard id.
+//
+// With rewriteRevisions the records are applied as fresh writes of this shard:
+// their source revisions are dropped, including the terminal marker's, so the
+// shard's own log assigns their revisions. An operator restore needs
+// that. It loads a backup into a new shard whose log starts again from the
+// beginning: kept source revisions would sit above every later write to the
+// shard, and reads, which return the highest revision of a key, would never
+// see those writes. Cross-cluster recovery must keep the source revisions
+// instead, because a follower's revisions are the leader's.
+func (m *Manager) readIntoTable(ctx context.Context, id uint64, name string, reader io.Reader, requireTerminal, rewriteRevisions bool) error {
 	session := m.nh.GetNoOPSession(id)
 	return readSnapshotWithTerminal(reader, name, m.cfg.Table.MaxInMemLogSize/2, requireTerminal, func(cmd *armadapb.Command) error {
+		if rewriteRevisions {
+			asFreshWrites(cmd)
+		}
 		bb, err := cmd.MarshalVT()
 		if err != nil {
 			return err
@@ -950,6 +963,26 @@ func (m *Manager) readIntoTable(ctx context.Context, id uint64, name string, rea
 			return nil
 		}, backoff.WithContext(backOff, ctx))
 	})
+}
+
+// asFreshWrites strips the source revisions from a replayed snapshot command,
+// so that it applies as an ordinary write of the shard it is proposed to.
+//
+// The terminal marker stays, as a no-op: without its source index it records
+// no leader index, and it is not a maintenance reset, which sets the index to
+// zero. It is still applied last, so the load always ends at a known applied
+// index that learners must reach before they are promoted. An empty backup
+// holds nothing else; without it the shard would apply nothing, and every
+// learner, even one that never joined, would count as caught up.
+func asFreshWrites(cmd *armadapb.Command) {
+	cmd.LeaderIndex = nil
+	if cmd.Kv != nil {
+		cmd.Kv.CreateRevision = 0
+		cmd.Kv.ModRevision = 0
+	}
+	for _, child := range cmd.Sequence {
+		asFreshWrites(child)
+	}
 }
 
 func readSnapshotWithTerminal(reader io.Reader, tableName string, maxBatchSize uint64, requireTerminal bool, propose func(*armadapb.Command) error) error {

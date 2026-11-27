@@ -127,6 +127,105 @@ func TestBackupServer_RestoreRoundTrip(t *testing.T) {
 	}
 }
 
+// TestBackupServer_RestoreThenUpdate checks that a restored table takes new
+// writes. The backup is loaded into a new shard whose log starts again from
+// the beginning, so the restored records must get revisions from that log:
+// with the source revisions kept, they would sit above every later write, and
+// reads, which return a key's highest revision, would never see those writes.
+func TestBackupServer_RestoreThenUpdate(t *testing.T) {
+	r := require.New(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	engine := newInMemTestEngine(t, "orders")
+	srv := &BackupServer{Tables: engine, AuthFunc: func(c context.Context) (context.Context, error) { return c, nil }}
+	tab, err := engine.GetTable("orders")
+	r.NoError(err)
+	// Advance the source shard's log well past where a new shard starts.
+	for i := range 50 {
+		_, err := tab.Put(ctx, &armadapb.PutRequest{Table: []byte("orders"), Key: []byte("k"), Value: []byte{byte(i)}})
+		r.NoError(err)
+	}
+	_, err = tab.Put(ctx, &armadapb.PutRequest{Table: []byte("orders"), Key: []byte("other"), Value: []byte("kept")})
+	r.NoError(err)
+
+	collector := &backupCollector{ctx: ctx}
+	r.NoError(srv.Backup(&armadapb.BackupRequest{Table: []byte("orders")}, collector))
+	messages := []*armadapb.RestoreMessage{{Data: &armadapb.RestoreMessage_Info{Info: &armadapb.RestoreInfo{Table: []byte("orders"), Format: "armada-command-v2"}}}}
+	for _, c := range collector.chunks {
+		messages = append(messages, &armadapb.RestoreMessage{Data: &armadapb.RestoreMessage_Chunk{Chunk: c}})
+	}
+	r.NoError(srv.Restore(&restoreStream{ctx: ctx, messages: messages}))
+
+	restored, err := engine.GetTable("orders")
+	r.NoError(err)
+	before, err := restored.Range(ctx, &armadapb.RangeRequest{Table: []byte("orders"), Key: []byte{0}, RangeEnd: []byte{0}, Linearizable: true})
+	r.NoError(err)
+	r.Len(before.Kvs, 2)
+	for _, kv := range before.Kvs {
+		r.Equal(kv.CreateRevision, kv.ModRevision, "a restored record is a new incarnation of %s", kv.Key)
+	}
+	localIndex, err := restored.LocalIndex(ctx, true)
+	r.NoError(err)
+	for _, kv := range before.Kvs {
+		r.Less(uint64(kv.ModRevision), localIndex.Index, "the terminal marker is applied after %s", kv.Key)
+	}
+
+	put, err := restored.Put(ctx, &armadapb.PutRequest{Table: []byte("orders"), Key: []byte("k"), Value: []byte("after-restore")})
+	r.NoError(err)
+	for _, kv := range before.Kvs {
+		r.Less(uint64(kv.ModRevision), put.Header.Revision, "restored %s sits below later writes", kv.Key)
+	}
+
+	got, err := restored.Range(ctx, &armadapb.RangeRequest{Table: []byte("orders"), Key: []byte{0}, RangeEnd: []byte{0}, Linearizable: true})
+	r.NoError(err)
+	r.Len(got.Kvs, 2)
+	r.Equal("after-restore", string(got.Kvs[0].Value), "a write after the restore is visible")
+	r.Equal(int64(put.Header.Revision), got.Kvs[0].ModRevision)
+	r.Equal("kept", string(got.Kvs[1].Value))
+}
+
+// TestBackupServer_RestoreEmptyBackup restores a backup of an empty table,
+// which holds nothing but its terminal marker. The marker is still applied, so
+// the restored shard ends at a known applied index: recovery seeds learners up
+// to that index, and with nothing applied every learner would count as caught
+// up, even one that never joined.
+func TestBackupServer_RestoreEmptyBackup(t *testing.T) {
+	r := require.New(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	engine := newInMemTestEngine(t, "orders")
+	srv := &BackupServer{Tables: engine, AuthFunc: func(c context.Context) (context.Context, error) { return c, nil }}
+	tab, err := engine.GetTable("orders")
+	r.NoError(err)
+
+	collector := &backupCollector{ctx: ctx}
+	r.NoError(srv.Backup(&armadapb.BackupRequest{Table: []byte("orders")}, collector))
+	messages := []*armadapb.RestoreMessage{{Data: &armadapb.RestoreMessage_Info{Info: &armadapb.RestoreInfo{Table: []byte("orders"), Format: "armada-command-v2"}}}}
+	for _, c := range collector.chunks {
+		messages = append(messages, &armadapb.RestoreMessage{Data: &armadapb.RestoreMessage_Chunk{Chunk: c}})
+	}
+	r.NoError(srv.Restore(&restoreStream{ctx: ctx, messages: messages}))
+
+	restored, err := engine.GetTable("orders")
+	r.NoError(err)
+	r.Greater(restored.ClusterID, tab.ClusterID)
+	localIndex, err := restored.LocalIndex(ctx, true)
+	r.NoError(err)
+	r.Positive(localIndex.Index, "the terminal marker is applied")
+
+	empty, err := restored.Range(ctx, &armadapb.RangeRequest{Table: []byte("orders"), Key: []byte{0}, RangeEnd: []byte{0}, Linearizable: true})
+	r.NoError(err)
+	r.Empty(empty.Kvs)
+	put, err := restored.Put(ctx, &armadapb.PutRequest{Table: []byte("orders"), Key: []byte("k"), Value: []byte("v")})
+	r.NoError(err)
+	r.Greater(put.Header.Revision, localIndex.Index)
+	got, err := restored.Range(ctx, &armadapb.RangeRequest{Table: []byte("orders"), Key: []byte("k"), Linearizable: true})
+	r.NoError(err)
+	r.Equal("v", string(got.Kvs[0].Value))
+}
+
 // TestBackupServer_RestoreRejectsUnknownFormat guards the format check that
 // keeps an unrecognised stream from being fed to the loader.
 func TestBackupServer_RestoreRejectsUnknownFormat(t *testing.T) {

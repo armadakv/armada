@@ -711,7 +711,10 @@ func (m *Manager) recoveryLoad(ctx context.Context, rec *RecoveryRecord, ver *ui
 		reader = sf
 	}
 
-	if err := m.readIntoTable(ctx, target, rec.Table, reader, !rec.Artifact.Legacy); err != nil {
+	// An operator restore loads a backup into a new shard of this cluster, which
+	// must assign its own revisions; see readIntoTable.
+	rewrite := rec.Artifact.Type == ArtifactLocal
+	if err := m.readIntoTable(ctx, target, rec.Table, reader, !rec.Artifact.Legacy, rewrite); err != nil {
 		return err
 	}
 
